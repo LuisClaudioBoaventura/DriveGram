@@ -35,6 +35,15 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+function toArrayBuffer(buffer: Buffer): ArrayBuffer {
+  const ab = new ArrayBuffer(buffer.byteLength);
+  const view = new Uint8Array(ab);
+  for (let i = 0; i < buffer.byteLength; ++i) {
+    view[i] = buffer[buffer.byteOffset + i];
+  }
+  return ab;
+}
+
 export const comicService = {
   async getManifest(fileId: string, filePath: string, originalName: string): Promise<ComicManifest> {
     const existing = comicCache.get(fileId);
@@ -78,7 +87,8 @@ export const comicService = {
     // If not ZIP or 0 pages found, try RAR via node-unrar-js
     if (pages.length === 0) {
       try {
-        const extractor = await createExtractorFromData({ data: fileBuffer.buffer });
+        const arrayBuf = toArrayBuffer(fileBuffer);
+        const extractor = await createExtractorFromData({ data: arrayBuf });
         const list = extractor.getFileList();
         const rarPages: string[] = [];
 
@@ -161,7 +171,8 @@ export const comicService = {
       if (!zipEntry) throw new Error(`Página ${pagePath} não encontrada no arquivo ZIP`);
       pageBuffer = await zipEntry.async('nodebuffer');
     } else {
-      const extractor = await createExtractorFromData({ data: fileBuffer.buffer });
+      const arrayBuf = toArrayBuffer(fileBuffer);
+      const extractor = await createExtractorFromData({ data: arrayBuf });
       const extracted = extractor.extract({ files: [pagePath] });
       const fileData = [...extracted.files][0];
       if (!fileData || !fileData.extraction) {
