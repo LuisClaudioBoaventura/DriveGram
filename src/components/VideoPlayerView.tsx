@@ -80,8 +80,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-black text-white overflow-y-auto select-none">
-      {/* Top Navbar Bar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between px-6 py-3 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 shrink-0">
+      {/* Slim Top Navbar Bar with Icon-Only Actions */}
+      <div className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-4 py-1.5 bg-gray-950/95 backdrop-blur-md border-b border-gray-800/80 shrink-0 h-11">
+        {/* Back Button (Icon Only) */}
         <button
           onClick={() => {
             if (videoRef.current) {
@@ -89,29 +90,31 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             }
             onBackToCatalog();
           }}
-          className="flex items-center gap-2 text-xs font-bold text-gray-300 hover:text-red-400 transition-colors"
+          className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-red-400 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
+          title="Voltar para Catálogo de Filmes"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Voltar para Catálogo de Filmes</span>
         </button>
 
-        <div className="flex items-center gap-3">
-          <span className="px-2.5 py-0.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase shadow">
+        {/* Video Title & Category */}
+        <div className="flex items-center gap-2 overflow-hidden px-2 max-w-[50vw] sm:max-w-md md:max-w-lg">
+          <span className="px-2 py-0.5 rounded-lg bg-red-600/90 text-white text-[10px] font-black uppercase shadow-sm shrink-0">
             {video.category || 'Filme'}
           </span>
-          <h2 className="text-xs sm:text-sm font-bold text-white truncate max-w-xs sm:max-w-md">
+          <h2 className="text-xs sm:text-sm font-bold text-white truncate">
             {video.title}
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Action Controls (Icons Only) */}
+        <div className="flex items-center gap-1.5 shrink-0">
           {onOpenEditModal && (
             <button
               onClick={onOpenEditModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold transition-colors"
+              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
+              title="Editar Obra / Capa"
             >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span>Editar</span>
+              <Edit3 className="w-4 h-4" />
             </button>
           )}
 
@@ -119,7 +122,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             <a
               href={`/api/stream/${videoFile.id}`}
               download={videoFile.name}
-              className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
               title="Baixar Vídeo"
             >
               <Download className="w-4 h-4" />
@@ -129,9 +132,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
       </div>
 
       {/* Main Cinema Player Container */}
-      <div className="flex-1 flex flex-col items-center justify-center p-2 sm:p-6 max-w-6xl w-full mx-auto space-y-6">
+      <div className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 max-w-6xl w-full mx-auto space-y-4">
         {videoFile ? (
-          <div className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-gray-800 flex items-center justify-center group">
+          <div className="relative w-full max-h-[72vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center group">
             <video
               ref={videoRef}
               src={`/api/stream/${videoFile.id}`}
@@ -139,9 +142,11 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               autoPlay
               playsInline
               crossOrigin="anonymous"
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
               onTimeUpdate={handleTimeUpdate}
               onEnded={handleVideoEnded}
-              className="w-full h-full object-contain"
+              className="w-full h-full max-h-[72vh] object-contain"
             >
               {subtitles.map(sub => (
                 <track

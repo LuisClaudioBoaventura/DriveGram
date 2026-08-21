@@ -184,131 +184,129 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-black text-gray-100 overflow-y-auto select-none">
-      {/* Top Navbar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 py-3 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 shrink-0">
+      {/* Slim Top Navbar with Icon-Only Actions */}
+      <div className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-4 py-1.5 bg-gray-950/95 backdrop-blur-md border-b border-gray-800/80 shrink-0 h-11">
+        {/* Back Button (Icon Only) */}
         <button
           onClick={() => {
             handlePauseOrEnded(false);
             onBackToCatalog();
           }}
-          className="flex items-center gap-2 text-xs font-bold text-gray-300 hover:text-rose-400 transition-colors"
+          className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-rose-400 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
+          title="Voltar para o Red Locker"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span className="hidden sm:inline">Voltar para o Red Locker</span>
         </button>
 
-        <div className="flex items-center gap-3 overflow-hidden px-2">
-          <span className="px-2 py-0.5 rounded-lg bg-rose-600 text-white text-[10px] font-black uppercase shrink-0 flex items-center gap-1">
+        {/* Video Title & Category Badge */}
+        <div className="flex items-center gap-2 overflow-hidden px-2 max-w-[45vw] sm:max-w-md md:max-w-lg">
+          <span className="px-2 py-0.5 rounded-lg bg-rose-600/90 text-white text-[10px] font-black uppercase shrink-0 flex items-center gap-1 shadow-sm">
             <LockKeyhole className="w-3 h-3" />
-            <span>{video.category || 'Red Locker +18'}</span>
+            <span>{video.category || 'Red Locker'}</span>
           </span>
-          <h2 className="text-xs sm:text-sm font-bold text-white truncate max-w-xs sm:max-w-md">
+          <h2 className="text-xs sm:text-sm font-bold text-white truncate">
             {video.title}
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Quick Capture Frame As Cover Button */}
+        {/* Action Controls (Icons Only) */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Quick Capture Frame As Cover Button (Icon Only) */}
           {videoFile && onUpdateCoverImage && (
             <button
               onClick={handleCaptureFrameAsCover}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+              className={`p-2 rounded-xl border transition-all active:scale-95 shadow-sm ${
                 justCapturedCover
-                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-600/30 animate-in zoom-in-95'
-                  : 'bg-gray-800 hover:bg-rose-600 text-gray-200 hover:text-white border-gray-700 hover:border-rose-500'
+                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-600/30 animate-in zoom-in-95'
+                  : 'bg-gray-900/90 hover:bg-rose-600 text-gray-300 hover:text-white border-gray-800 hover:border-rose-500'
               }`}
-              title="Capturar o frame atual da cena e definir como foto de capa no Red Locker"
+              title="Capturar frame atual da cena como foto de capa no Red Locker"
             >
               {justCapturedCover ? (
-                <>
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Capa Atualizada!</span>
-                </>
+                <Check className="w-4 h-4 text-white animate-bounce" />
               ) : (
-                <>
-                  <Camera className="w-3.5 h-3.5 text-rose-400" />
-                  <span className="hidden md:inline">Definir Frame como Capa</span>
-                </>
+                <Camera className="w-4 h-4 text-rose-400 hover:text-white" />
               )}
             </button>
           )}
 
-          {/* Favorite Toggle Button */}
+          {/* Favorite Toggle Button (Icon Only) */}
           {onToggleFavorite && (
             <button
               onClick={handleToggleFav}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+              className={`p-2 rounded-xl border transition-all active:scale-95 shadow-sm ${
                 isFav
-                  ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/20'
-                  : 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-amber-400 border-gray-700'
+                  ? 'bg-amber-500 text-black border-amber-400 shadow-amber-500/20'
+                  : 'bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-amber-400 border-gray-800 hover:border-gray-700'
               }`}
               title={isFav ? 'Remover dos Favoritos' : 'Adicionar à Playlist de Favoritos'}
             >
-              <Star className={`w-3.5 h-3.5 ${isFav ? 'fill-black' : ''}`} />
-              <span className="hidden md:inline">{isFav ? 'Favoritado' : 'Favoritar'}</span>
+              <Star className={`w-4 h-4 ${isFav ? 'fill-black' : ''}`} />
             </button>
           )}
 
-          {/* Playlist Drawer Toggle Button */}
+          {/* Playlist Drawer Toggle Button (Icon Only) */}
           {playlist.length > 1 && (
             <button
               onClick={() => setShowPlaylistDrawer(!showPlaylistDrawer)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              className={`p-2 rounded-xl border transition-all active:scale-95 shadow-sm relative ${
                 showPlaylistDrawer
-                  ? 'bg-rose-600 text-white border-rose-500'
-                  : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
+                  ? 'bg-rose-600 text-white border-rose-500 shadow-rose-600/30'
+                  : 'bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border-gray-800 hover:border-gray-700'
               }`}
-              title="Fila de Reprodução / Playlist"
+              title={`Fila de Reprodução (${currentIndex + 1}/${playlist.length})`}
             >
-              <ListMusic className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">
-                Fila ({currentIndex + 1}/{playlist.length})
+              <ListMusic className="w-4 h-4" />
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border border-gray-900">
+                {playlist.length}
               </span>
             </button>
           )}
 
+          {/* Download Button (Icon Only) */}
           {videoFile && (
             <a
               href={`/api/stream/${videoFile.id}?download=true`}
               download={videoFile.name}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-xs font-semibold border border-gray-700 transition-all"
+              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
+              title="Baixar Arquivo Original"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden lg:inline">Baixar</span>
+              <Download className="w-4 h-4" />
             </a>
           )}
 
+          {/* Edit Button (Icon Only) */}
           {onOpenEditModal && (
             <button
               onClick={onOpenEditModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-xs font-semibold border border-gray-700 transition-all"
+              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
+              title="Editar Obra / Capa / Elenco"
             >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span className="hidden lg:inline">Editar</span>
+              <Edit3 className="w-4 h-4" />
             </button>
           )}
 
+          {/* Lock Button (Icon Only) */}
           {onLockVault && (
             <button
               onClick={() => {
                 handlePauseOrEnded(false);
                 onLockVault();
               }}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 border border-rose-500/30 text-rose-300 hover:text-white text-xs font-bold transition-all"
+              className="p-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 border border-rose-500/30 text-rose-300 hover:text-white shadow-sm transition-all active:scale-95"
               title="Trancar Red Locker"
             >
-              <LockKeyhole className="w-3.5 h-3.5" />
-              <span>Trancar</span>
+              <LockKeyhole className="w-4 h-4" />
             </button>
           )}
         </div>
       </div>
 
       {/* Main Container with Video & Optional Playlist Sidebar */}
-      <div className="flex-1 flex flex-col lg:flex-row p-2 sm:p-6 gap-6 max-w-7xl w-full mx-auto justify-center items-start">
+      <div className="flex-1 flex flex-col lg:flex-row p-2 sm:p-4 gap-4 max-w-6xl w-full mx-auto justify-center items-start">
         {/* Cinema Video Player Container */}
         <div className="flex-1 w-full flex flex-col items-center">
-          <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center group">
+          <div className="relative w-full max-h-[70vh] aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-800/90 flex items-center justify-center group">
             {videoFile ? (
               <video
                 ref={videoRef}
@@ -321,7 +319,7 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
                 onTimeUpdate={handleTimeUpdate}
                 onPause={() => handlePauseOrEnded(false)}
                 onEnded={() => handlePauseOrEnded(true)}
-                className="w-full h-full object-contain"
+                className="w-full h-full max-h-[70vh] object-contain"
               />
             ) : (
               <div className="flex flex-col items-center justify-center p-8 text-center text-gray-400">
