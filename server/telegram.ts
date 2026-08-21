@@ -412,7 +412,7 @@ class TelegramService {
   }
 
   /**
-   * Download media on demand from Telegram Saved Messages if deleted locally
+   * Download media on demand directly to disk without loading full file into memory
    */
   public async downloadMediaByMessageId(messageId: number, targetPath?: string): Promise<Buffer | null> {
     if (!this.client || !this.authState.isConnected) return null;
@@ -423,16 +423,20 @@ class TelegramService {
         return null;
       }
 
-      const buffer = await this.client.downloadMedia(messages[0]) as Buffer;
-      if (buffer && targetPath) {
+      if (targetPath) {
         const dir = path.dirname(targetPath);
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
         }
-        fs.writeFileSync(targetPath, buffer);
+        // Direct stream to disk (Zero memory overhead)
+        await (this.client as any).downloadMedia(messages[0], {
+          outputFile: targetPath
+        });
+        return fs.existsSync(targetPath) ? Buffer.from('') : null;
       }
 
-      return buffer;
+      const buffer = await this.client.downloadMedia(messages[0]) as Buffer;
+      return buffer || null;
     } catch (e: any) {
       console.error(`Error downloading media for messageId ${messageId} from Telegram:`, e);
       return null;
@@ -497,27 +501,29 @@ class TelegramService {
       const message = messages[0];
       const contentLength = (end - start) + 1;
 
-      res.writeHead(206, {
-        'Content-Range': `bytes ${start}-${end}/${fileSize || contentLength}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': contentLength,
-        'Content-Type': mimeType || 'application/octet-stream',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache'
-      });
+      if (!res.headersSent) {
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${fileSize || contentLength}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': contentLength,
+          'Content-Type': mimeType || 'application/octet-stream',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-cache'
+        });
+      }
 
-      // Try chunk-based streaming first
+      // Safe chunk-based streaming
       try {
         const iter = (this.client as any).iterDownload({
           file: message.media,
           offset: start as any,
           limit: contentLength,
-          requestSize: 512 * 1024
+          requestSize: 256 * 1024
         });
 
         let bytesSent = 0;
         for await (const chunk of iter) {
-          if (res.destroyed || res.closed) break;
+          if (res.destroyed || res.closed || res.writableEnded) break;
           const remaining = contentLength - bytesSent;
           if (remaining <= 0) break;
           const chunkToSend = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
@@ -525,21 +531,22 @@ class TelegramService {
           bytesSent += chunkToSend.length;
           if (bytesSent >= contentLength) break;
         }
-        res.end();
-        return true;
-      } catch (iterErr) {
-        // Fallback: download in memory buffer and slice requested range
-        const fullBuffer = await this.client.downloadMedia(message) as Buffer;
-        if (fullBuffer && fullBuffer.length > 0) {
-          const slice = fullBuffer.subarray(start, Math.min(end + 1, fullBuffer.length));
-          res.write(slice);
+        if (!res.writableEnded && !res.closed && !res.destroyed) {
           res.end();
-          return true;
+        }
+        return true;
+      } catch (iterErr: any) {
+        console.warn(`[DriveGram Direct Stream] iterDownload error for msg ${messageId}:`, iterErr?.message);
+        if (!res.writableEnded && !res.closed && !res.destroyed) {
+          try { res.end(); } catch (err) {}
         }
         return false;
       }
     } catch (e: any) {
       console.error(`[DriveGram] Error in streamMediaDirect for message ${messageId}:`, e);
+      if (!res.writableEnded && !res.closed && !res.destroyed) {
+        try { res.end(); } catch (err) {}
+      }
       return false;
     }
   }
@@ -554,6 +561,92 @@ class TelegramService {
     } catch (e: any) {
       console.error(`[DriveGram] Error deleting multiple messages from Telegram:`, e);
       return false;
+    }
+  }
+
+  /**
+   * Scan and import all existing media/files from Telegram Saved Messages into DriveGram
+   */
+  public async scanAndImportSavedMessages(limit = 200): Promise<{ success: boolean; importedCount: number; message: string }> {
+    if (!this.client || !this.authState.isConnected) {
+      return { success: false, importedCount: 0, message: 'Telegram não conectado para importação.' };
+    }
+
+    try {
+      const messages = await this.client.getMessages('me', { limit });
+      let importedCount = 0;
+
+      const allFolders = db.getAllFolders();
+      let importedFolder = allFolders.find(f => f.name === '📥 Importados do Telegram' && !f.isTrash);
+      if (!importedFolder) {
+        importedFolder = db.createFolder('📥 Importados do Telegram', null, '#0088cc');
+      }
+
+      const existingFiles = db.getAllFiles();
+      const existingMessageIds = new Set(existingFiles.map(f => f.telegramMeta?.messageId).filter(Boolean));
+
+      for (const msg of messages) {
+        if (!msg.media || existingMessageIds.has(msg.id)) continue;
+
+        let fileName = '';
+        let fileSize = 0;
+        let mimeType = 'application/octet-stream';
+
+        if ((msg.media as any).document) {
+          const doc = (msg.media as any).document;
+          fileSize = Number(doc.size || 0);
+          mimeType = doc.mimeType || 'application/octet-stream';
+          const nameAttr = doc.attributes?.find((a: any) => a.fileName);
+          fileName = nameAttr ? nameAttr.fileName : `documento_${msg.id}`;
+        } else if ((msg.media as any).photo) {
+          fileName = `foto_${msg.id}.jpg`;
+          mimeType = 'image/jpeg';
+          fileSize = 1024 * 500;
+        } else {
+          continue;
+        }
+
+        const ext = path.extname(fileName).toLowerCase().replace('.', '') || (mimeType.includes('video') ? 'mp4' : mimeType.includes('audio') ? 'mp3' : 'bin');
+        let fileType: any = 'other';
+        if (['mp4', 'mkv', 'avi', 'mov', 'webm', 'm4v'].includes(ext) || mimeType.includes('video')) fileType = 'video';
+        else if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext) || mimeType.includes('audio')) fileType = 'audio';
+        else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || mimeType.includes('image')) fileType = 'image';
+        else if (['pdf'].includes(ext) || mimeType.includes('pdf')) fileType = 'pdf';
+        else if (['cbr', 'cbz', 'cbt', 'cb7'].includes(ext)) fileType = 'comic';
+        else if (['epub', 'mobi', 'azw', 'azw3'].includes(ext)) fileType = 'ebook';
+        else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) fileType = 'archive';
+
+        db.createFile({
+          name: fileName,
+          parentId: importedFolder.id,
+          size: fileSize,
+          mimeType: mimeType,
+          extension: ext,
+          type: fileType,
+          telegramMeta: {
+            messageId: msg.id,
+            chatId: 'me',
+            fileSize: fileSize,
+            mimeType: mimeType,
+            uploadDate: new Date(msg.date * 1000).toISOString(),
+            isUploadedToTelegram: true
+          }
+        });
+
+        existingMessageIds.add(msg.id);
+        importedCount++;
+      }
+
+      return {
+        success: true,
+        importedCount,
+        message: importedCount > 0 
+          ? `${importedCount} arquivo(s) importados com sucesso para a pasta "📥 Importados do Telegram"!` 
+          : 'Nenhum novo arquivo encontrado para importar nas Mensagens Salvas.'
+      };
+    } catch (e: any) {
+      console.error('Error scanning saved messages:', e);
+      return { success: false, importedCount: 0, message: e.message || 'Erro ao escanear mensagens salvas' };
     }
   }
 }

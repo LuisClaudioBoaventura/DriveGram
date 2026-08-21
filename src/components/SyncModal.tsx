@@ -47,6 +47,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 }) => {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
+  const [importingSaved, setImportingSaved] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,6 +85,25 @@ export const SyncModal: React.FC<SyncModalProps> = ({
       onRefreshItems();
     } else {
       setFeedback({ type: 'error', message: res.message || 'Erro ao restaurar dados' });
+    }
+  };
+
+  const handleImportSaved = async () => {
+    setFeedback(null);
+    setImportingSaved(true);
+    try {
+      const res = await fetch('/api/telegram/import-saved', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFeedback({ type: 'success', message: data.message });
+        onRefreshItems();
+      } else {
+        setFeedback({ type: 'error', message: data.message || data.error || 'Erro ao importar mensagens salvas.' });
+      }
+    } catch (e: any) {
+      setFeedback({ type: 'error', message: e.message || 'Erro de conexão.' });
+    } finally {
+      setImportingSaved(false);
     }
   };
 
@@ -450,7 +470,16 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               </button>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col gap-2">
+              <button
+                onClick={handleImportSaved}
+                disabled={importingSaved || syncing || !telegramState.isConnected}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-40"
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${importingSaved ? 'animate-spin' : ''}`} />
+                <span>{importingSaved ? 'Escaneando & Importando Mensagens Salvas...' : '✨ Escanear & Importar Histórico Antigo do Telegram'}</span>
+              </button>
+
               <button
                 onClick={handleDownloadAllToUploads}
                 disabled={downloadingAll || syncing || !telegramState.isConnected}

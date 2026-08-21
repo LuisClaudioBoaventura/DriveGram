@@ -607,6 +607,12 @@ app.get('/api/stream/:id', async (req, res) => {
       );
 
       if (streamed) return;
+      if (res.headersSent || res.writableEnded) {
+        if (!res.writableEnded && !res.closed && !res.destroyed) {
+          try { res.end(); } catch (e) {}
+        }
+        return;
+      }
     }
 
     // Fallback: If local file exists, stream it
@@ -639,16 +645,18 @@ app.get('/api/stream/:id', async (req, res) => {
       }
     }
 
-    // Final fallback: empty buffer
-    res.setHeader('Content-Type', file.mimeType || 'video/mp4');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.send(Buffer.from(''));
+    // Final fallback: 404 or empty response closed properly
+    if (!res.headersSent) {
+      res.status(404).json({ error: 'Mídia não disponível' });
+    } else if (!res.writableEnded && !res.closed && !res.destroyed) {
+      try { res.end(); } catch (e) {}
+    }
   } catch (err) {
     console.error(`[DriveGram Stream Error]`, err);
     if (!res.headersSent) {
-      res.setHeader('Content-Type', 'video/mp4');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.send(Buffer.from(''));
+      res.status(500).json({ error: 'Erro ao processar streaming' });
+    } else if (!res.writableEnded && !res.closed && !res.destroyed) {
+      try { res.end(); } catch (e) {}
     }
   }
 });
@@ -1526,6 +1534,11 @@ app.post('/api/telegram/sync', async (_req, res) => {
 
 app.post('/api/telegram/restore', async (_req, res) => {
   const result = await telegramService.restoreMetadataFromTelegram();
+  res.json(result);
+});
+
+app.post('/api/telegram/import-saved', async (_req, res) => {
+  const result = await telegramService.scanAndImportSavedMessages();
   res.json(result);
 });
 
