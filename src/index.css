@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-font: 'Plus Jakarta Sans', sans-serif;
+  --mono-font: 'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: var(--primary-font);
+  overflow-x: hidden;
+}
+
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.5);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* ================= DISCREET SIDEBAR SCROLLBAR ================= */
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.25) transparent;
+  overflow-x: hidden !important;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 0px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar:horizontal {
+  display: none;
+  height: 0px;
+  width: 0px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.25);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+
+.sidebar-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.45);
+}
+
+.dark .sidebar-scrollbar {
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.dark .sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.dark .sidebar-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(96, 165, 250, 0.45);
+}
+
+/* Glassmorphism and surfaces */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+}
+
+.dark .glass-panel {
+  background: rgba(30, 31, 32, 0.85);
+  backdrop-filter: blur(12px);
+}
+
+/* Video player animations */
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+.pulse-glow {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+/* Card hover lift effect */
+.drive-card {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drive-card:hover {
+  transform: translateY(-2px);
+}
+
+/* ================= UNIVERSAL BLACK SELECTORS STYLING ================= */
+select {
+  background-color: #000000 !important;
+  color: #f8fafc !important;
+  color-scheme: dark !important;
+}
+
+select option {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  padding: 8px 12px;
+}
+
+select option:checked {
+  background-color: #1e1b4b !important;
+  color: #a855f7 !important;
+}
+
+select option:hover {
+  background-color: #18181b !important;
+}

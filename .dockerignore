@@ -1,0 +1,28 @@
+# Ignora node_modules locais (serão instalados dentro do container)
+node_modules
+npm-debug.log
+
+# Ignora artefatos de build locais e temporários
+dist
+.vite
+
+# Ignora dados locais do usuário e arquivos temporários de upload
+data/drivegram_data.json
+uploads/*
+!uploads/.gitkeep
+
+# Ignora variáveis de ambiente locais e segredos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Ignora arquivos de sistema e IDEs
+.git
+.gitignore
+.dockerignore
+.DS_Store
+Thumbs.db
+.vscode
+.idea
