@@ -1620,6 +1620,17 @@ function purgeExpiredCacheRoutine() {
 setTimeout(purgeExpiredCacheRoutine, 10000);
 setInterval(purgeExpiredCacheRoutine, 2 * 60 * 1000);
 
+// ---------------- SERVIR FRONTEND ESTÁTICO (PRODUÇÃO / RENDER) ----------------
+const DIST_DIR = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR));
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(DIST_DIR, 'index.html'));
+    }
+  });
+}
+
 app.listen(PORT, () => {
-  console.log(`🚀 DriveGram Backend rodando na porta http://localhost:${PORT}`);
+  console.log(`🚀 DriveGram rodando na porta http://localhost:${PORT}`);
 });

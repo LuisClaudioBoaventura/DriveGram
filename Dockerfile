@@ -1,5 +1,5 @@
 # ==========================================
-# DriveGram - Dockerfile para Google Cloud Run
+# DriveGram - Dockerfile para Deploy em Nuvem (Render / Docker)
 # ==========================================
 
 # Utiliza imagem oficial Node.js LTS leve (Alpine Linux)
