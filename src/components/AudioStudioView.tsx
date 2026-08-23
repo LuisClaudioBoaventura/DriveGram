@@ -1,6 +1,38 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Volume2, VolumeX, CheckCircle2, Circle, Edit3, Trash2, Headphones, Download, Music2, Mic, Clock } from 'lucide-react';
-import { AudioShow, AudioTrack, DriveItem } from '../types/index.js';
+import { 
+  ArrowLeft, 
+  Play, 
+  Pause, 
+  SkipBack, 
+  SkipForward, 
+  RotateCcw, 
+  RotateCw, 
+  Shuffle, 
+  Repeat, 
+  Volume2, 
+  VolumeX, 
+  CheckCircle2, 
+  Circle, 
+  Edit3, 
+  Trash2, 
+  Headphones, 
+  Music2, 
+  Mic, 
+  Clock, 
+  Moon, 
+  BookmarkPlus, 
+  FileText, 
+  ListOrdered, 
+  Plus, 
+  Check, 
+  X, 
+  ChevronLeft, 
+  ChevronRight, 
+  Image as ImageIcon, 
+  Disc,
+  Upload
+} from 'lucide-react';
+import { AudioShow, AudioTrack, DriveItem, VideoTimestamp } from '../types/index.js';
 
 interface AudioStudioViewProps {
   audioShow: AudioShow;
@@ -29,15 +61,84 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const [duration, setDuration] = useState(0);
   const [isShuffle, setIsShuffle] = useState(false);
   const [isRepeat, setIsRepeat] = useState(false);
+  const [isAutoPlayNext, setIsAutoPlayNext] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+
+  // Sleep Timer state
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
+  const [sleepTimerRemainingSeconds, setSleepTimerRemainingSeconds] = useState<number | null>(null);
+  const [showSleepMenu, setShowSleepMenu] = useState(false);
+
+  // Collapsible Tracks Sidebar state
+  const [isTracksSidebarOpen, setIsTracksSidebarOpen] = useState<boolean>(true);
+
+  // Active Tab for details (Timestamps vs Notes)
+  const [activeTab, setActiveTab] = useState<'timestamps' | 'notes'>('timestamps');
+  const [trackNotes, setTrackNotes] = useState('');
+  const [newBookmarkLabel, setNewBookmarkLabel] = useState('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+
+  // Editing Show Header state
+  const [isEditingShow, setIsEditingShow] = useState(false);
+  const [titleInput, setTitleInput] = useState(audioShow.title);
+  const [artistInput, setArtistInput] = useState(audioShow.artist || audioShow.host || '');
+
+  // Cover image modal state
+  const [isChangingCover, setIsChangingCover] = useState(false);
+  const [coverUrlInput, setCoverUrlInput] = useState(audioShow.coverImage || '');
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const tracks = audioShow.tracks || [];
   const activeTrack: AudioTrack | undefined = tracks[currentTrackIndex];
   const activeFile = activeTrack?.fileId ? allFiles.find(f => f.id === activeTrack.fileId) : null;
+
+  // Sync notes when active track changes
+  useEffect(() => {
+    if (activeTrack) {
+      setTrackNotes(activeTrack.notes || '');
+      if (activeTrack.lastPositionSeconds && activeTrack.lastPositionSeconds > 0 && currentTime === 0) {
+        setCurrentTime(activeTrack.lastPositionSeconds);
+        if (audioRef.current) {
+          audioRef.current.currentTime = activeTrack.lastPositionSeconds;
+        }
+      }
+    }
+  }, [activeTrack?.id]);
+
+  // Sleep timer interval
+  useEffect(() => {
+    let interval: any;
+    if (sleepTimerRemainingSeconds !== null && sleepTimerRemainingSeconds > 0) {
+      interval = setInterval(() => {
+        setSleepTimerRemainingSeconds(prev => {
+          if (prev && prev <= 1) {
+            if (audioRef.current) {
+              audioRef.current.pause();
+              setIsPlaying(false);
+            }
+            return null;
+          }
+          return prev ? prev - 1 : null;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [sleepTimerRemainingSeconds]);
+
+  const handleSetSleepTimer = (minutes: number) => {
+    if (minutes === 0) {
+      setSleepTimerMinutes(null);
+      setSleepTimerRemainingSeconds(null);
+    } else {
+      setSleepTimerMinutes(minutes);
+      setSleepTimerRemainingSeconds(minutes * 60);
+    }
+    setShowSleepMenu(false);
+  };
 
   // Handle Play/Pause
   const togglePlay = () => {
@@ -57,7 +158,10 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
         setTimeout(() => {
-          audioRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
+          if (audioRef.current) {
+            audioRef.current.playbackRate = playbackRate;
+            audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+          }
         }, 100);
       }
     }
@@ -85,11 +189,22 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     }
   };
 
+  const handleSkip = (seconds: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = Math.max(0, Math.min(duration || 1000, audioRef.current.currentTime + seconds));
+    }
+  };
+
   const handleTimeUpdate = () => {
     if (!audioRef.current) return;
-    setCurrentTime(audioRef.current.currentTime);
+    const curr = audioRef.current.currentTime;
+    setCurrentTime(curr);
     if (audioRef.current.duration) {
       setDuration(audioRef.current.duration);
+    }
+    // Update progress periodically (every 5 seconds)
+    if (activeTrack && Math.floor(curr) % 5 === 0 && curr > 0) {
+      onUpdateTrackProgress(activeTrack.id, Math.floor(curr), false);
     }
   };
 
@@ -97,7 +212,11 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     if (activeTrack) {
       onUpdateTrackProgress(activeTrack.id, 0, true);
     }
-    handleNextTrack();
+    if (isAutoPlayNext) {
+      handleNextTrack();
+    } else {
+      setIsPlaying(false);
+    }
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,33 +234,233 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     }
   };
 
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setVolume(val);
+    if (audioRef.current) {
+      audioRef.current.volume = val;
+      if (val > 0 && isMuted) {
+        setIsMuted(false);
+        audioRef.current.muted = false;
+      }
+    }
+  };
+
+  const handleToggleMute = () => {
+    if (!audioRef.current) return;
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    audioRef.current.muted = nextMuted;
+  };
+
   const formatTime = (secs: number) => {
-    if (isNaN(secs)) return '0:00';
+    if (isNaN(secs) || !isFinite(secs)) return '00:00';
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // ---------------- TIMESTAMPS / MARCADORES HANDLERS ----------------
+  const handleAddTimestamp = async (customLabel?: string) => {
+    if (!activeTrack) return;
+    const currentSec = Math.floor(currentTime);
+    const formatted = formatTime(currentSec);
+    const label = customLabel || newBookmarkLabel.trim() || `Marcador em ${formatted}`;
+
+    const newTs: VideoTimestamp = {
+      id: 'ts-audio-' + Date.now(),
+      seconds: currentSec,
+      timeFormatted: formatted,
+      label
+    };
+
+    const currentTs = activeTrack.timestamps || [];
+    const updatedTs = [...currentTs, newTs].sort((a, b) => a.seconds - b.seconds);
+
+    const updatedTracks = tracks.map(t => 
+      t.id === activeTrack.id ? { ...t, timestamps: updatedTs } : t
+    );
+
+    await onUpdateAudioShow({ ...audioShow, tracks: updatedTracks });
+    setNewBookmarkLabel('');
+  };
+
+  const handleSeekTimestamp = (sec: number, trackIndex?: number) => {
+    if (trackIndex !== undefined && trackIndex !== currentTrackIndex) {
+      playTrackByIndex(trackIndex);
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = sec;
+          audioRef.current.play().catch(() => {});
+          setIsPlaying(true);
+        }
+      }, 150);
+      return;
+    }
+
+    if (audioRef.current) {
+      audioRef.current.currentTime = sec;
+      audioRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    }
+  };
+
+  const handleDeleteTimestamp = async (tsId: string, trackId = activeTrack?.id) => {
+    if (!trackId) return;
+    const targetTrack = tracks.find(t => t.id === trackId);
+    if (!targetTrack) return;
+
+    const updatedTs = (targetTrack.timestamps || []).filter(t => t.id !== tsId);
+    const updatedTracks = tracks.map(t => 
+      t.id === trackId ? { ...t, timestamps: updatedTs } : t
+    );
+    await onUpdateAudioShow({ ...audioShow, tracks: updatedTracks });
+  };
+
+  // ---------------- NOTES HANDLER ----------------
+  const handleSaveTrackNotes = async () => {
+    if (!activeTrack) return;
+    setIsSavingNotes(true);
+    const updatedTracks = tracks.map(t => 
+      t.id === activeTrack.id ? { ...t, notes: trackNotes } : t
+    );
+    await onUpdateAudioShow({ ...audioShow, tracks: updatedTracks });
+    setTimeout(() => setIsSavingNotes(false), 500);
+  };
+
+  const isAllTracksCompleted = tracks.length > 0 && tracks.every(t => t.isCompleted);
+  const completedTracksCount = tracks.filter(t => t.isCompleted).length;
+  const progressPercent = tracks.length > 0 ? Math.round((completedTracksCount / tracks.length) * 100) : 0;
+
+  const handleToggleAllTracks = async () => {
+    const nextCompleted = !isAllTracksCompleted;
+    const updatedTracks = tracks.map(t => ({ ...t, isCompleted: nextCompleted }));
+    await onUpdateAudioShow({ ...audioShow, tracks: updatedTracks });
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-drive-darkBg overflow-hidden text-gray-900 dark:text-gray-100 select-none">
-      {/* Top Navbar */}
-      <div className="sticky top-0 z-20 flex items-center justify-between px-6 py-3 bg-white/80 dark:bg-drive-darkBg/90 backdrop-blur-md border-b border-gray-200 dark:border-drive-darkBorder shrink-0">
-        <button
-          onClick={onBackToCatalog}
-          className="flex items-center gap-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Voltar para Músicas & Podcasts</span>
-        </button>
+    <div className="flex-1 flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg overflow-hidden text-gray-900 dark:text-gray-100 select-none">
+      {/* Hidden Audio Player */}
+      {activeFile && (
+        <audio
+          ref={audioRef}
+          key={activeFile.id}
+          src={`/api/stream/${activeFile.id}`}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration || 0)}
+          onEnded={handleTrackEnded}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+        />
+      )}
 
+      {/* Top Navbar */}
+      <div className="sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 py-2 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800/80 shrink-0 h-13">
+        <div className="flex items-center gap-2 overflow-hidden">
+          {/* Back Button */}
+          <button
+            onClick={onBackToCatalog}
+            className="p-2 rounded-xl bg-gray-100/90 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-emerald-600 dark:hover:text-emerald-400 border border-gray-200/80 dark:border-gray-800 transition-all active:scale-95 shadow-xs shrink-0"
+            title="Voltar para Músicas & Podcasts"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+
+          {/* Mark All as Completed Toggle */}
+          <button
+            onClick={handleToggleAllTracks}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 border ${
+              isAllTracksCompleted
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-emerald-600/20'
+                : 'bg-gray-100/90 dark:bg-gray-900/90 text-gray-600 dark:text-gray-300 border-gray-200/80 dark:border-gray-800 hover:border-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-400'
+            }`}
+            title={isAllTracksCompleted ? 'Coleção marcada como concluída (Clique para desmarcar)' : 'Marcar todas as faixas como concluídas'}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{isAllTracksCompleted ? 'Concluído' : 'Concluir'}</span>
+          </button>
+
+          <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 hidden sm:block shrink-0" />
+
+          {/* Inline Edit Header or Display */}
+          {isEditingShow ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="text"
+                value={titleInput}
+                onChange={(e) => setTitleInput(e.target.value)}
+                placeholder="Título do Álbum/Podcast"
+                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-gray-50 dark:bg-drive-darkBg border border-emerald-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                value={artistInput}
+                onChange={(e) => setArtistInput(e.target.value)}
+                placeholder="Artista / Apresentador"
+                className="px-2.5 py-1 text-xs rounded-lg bg-gray-50 dark:bg-drive-darkBg border border-emerald-500 focus:outline-none"
+              />
+              <button 
+                onClick={async () => {
+                  await onUpdateAudioShow({
+                    ...audioShow,
+                    title: titleInput.trim() || audioShow.title,
+                    artist: artistInput.trim() || audioShow.artist,
+                    host: artistInput.trim() || audioShow.host
+                  });
+                  setIsEditingShow(false);
+                }} 
+                className="p-1 rounded bg-emerald-600 text-white"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => setIsEditingShow(false)} className="p-1 rounded text-gray-400">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 truncate">
+              <h1 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
+                {audioShow.title}
+              </h1>
+              {(audioShow.artist || audioShow.host) && (
+                <span className="text-xs text-gray-400 hidden md:inline truncate">
+                  • {audioShow.artist || audioShow.host}
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setTitleInput(audioShow.title);
+                  setArtistInput(audioShow.artist || audioShow.host || '');
+                  setIsEditingShow(true);
+                }}
+                className="p-1 text-gray-400 hover:text-emerald-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="Editar Título e Artista"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => {
+                  setCoverUrlInput(audioShow.coverImage || '');
+                  setIsChangingCover(true);
+                }}
+                className="p-1 text-gray-400 hover:text-emerald-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="Trocar Capa"
+              >
+                <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right Actions */}
         <div className="flex items-center gap-2">
           {onOpenEditModal && (
             <button
               onClick={onOpenEditModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all"
             >
               <Edit3 className="w-3.5 h-3.5" />
-              <span>Editar Informações</span>
+              <span className="hidden md:inline">Editar Informações</span>
             </button>
           )}
 
@@ -153,100 +472,372 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               }
             }}
             className="p-1.5 rounded-xl border border-rose-500/20 text-rose-500 hover:bg-rose-500/10 transition-colors"
-            title="Excluir"
+            title="Excluir Coleção"
           >
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Main Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 max-w-6xl w-full mx-auto pb-28">
-        {/* Album Header Banner */}
-        <div className="relative rounded-3xl bg-gradient-to-br from-emerald-950/40 via-teal-950/30 to-slate-900 border border-emerald-500/20 p-6 sm:p-8 shadow-2xl overflow-hidden flex flex-col md:flex-row gap-6 sm:gap-8 items-center md:items-start">
-          {/* Square Album Cover */}
-          <div
-            onClick={onOpenEditModal}
-            className="relative w-44 sm:w-52 aspect-square rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-500/40 shrink-0 bg-black/60 group cursor-pointer"
-            title="Clique para editar capa"
-          >
-            <img
-              src={audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
-              alt={audioShow.title}
-              draggable={false}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
-            />
-            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-xs font-bold gap-1 transition-opacity">
-              <Edit3 className="w-5 h-5 text-emerald-400" />
-              <span>Trocar Capa</span>
-            </div>
-          </div>
+      {/* Main Workspace */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* Main Content / Studio Player */}
+        <div className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 space-y-6">
+          <div className={`w-full transition-all duration-300 ${
+            isTracksSidebarOpen ? 'max-w-3xl mx-auto space-y-6' : 'max-w-5xl mx-auto space-y-6'
+          }`}>
+            {/* Main Audio Studio Card */}
+            <div className={`p-6 sm:p-8 bg-gradient-to-b from-emerald-950/50 via-teal-950/40 to-slate-950 rounded-3xl border border-emerald-800/40 shadow-2xl text-white transition-all ${
+              !isTracksSidebarOpen ? 'grid grid-cols-1 lg:grid-cols-12 gap-8 items-center' : 'flex flex-col items-center justify-center'
+            }`}>
+              {/* Left / Cover Section */}
+              <div className={`flex flex-col items-center justify-center ${!isTracksSidebarOpen ? 'lg:col-span-5' : ''}`}>
+                {/* Cover Art */}
+                <div 
+                  onClick={() => {
+                    setCoverUrlInput(audioShow.coverImage || '');
+                    setIsChangingCover(true);
+                  }}
+                  className="relative mb-5 group cursor-pointer"
+                  title="Clique para trocar a capa"
+                >
+                  <div className={`rounded-3xl overflow-hidden shadow-2xl border-2 border-emerald-500/40 transition-all duration-700 ${
+                    !isTracksSidebarOpen ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-52 h-52'
+                  } ${isPlaying ? 'ring-8 ring-emerald-500/20 scale-105 shadow-emerald-500/20 shadow-2xl' : 'grayscale-[15%]'}`}>
+                    <img
+                      src={audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                      alt={audioShow.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-xs font-bold gap-1 transition-opacity">
+                      <ImageIcon className="w-6 h-6 text-emerald-400" />
+                      <span>Trocar Capa</span>
+                    </div>
+                  </div>
+                </div>
 
-          {/* Details & Actions */}
-          <div className="flex-1 flex flex-col justify-between h-full space-y-4 text-center md:text-left">
-            <div>
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-2">
-                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
-                  {audioShow.showType === 'podcast' ? 'Podcast' : audioShow.showType === 'playlist' ? 'Playlist' : 'Álbum'}
-                </span>
-                {audioShow.category && (
-                  <span className="px-2.5 py-1 rounded-lg bg-gray-800 text-gray-300 text-xs">
-                    {audioShow.category}
+                {/* Title & Artist Info */}
+                <div className="text-center max-w-sm w-full mb-3">
+                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">
+                    {audioShow.title}
                   </span>
-                )}
-                {audioShow.genre && (
-                  <span className="px-2.5 py-1 rounded-lg bg-gray-800 text-gray-300 text-xs">
-                    {audioShow.genre}
-                  </span>
-                )}
+                  <h2 className="text-base sm:text-lg font-bold text-white truncate">
+                    {activeTrack?.title || 'Selecione uma faixa'}
+                  </h2>
+                  {(activeTrack?.artist || audioShow.artist || audioShow.host) && (
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">
+                      {activeTrack?.artist || audioShow.artist || audioShow.host}
+                      {activeFile && ` • .${activeFile.extension?.toUpperCase()}`}
+                    </p>
+                  )}
+                </div>
+
+                {/* Speed Controls Pill */}
+                <div className="flex items-center gap-1.5 bg-emerald-950/60 px-3 py-1 rounded-xl border border-emerald-700/40 text-xs">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase mr-1">Velocidade:</span>
+                  {[0.75, 1, 1.25, 1.5, 1.75, 2].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => handleSpeedChange(s)}
+                      className={`font-bold px-1.5 py-0.5 rounded transition-colors ${playbackRate === s ? 'bg-emerald-600 text-white shadow-xs' : 'text-gray-400 hover:text-gray-200'}`}
+                    >
+                      {s}x
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                {audioShow.title}
-              </h1>
+              {/* Right / Controls & Scrubber Section */}
+              <div className={`flex flex-col items-center w-full ${!isTracksSidebarOpen ? 'lg:col-span-7 space-y-5' : 'space-y-4 max-w-md mt-2'}`}>
+                {/* Scrub bar */}
+                <div className="w-full space-y-1.5">
+                  <div className="flex justify-between text-xs text-emerald-300 font-mono">
+                    <span className="font-semibold">{formatTime(currentTime)}</span>
+                    <span className="text-gray-400">{formatTime(duration)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={duration || 100}
+                    value={currentTime}
+                    onChange={handleSeek}
+                    className="w-full h-2.5 rounded-lg bg-emerald-950/80 accent-emerald-500 cursor-pointer transition-all hover:h-3"
+                  />
+                </div>
 
-              {(audioShow.artist || audioShow.host) && (
-                <p className="text-sm font-bold text-emerald-400 mt-1">
-                  {audioShow.artist || audioShow.host}
-                </p>
-              )}
+                {/* Main Big Controls Bar */}
+                <div className="flex items-center justify-center gap-3 sm:gap-4 w-full">
+                  <button 
+                    onClick={handlePrevTrack} 
+                    disabled={currentTrackIndex === 0 && currentTime <= 3} 
+                    className="p-2.5 rounded-full text-emerald-300 hover:text-white disabled:opacity-30 transition-all hover:scale-105 active:scale-95"
+                    title="Faixa Anterior"
+                  >
+                    <SkipBack className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </button>
 
-              <p className="text-xs text-gray-400 mt-2 max-w-2xl leading-relaxed">
-                {audioShow.description || 'Ouça as faixas completas em alta fidelidade com sincronização em nuvem.'}
-              </p>
+                  <button 
+                    onClick={() => handleSkip(-15)} 
+                    className="p-3 rounded-full bg-emerald-900/60 hover:bg-emerald-900 text-emerald-200 transition-all hover:scale-105 active:scale-95 shadow-md" 
+                    title="Voltar 15s"
+                  >
+                    <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+
+                  <button 
+                    onClick={togglePlay} 
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-xl shadow-emerald-500/40 transition-all hover:scale-105 active:scale-95" 
+                    title={isPlaying ? 'Pausar' : 'Reproduzir'}
+                  >
+                    {isPlaying ? <Pause className="w-6 h-6 sm:w-7 sm:h-7 fill-current" /> : <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-1" />}
+                  </button>
+
+                  <button 
+                    onClick={() => handleSkip(30)} 
+                    className="p-3 rounded-full bg-emerald-900/60 hover:bg-emerald-900 text-emerald-200 transition-all hover:scale-105 active:scale-95 shadow-md" 
+                    title="Avançar 30s"
+                  >
+                    <RotateCw className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+
+                  <button 
+                    onClick={handleNextTrack} 
+                    disabled={currentTrackIndex >= tracks.length - 1 && !isRepeat && !isShuffle} 
+                    className="p-2.5 rounded-full text-emerald-300 hover:text-white disabled:opacity-30 transition-all hover:scale-105 active:scale-95"
+                    title="Próxima Faixa"
+                  >
+                    <SkipForward className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </button>
+                </div>
+
+                {/* Auxiliary Controls (Shuffle, Repeat, Autoplay, Sleep Timer, Volume) */}
+                <div className="flex flex-wrap items-center justify-between gap-2 w-full pt-2 border-t border-emerald-900/40 text-xs">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setIsShuffle(!isShuffle)}
+                      className={`p-2 rounded-xl transition-all ${isShuffle ? 'bg-emerald-600 text-white shadow-xs' : 'text-gray-400 hover:text-white hover:bg-emerald-900/40'}`}
+                      title="Modo Aleatório (Shuffle)"
+                    >
+                      <Shuffle className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => setIsRepeat(!isRepeat)}
+                      className={`p-2 rounded-xl transition-all ${isRepeat ? 'bg-emerald-600 text-white shadow-xs' : 'text-gray-400 hover:text-white hover:bg-emerald-900/40'}`}
+                      title="Repetir Playlist"
+                    >
+                      <Repeat className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => setIsAutoPlayNext(!isAutoPlayNext)}
+                      className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-all ${
+                        isAutoPlayNext 
+                          ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50' 
+                          : 'bg-gray-800 text-gray-400 border-gray-700'
+                      }`}
+                      title="Tocar automaticamente a próxima faixa"
+                    >
+                      Sequência: {isAutoPlayNext ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+
+                  {/* Sleep Timer Menu */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowSleepMenu(!showSleepMenu)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all border ${
+                        sleepTimerRemainingSeconds !== null
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse'
+                          : 'bg-gray-800/80 text-gray-300 border-gray-700 hover:border-emerald-500'
+                      }`}
+                      title="Temporizador de Sono (Sleep Timer)"
+                    >
+                      <Moon className="w-3.5 h-3.5 text-amber-400" />
+                      <span>
+                        {sleepTimerRemainingSeconds !== null
+                          ? `${Math.floor(sleepTimerRemainingSeconds / 60)}m ${sleepTimerRemainingSeconds % 60}s`
+                          : 'Sleep Timer'}
+                      </span>
+                    </button>
+
+                    {showSleepMenu && (
+                      <div className="absolute right-0 bottom-full mb-2 w-48 rounded-2xl bg-gray-900 border border-gray-700 shadow-2xl p-2 z-50 text-xs space-y-1">
+                        <div className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                          Desligar áudio em:
+                        </div>
+                        {[
+                          { min: 5, label: '5 minutos' },
+                          { min: 10, label: '10 minutos' },
+                          { min: 15, label: '15 minutos' },
+                          { min: 30, label: '30 minutos' },
+                          { min: 45, label: '45 minutos' },
+                          { min: 60, label: '1 hora' },
+                          { min: 0, label: 'Desativar' }
+                        ].map(item => (
+                          <button
+                            key={item.min}
+                            onClick={() => handleSetSleepTimer(item.min)}
+                            className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-emerald-600 hover:text-white transition-colors"
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Volume Slider */}
+                  <div className="flex items-center gap-1.5 bg-emerald-950/40 px-2 py-1 rounded-xl border border-emerald-900/50">
+                    <button onClick={handleToggleMute} className="text-gray-400 hover:text-white">
+                      {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+                    </button>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={isMuted ? 0 : volume}
+                      onChange={handleVolumeChange}
+                      className="w-16 accent-emerald-500 h-1 bg-gray-700 rounded-lg cursor-pointer"
+                      title="Ajustar Volume"
+                    />
+                  </div>
+                </div>
+
+                {/* Direct Timestamp Creator Action Bar */}
+                <div className="w-full p-3.5 bg-emerald-950/60 rounded-2xl border border-emerald-800/80 shadow-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                      <BookmarkPlus className="w-4 h-4 text-amber-400" />
+                      <span>Novo Marcador em {formatTime(currentTime)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newBookmarkLabel}
+                      onChange={(e) => setNewBookmarkLabel(e.target.value)}
+                      placeholder="Descrição do trecho, verso ou momento marcante..."
+                      className="flex-1 px-3 py-2 text-xs rounded-xl bg-gray-900/90 border border-emerald-700/60 focus:outline-none focus:ring-2 focus:ring-amber-400 text-white placeholder-gray-400"
+                    />
+                    <button
+                      onClick={() => handleAddTimestamp()}
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-95 shrink-0"
+                    >
+                      + Salvar
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Action Bar */}
-            <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3">
-              <button
-                onClick={() => {
-                  if (isPlaying) {
-                    togglePlay();
-                  } else {
-                    playTrackByIndex(currentTrackIndex);
-                  }
-                }}
-                disabled={tracks.length === 0}
-                className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
-              >
-                {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
-                <span>{isPlaying ? 'Pausar' : 'Tocar Álbum'}</span>
-              </button>
-            </div>
+            {/* Bottom Tabs: Timestamps & Notes for Active Track */}
+            {activeTrack && (
+              <div className="p-5 rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-100 dark:border-drive-darkBorder pb-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setActiveTab('timestamps')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        activeTab === 'timestamps'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                          : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      <BookmarkPlus className="w-3.5 h-3.5" />
+                      <span>Marcadores da Faixa ({activeTrack.timestamps?.length || 0})</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveTab('notes')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        activeTab === 'notes'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                          : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Anotações / Letra</span>
+                    </button>
+                  </div>
+
+                  <span className="text-[11px] font-mono text-gray-400">
+                    Faixa {currentTrackIndex + 1} de {tracks.length}
+                  </span>
+                </div>
+
+                {/* Tab 1: Timestamps */}
+                {activeTab === 'timestamps' && (
+                  <div className="space-y-2">
+                    {activeTrack.timestamps && activeTrack.timestamps.length > 0 ? (
+                      [...activeTrack.timestamps].sort((a, b) => a.seconds - b.seconds).map(ts => (
+                        <div key={ts.id} className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-drive-darkBg hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors">
+                          <button onClick={() => handleSeekTimestamp(ts.seconds)} className="flex items-center gap-2.5 text-xs font-semibold flex-1 text-left">
+                            <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-mono font-bold text-[10px] shrink-0">
+                              ▶ {ts.timeFormatted}
+                            </span>
+                            <span className="truncate">{ts.label}</span>
+                          </button>
+                          <button onClick={() => handleDeleteTimestamp(ts.id)} className="p-1.5 text-gray-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors" title="Excluir marcador">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-400 text-center py-4">Nenhum marcador adicionado nesta faixa. Use o botão acima para marcar momentos importantes.</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Tab 2: Notes / Lyrics */}
+                {activeTab === 'notes' && (
+                  <div className="space-y-3">
+                    <textarea
+                      value={trackNotes}
+                      onChange={(e) => setTrackNotes(e.target.value)}
+                      placeholder="Escreva anotações sobre o episódio, pontos de destaque ou a letra da música..."
+                      rows={4}
+                      className="w-full p-3 text-xs rounded-2xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleSaveTrackNotes}
+                        disabled={isSavingNotes}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all disabled:opacity-50"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{isSavingNotes ? 'Salvando...' : 'Salvar Anotações'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Tracklist Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold flex items-center gap-2">
-              <Music2 className="w-5 h-5 text-emerald-500" />
-              <span>Lista de Faixas / Episódios ({tracks.length})</span>
-            </h2>
-          </div>
+        {/* Right Sidebar: Tracks Accordion (Collapsible) */}
+        {isTracksSidebarOpen ? (
+          <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-200">
+            <div className="p-3.5 px-4 border-b border-gray-200 dark:border-drive-darkBorder flex items-center justify-between bg-gray-50/70 dark:bg-drive-darkBg/50">
+              <div className="flex items-center gap-2">
+                <ListOrdered className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800 dark:text-gray-200">
+                  Faixas ({tracks.length}) • {progressPercent}%
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsTracksSidebarOpen(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
+                title="Colapsar coluna de faixas"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
 
-          {tracks.length > 0 ? (
-            <div className="space-y-2">
+            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
               {tracks.map((track, idx) => {
                 const isCurrent = currentTrackIndex === idx;
                 const trackFile = track.fileId ? allFiles.find(f => f.id === track.fileId) : null;
@@ -254,191 +845,149 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                 return (
                   <div
                     key={track.id}
-                    className={`flex items-center justify-between p-3 sm:p-4 rounded-2xl border transition-all ${
+                    onClick={() => playTrackByIndex(idx)}
+                    className={`flex items-center justify-between p-3 rounded-2xl text-xs cursor-pointer group transition-all border ${
                       isCurrent
-                        ? 'bg-emerald-500/10 border-emerald-500/60 shadow-md ring-2 ring-emerald-500/20'
-                        : 'bg-white dark:bg-drive-darkSurface border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-400 text-emerald-900 dark:text-emerald-200 font-bold shadow-xs'
+                        : 'hover:bg-gray-50 dark:hover:bg-drive-darkHover border-gray-100 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300'
                     }`}
                   >
-                    <div className="flex items-center gap-3 overflow-hidden flex-1 mr-3">
-                      {/* Track number or Play icon */}
+                    <div className="flex items-center gap-2.5 overflow-hidden flex-1">
+                      {/* Track Completion Checkbox */}
                       <button
-                        onClick={() => playTrackByIndex(idx)}
-                        className={`w-8 h-8 rounded-xl flex items-center justify-center font-mono text-xs font-bold shrink-0 transition-colors ${
-                          isCurrent
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-emerald-600 hover:text-white'
-                        }`}
-                      >
-                        {isCurrent && isPlaying ? (
-                          <Pause className="w-3.5 h-3.5 fill-current" />
-                        ) : isCurrent ? (
-                          <Play className="w-3.5 h-3.5 fill-current" />
-                        ) : (
-                          <span>{track.trackNumber || idx + 1}</span>
-                        )}
-                      </button>
-
-                      {/* Track Details */}
-                      <div className="overflow-hidden flex-1">
-                        <h4 className={`text-xs font-bold truncate ${isCurrent ? 'text-emerald-500' : 'text-gray-900 dark:text-gray-100'}`}>
-                          {track.title}
-                        </h4>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                          {track.artist && <span>{track.artist}</span>}
-                          {trackFile && <span className="font-mono uppercase">• {trackFile.extension}</span>}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right actions */}
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-xs font-mono text-gray-400">
-                        {track.duration || '03:45'}
-                      </span>
-
-                      <button
-                        onClick={() => onToggleTrackCompletion(track.id)}
-                        className="text-gray-400 hover:text-emerald-500 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleTrackCompletion(track.id);
+                        }}
+                        className="text-gray-400 hover:text-emerald-500 shrink-0"
                         title={track.isCompleted ? 'Ouvido' : 'Marcar como ouvido'}
                       >
                         {track.isCompleted ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 fill-emerald-500/20" />
                         ) : (
                           <Circle className="w-4 h-4" />
                         )}
                       </button>
+
+                      {/* Track Number / Play icon */}
+                      <div className="w-5 h-5 rounded-lg flex items-center justify-center font-mono text-[11px] shrink-0">
+                        {isCurrent && isPlaying ? (
+                          <Pause className="w-3 h-3 text-emerald-500 fill-current" />
+                        ) : isCurrent ? (
+                          <Play className="w-3 h-3 text-emerald-500 fill-current" />
+                        ) : (
+                          <span className="text-gray-400">{track.trackNumber || idx + 1}</span>
+                        )}
+                      </div>
+
+                      {/* Track Title and Artist */}
+                      <div className="overflow-hidden flex-1">
+                        <span className="truncate leading-tight block">{track.title}</span>
+                        {track.artist && (
+                          <span className="text-[10px] text-gray-400 font-normal truncate block">{track.artist}</span>
+                        )}
+                      </div>
                     </div>
+
+                    <span className="text-[10px] text-gray-400 font-mono ml-2 shrink-0">
+                      {track.duration || '03:45'}
+                    </span>
                   </div>
                 );
               })}
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-drive-darkSurface rounded-3xl border border-dashed border-gray-300 dark:border-gray-800">
-              <Headphones className="w-12 h-12 text-gray-400 mb-3" />
-              <h3 className="font-bold text-sm">Nenhuma faixa de áudio encontrada na pasta</h3>
-              <p className="text-xs text-gray-500 max-w-sm mt-1">
-                Adicione arquivos .mp3 ou .wav na pasta de origem para que apareçam aqui automaticamente.
-              </p>
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          /* Floating expand tab when sidebar is collapsed */
+          <button
+            onClick={() => setIsTracksSidebarOpen(true)}
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-30 flex items-center gap-1 py-3 px-1.5 rounded-l-2xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-2xl border-y border-l border-emerald-400/60 text-xs font-bold transition-all hover:pr-2.5 group cursor-pointer"
+            title="Expandir Coluna de Faixas"
+          >
+            <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="[writing-mode:vertical-lr] rotate-180 text-[9px] tracking-widest uppercase font-mono font-black">
+              Faixas ({tracks.length})
+            </span>
+          </button>
+        )}
       </div>
 
-      {/* Bottom Sticky Player Bar */}
-      {activeTrack && (
-        <div className="fixed bottom-0 inset-x-0 z-30 bg-gray-900/95 backdrop-blur-xl border-t border-gray-800 p-3 sm:p-4 text-white shadow-2xl">
-          {activeFile && (
-            <audio
-              ref={audioRef}
-              key={activeFile.id}
-              src={`/api/stream/${activeFile.id}`}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={handleTrackEnded}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-            />
-          )}
+      {/* Modal: Change Cover */}
+      {isChangingCover && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl p-6 text-gray-800 dark:text-gray-100">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-drive-darkBorder mb-4">
+              <div className="flex items-center gap-2.5">
+                <ImageIcon className="w-5 h-5 text-emerald-500" />
+                <h3 className="font-bold text-sm">Alterar Capa do Álbum / Podcast</h3>
+              </div>
+              <button onClick={() => setIsChangingCover(false)} className="p-1.5 rounded-lg text-gray-400">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-            {/* Left Track Info */}
-            <div className="flex items-center gap-3 w-full sm:w-1/4 overflow-hidden">
-              <div className="w-11 h-11 rounded-xl overflow-hidden bg-black/60 shrink-0 border border-gray-700">
+            <div className="space-y-4">
+              <div className="h-44 rounded-2xl overflow-hidden bg-gray-100 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder flex items-center justify-center">
                 <img
-                  src={audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
-                  alt="Track art"
-                  className="w-full h-full object-cover"
+                  src={coverUrlInput || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                  alt="Prévia"
+                  className="max-h-full max-w-full object-contain"
                 />
               </div>
-              <div className="overflow-hidden">
-                <h4 className="text-xs font-bold text-white truncate">{activeTrack.title}</h4>
-                <p className="text-[10px] text-gray-400 truncate">{activeTrack.artist || audioShow.artist || audioShow.host}</p>
-              </div>
-            </div>
 
-            {/* Center Controls & Scrubber */}
-            <div className="flex-1 flex flex-col items-center space-y-1 w-full max-w-lg">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setIsShuffle(!isShuffle)}
-                  className={`p-1.5 rounded-lg transition-colors ${isShuffle ? 'text-emerald-400 bg-emerald-500/10' : 'text-gray-400 hover:text-white'}`}
-                  title="Modo Aleatório"
-                >
-                  <Shuffle className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={handlePrevTrack}
-                  className="p-1.5 text-gray-300 hover:text-white transition-colors"
-                  title="Faixa Anterior"
-                >
-                  <SkipBack className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={togglePlay}
-                  className="w-9 h-9 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-600/40 transition-transform active:scale-95"
-                >
-                  {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 ml-0.5 fill-current" />}
-                </button>
-
-                <button
-                  onClick={handleNextTrack}
-                  className="p-1.5 text-gray-300 hover:text-white transition-colors"
-                  title="Próxima Faixa"
-                >
-                  <SkipForward className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => setIsRepeat(!isRepeat)}
-                  className={`p-1.5 rounded-lg transition-colors ${isRepeat ? 'text-emerald-400 bg-emerald-500/10' : 'text-gray-400 hover:text-white'}`}
-                  title="Repetir"
-                >
-                  <Repeat className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Progress Scrubber */}
-              <div className="flex items-center gap-2 w-full text-[10px] font-mono text-gray-400">
-                <span>{formatTime(currentTime)}</span>
+              <div>
+                <label className="block text-xs font-semibold mb-1">URL da Imagem</label>
                 <input
-                  type="range"
-                  min={0}
-                  max={duration || 100}
-                  value={currentTime}
-                  onChange={handleSeek}
-                  className="flex-1 accent-emerald-500 cursor-pointer h-1 bg-gray-700 rounded-lg"
+                  type="url"
+                  value={coverUrlInput}
+                  onChange={(e) => setCoverUrlInput(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-[11px]"
                 />
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-
-            {/* Right Speed & Volume Controls */}
-            <div className="hidden sm:flex items-center justify-end gap-2 w-1/4">
-              <div className="flex items-center gap-1 bg-gray-800 px-2 py-1 rounded-xl text-[10px] font-mono">
-                {[1, 1.25, 1.5].map(spd => (
-                  <button
-                    key={spd}
-                    onClick={() => handleSpeedChange(spd)}
-                    className={`px-1 rounded ${playbackRate === spd ? 'text-emerald-400 font-bold' : 'text-gray-400'}`}
-                  >
-                    {spd}x
-                  </button>
-                ))}
               </div>
 
               <button
-                onClick={() => {
-                  if (audioRef.current) {
-                    audioRef.current.muted = !isMuted;
-                    setIsMuted(!isMuted);
+                type="button"
+                onClick={() => coverInputRef.current?.click()}
+                className="w-full py-2.5 rounded-xl border-2 border-dashed border-emerald-300 dark:border-emerald-800 hover:border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Carregar Imagem do Computador</span>
+              </button>
+              <input
+                type="file"
+                ref={coverInputRef}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = async (ev) => {
+                      const dataUrl = ev.target?.result as string;
+                      setCoverUrlInput(dataUrl);
+                      await onUpdateAudioShow({ ...audioShow, coverImage: dataUrl });
+                      setIsChangingCover(false);
+                    };
+                    reader.readAsDataURL(file);
                   }
                 }}
-                className="p-1 text-gray-400 hover:text-white"
-              >
-                {isMuted ? <VolumeX className="w-4 h-4 text-rose-500" /> : <Volume2 className="w-4 h-4" />}
-              </button>
+                accept="image/*"
+                className="hidden"
+              />
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-drive-darkBorder">
+                <button onClick={() => setIsChangingCover(false)} className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-500">
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    await onUpdateAudioShow({ ...audioShow, coverImage: coverUrlInput.trim() || audioShow.coverImage });
+                    setIsChangingCover(false);
+                  }}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/20"
+                >
+                  Salvar Nova Capa
+                </button>
+              </div>
             </div>
           </div>
         </div>
