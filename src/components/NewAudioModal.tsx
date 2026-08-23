@@ -1,7 +1,38 @@
 import React, { useState } from 'react';
-import { Headphones, X, Folder, Sparkles, Image as ImageIcon, Check, Music2, Mic, Disc } from 'lucide-react';
+import { 
+  Headphones, 
+  X, 
+  Folder, 
+  Sparkles, 
+  Image as ImageIcon, 
+  Check, 
+  Music2, 
+  Mic, 
+  Disc, 
+  Search, 
+  Loader2, 
+  Plus, 
+  Radio, 
+  ExternalLink,
+  Layers,
+  Globe
+} from 'lucide-react';
 import { FolderItem } from '../types/index.js';
 import { getLibraryEligibleFolders } from '../utils/libraryFolderUtils.js';
+
+interface OnlinePodcastResult {
+  id: string;
+  title: string;
+  artist: string;
+  host: string;
+  coverImage: string;
+  genre: string;
+  category: string;
+  feedUrl?: string;
+  trackCount: number;
+  releaseDate?: string;
+  country?: string;
+}
 
 interface NewAudioModalProps {
   isOpen: boolean;
@@ -19,6 +50,18 @@ interface NewAudioModalProps {
     description?: string;
     coverImage?: string;
   }) => Promise<void>;
+  onImportPodcast?: (podcastData: {
+    podcastId?: string;
+    title: string;
+    artist?: string;
+    host?: string;
+    category?: string;
+    genre?: string;
+    description?: string;
+    coverImage?: string;
+    feedUrl?: string;
+    folderId?: string;
+  }) => Promise<void>;
   onAddCategory?: (category: string) => Promise<void>;
 }
 
@@ -31,15 +74,32 @@ const PRESET_COVERS = [
   'https://images.unsplash.com/photo-1487180144351-b8472da7d491?w=800&auto=format&fit=crop&q=60'
 ];
 
+const SUGGESTED_SEARCHES = [
+  'Nerdcast',
+  'Podpah',
+  'Flow Podcast',
+  'Mano a Mano',
+  'Os Sócios',
+  'Huberman Lab',
+  'Tecnologia',
+  'Ciência sem Fim'
+];
+
 export const NewAudioModal: React.FC<NewAudioModalProps> = ({
   isOpen,
   onClose,
   folders,
   categories,
   onCreateAudioShow,
+  onImportPodcast,
   onAddCategory
 }) => {
   const { rootFolder, folders: eligibleFolders } = getLibraryEligibleFolders('podcasts', folders);
+  
+  // Active Tab: 'search_online' | 'local_folder'
+  const [modalTab, setModalTab] = useState<'search_online' | 'local_folder'>('search_online');
+
+  // Tab 1: Local Folder state
   const [title, setTitle] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState('');
   const [showType, setShowType] = useState<'music_album' | 'podcast' | 'playlist'>('music_album');
@@ -52,7 +112,15 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
   const [coverImage, setCoverImage] = useState(PRESET_COVERS[0]);
   const [customCoverUrl, setCustomCoverUrl] = useState('');
   const [isCustomCover, setIsCustomCover] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loadingLocal, setLoadingLocal] = useState(false);
+
+  // Tab 2: Online Podcast Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<OnlinePodcastResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [importingPodcastId, setImportingPodcastId] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   if (!isOpen) return null;
 
@@ -61,7 +129,7 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     if (!title) {
       const folder = folders.find(f => f.id === folderId);
       if (folder) {
-        setTitle(folder.name.replace(/^[🎧🎵🎙️📻\s]+/, '').trim());
+        setTitle(folder.name.replace(/^[🎧🎵🎙️📻s]+/, '').trim());
       }
     }
   };
@@ -76,11 +144,11 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     setIsAddingNewCat(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmitLocal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !selectedFolderId) return;
 
-    setLoading(true);
+    setLoadingLocal(true);
     try {
       await onCreateAudioShow({
         folderId: selectedFolderId,
@@ -97,22 +165,68 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      setLoadingLocal(false);
+    }
+  };
+
+  const handleSearchPodcasts = async (queryToSearch = searchQuery) => {
+    const trimmed = queryToSearch.trim();
+    if (!trimmed) return;
+
+    setIsSearching(true);
+    setSearchError(null);
+    setHasSearched(true);
+
+    try {
+      const res = await fetch(`/api/podcasts/search?q=${encodeURIComponent(trimmed)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(data.results || []);
+      } else {
+        setSearchError('Erro ao buscar podcasts. Tente novamente.');
+      }
+    } catch (e: any) {
+      setSearchError('Falha ao conectar com o serviço de busca.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleImportPodcast = async (podcast: OnlinePodcastResult) => {
+    if (!onImportPodcast) return;
+    setImportingPodcastId(podcast.id);
+    try {
+      await onImportPodcast({
+        podcastId: podcast.id,
+        title: podcast.title,
+        artist: podcast.artist,
+        host: podcast.host || podcast.artist,
+        category: 'Podcasts',
+        genre: podcast.genre || 'Podcast',
+        description: `Podcast oficial ${podcast.title} por ${podcast.artist || podcast.host}`,
+        coverImage: podcast.coverImage,
+        feedUrl: podcast.feedUrl
+      });
+      onClose();
+    } catch (e) {
+      console.error('Error importing podcast:', e);
+    } finally {
+      setImportingPodcastId(null);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder rounded-3xl shadow-2xl overflow-hidden my-8">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-emerald-600/10 via-teal-600/5 to-transparent">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder rounded-3xl shadow-2xl overflow-hidden my-8 flex flex-col max-h-[85vh]">
+        {/* Modal Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-emerald-600/10 via-teal-600/5 to-transparent shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-emerald-600/20 text-emerald-500 flex items-center justify-center shadow-inner">
               <Headphones className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Novo Álbum / Podcast</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Vincule uma pasta com arquivos de áudio (.mp3, .wav, etc.)</p>
+              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Adicionar Álbum / Podcast</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Procure podcasts online ou vincule uma pasta local de áudio</p>
             </div>
           </div>
           <button
@@ -123,256 +237,454 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-          {/* Format / Type Picker */}
-          <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-              Tipo de Conteúdo *
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => { setShowType('music_album'); setCategory('Álbuns de Música'); }}
-                className={`p-2.5 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
-                  showType === 'music_album' ? 'bg-emerald-600/10 border-emerald-500 text-emerald-500 shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white'
-                }`}
-              >
-                <Disc className="w-4 h-4" />
-                <span>Álbum de Música</span>
-              </button>
+        {/* Tab Navigation Switcher */}
+        <div className="flex items-center px-6 pt-3 pb-1 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-drive-darkBg/30 gap-2 shrink-0">
+          <button
+            onClick={() => setModalTab('search_online')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+              modalTab === 'search_online'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
+                : 'bg-white dark:bg-drive-darkSurface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-emerald-500'
+            }`}
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Buscar Podcasts Online</span>
+          </button>
 
-              <button
-                type="button"
-                onClick={() => { setShowType('podcast'); setCategory('Podcasts'); }}
-                className={`p-2.5 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
-                  showType === 'podcast' ? 'bg-emerald-600/10 border-emerald-500 text-emerald-500 shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white'
-                }`}
-              >
-                <Mic className="w-4 h-4" />
-                <span>Podcast / Show</span>
-              </button>
+          <button
+            onClick={() => setModalTab('local_folder')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+              modalTab === 'local_folder'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
+                : 'bg-white dark:bg-drive-darkSurface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-emerald-500'
+            }`}
+          >
+            <Folder className="w-3.5 h-3.5" />
+            <span>Vincular Pasta Local</span>
+          </button>
+        </div>
 
-              <button
-                type="button"
-                onClick={() => { setShowType('playlist'); setCategory('Playlists & Sets'); }}
-                className={`p-2.5 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
-                  showType === 'playlist' ? 'bg-emerald-600/10 border-emerald-500 text-emerald-500 shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white'
-                }`}
-              >
-                <Music2 className="w-4 h-4" />
-                <span>Playlist</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Source Folder Picker */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                <Folder className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Pasta de Áudios no Drive *</span>
+        {/* ================= TAB 1: BUSCAR PODCASTS ONLINE ================= */}
+        {modalTab === 'search_online' && (
+          <div className="p-6 flex-1 overflow-y-auto space-y-5">
+            {/* Search Input Bar */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                Pesquisar Podcast por Nome, Assunto ou Apresentador
               </label>
-              <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
-                📁 {rootFolder ? rootFolder.name : 'Musicas e Podcasts'}
-              </span>
-            </div>
-            <select
-              value={selectedFolderId}
-              onChange={(e) => handleFolderChange(e.target.value)}
-              required
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            >
-              <option value="">-- Selecione uma pasta em "{rootFolder ? rootFolder.name : 'Musicas e Podcasts'}" --</option>
-              {eligibleFolders.map(f => (
-                <option key={f.id} value={f.id}>
-                  📁 {f.name}
-                </option>
-              ))}
-            </select>
-            <span className="text-[11px] text-gray-400 mt-1 block">
-              Todos os arquivos .mp3, .wav, .m4a, .flac desta pasta serão organizados na playlist automaticamente.
-            </span>
-          </div>
-
-          {/* Title & Artist */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                Nome do Álbum / Podcast *
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ex: Dark Side of the Moon ou Podpah"
-                required
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                {showType === 'podcast' ? 'Apresentador(es) / Host' : 'Artista / Banda'}
-              </label>
-              <input
-                type="text"
-                value={artist}
-                onChange={(e) => setArtist(e.target.value)}
-                placeholder="Ex: Pink Floyd ou Joe Rogan"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Category & Genre */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                Categoria
-              </label>
-              {!isAddingNewCat ? (
-                <div className="flex gap-1.5">
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    {categories.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingNewCat(true)}
-                    className="px-2.5 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-bold hover:bg-gray-200"
-                  >
-                    +
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-1.5">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    placeholder="Nome"
-                    className="flex-1 px-3 py-2 rounded-xl border border-emerald-500 bg-gray-50 dark:bg-drive-darkBg text-xs"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearchPodcasts()}
+                    placeholder="Ex: Podpah, Flow, Nerdcast, Huberman Lab, BBC, Ciência..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-drive-darkBg rounded-2xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none text-gray-900 dark:text-gray-100"
+                    autoFocus
                   />
-                  <button
-                    type="button"
-                    onClick={handleCreateNewCategory}
-                    className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold"
-                  >
-                    OK
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingNewCat(false)}
-                    className="px-2 rounded-xl bg-gray-200 dark:bg-gray-700 text-xs"
-                  >
-                    ✕
-                  </button>
                 </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-                Gênero / Estilo
-              </label>
-              <input
-                type="text"
-                value={genre}
-                onChange={(e) => setGenre(e.target.value)}
-                placeholder="Ex: Rock Clássico, Entrevistas"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-              Descrição / Notas
-            </label>
-            <textarea
-              rows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descrição do álbum ou do podcast..."
-              className="w-full px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"
-            />
-          </div>
-
-          {/* Cover Art Selector */}
-          <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Foto de Capa do Álbum (1:1 Quadrada)</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsCustomCover(!isCustomCover)}
-                className="text-[11px] text-emerald-500 hover:underline font-normal"
-              >
-                {isCustomCover ? 'Escolher da Galeria' : 'Inserir Link Customizado'}
-              </button>
-            </label>
-
-            {isCustomCover ? (
-              <div className="space-y-2">
-                <input
-                  type="url"
-                  value={customCoverUrl}
-                  onChange={(e) => setCustomCoverUrl(e.target.value)}
-                  placeholder="https://exemplo.com/album_art.jpg"
-                  className="w-full px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
+                <button
+                  type="button"
+                  onClick={() => handleSearchPodcasts()}
+                  disabled={isSearching || !searchQuery.trim()}
+                  className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                >
+                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  <span>Buscar</span>
+                </button>
               </div>
-            ) : (
-              <div className="grid grid-cols-6 gap-2">
-                {PRESET_COVERS.map((cov, idx) => (
+
+              {/* Quick Search Chips */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1">Sugestões:</span>
+                {SUGGESTED_SEARCHES.map(term => (
                   <button
+                    key={term}
                     type="button"
-                    key={idx}
-                    onClick={() => setCoverImage(cov)}
-                    className={`relative rounded-xl overflow-hidden aspect-square border-2 transition-all group ${
-                      coverImage === cov ? 'border-emerald-500 ring-2 ring-emerald-500/30 scale-105' : 'border-transparent opacity-70 hover:opacity-100'
-                    }`}
+                    onClick={() => {
+                      setSearchQuery(term);
+                      handleSearchPodcasts(term);
+                    }}
+                    className="px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-gray-100 dark:bg-drive-darkBg hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-400 text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-gray-800 transition-all"
                   >
-                    <img src={cov} alt={`Preset ${idx + 1}`} className="w-full h-full object-cover" />
-                    {coverImage === cov && (
-                      <div className="absolute inset-0 bg-emerald-600/30 flex items-center justify-center">
-                        <Check className="w-4 h-4 text-white drop-shadow" />
-                      </div>
-                    )}
+                    {term}
                   </button>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* Footer Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !title.trim() || !selectedFolderId}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>{loading ? 'Criando...' : 'Criar Hub de Áudio'}</span>
-            </button>
+            {/* Error state */}
+            {searchError && (
+              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-semibold">
+                {searchError}
+              </div>
+            )}
+
+            {/* Search Results List */}
+            <div className="space-y-3">
+              {isSearching ? (
+                <div className="flex flex-col items-center justify-center p-12 text-center space-y-3">
+                  <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+                  <p className="text-xs text-gray-400 font-medium">Buscando podcasts no acervo online...</p>
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>{searchResults.length} podcasts encontrados</span>
+                    <span>Clique para adicionar à sua galeria</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {searchResults.map((podcast) => {
+                      const isImporting = importingPodcastId === podcast.id;
+
+                      return (
+                        <div
+                          key={podcast.id}
+                          className="flex flex-col justify-between p-3.5 rounded-2xl border border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface hover:border-emerald-500/60 transition-all shadow-sm group"
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Podcast Cover */}
+                            <div className="w-16 h-16 rounded-xl overflow-hidden shadow bg-black/60 shrink-0 border border-gray-200 dark:border-gray-700">
+                              <img
+                                src={podcast.coverImage}
+                                alt={podcast.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                loading="lazy"
+                              />
+                            </div>
+
+                            {/* Info */}
+                            <div className="overflow-hidden flex-1">
+                              <h4 className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate group-hover:text-emerald-500 transition-colors" title={podcast.title}>
+                                {podcast.title}
+                              </h4>
+                              <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5" title={podcast.artist}>
+                                {podcast.artist}
+                              </p>
+
+                              <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                                {podcast.genre && (
+                                  <span className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
+                                    {podcast.genre}
+                                  </span>
+                                )}
+                                {podcast.trackCount > 0 && (
+                                  <span className="text-[10px] text-gray-400 font-mono">
+                                    🎙️ {podcast.trackCount} eps
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Button */}
+                          <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-drive-darkBorder/60 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleImportPodcast(podcast)}
+                              disabled={isImporting}
+                              className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95"
+                            >
+                              {isImporting ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Importando Episódios...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>Adicionar à Minha Galeria</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : hasSearched ? (
+                <div className="flex flex-col items-center justify-center p-12 text-center bg-gray-50 dark:bg-drive-darkBg rounded-3xl border border-dashed border-gray-200 dark:border-gray-800">
+                  <Mic className="w-10 h-10 text-gray-400 mb-2" />
+                  <h4 className="font-bold text-xs text-gray-700 dark:text-gray-300">Nenhum podcast encontrado</h4>
+                  <p className="text-[11px] text-gray-500 mt-1">Tente pesquisar com outro nome ou utilize uma das sugestões acima.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-10 text-center bg-gray-50 dark:bg-drive-darkBg rounded-3xl border border-dashed border-gray-200 dark:border-gray-800">
+                  <Radio className="w-10 h-10 text-emerald-500 mb-2.5 animate-pulse" />
+                  <h4 className="font-bold text-xs text-gray-800 dark:text-gray-200">Encontre milhões de podcasts</h4>
+                  <p className="text-[11px] text-gray-500 max-w-sm mt-1">
+                    Digite o nome de qualquer podcast ou tema para adicioná-lo com capas e episódios completos à sua biblioteca do DriveGram.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-        </form>
+        )}
+
+        {/* ================= TAB 2: VINCULAR PASTA LOCAL ================= */}
+        {modalTab === 'local_folder' && (
+          <form onSubmit={handleSubmitLocal} className="p-6 space-y-4 flex-1 overflow-y-auto">
+            {/* Format / Type Picker */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                Tipo de Conteúdo *
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowType('music_album'); setCategory('Álbuns de Música'); }}
+                  className={`p-2.5 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
+                    showType === 'music_album' ? 'bg-emerald-600/10 border-emerald-500 text-emerald-500 shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Disc className="w-4 h-4" />
+                  <span>Álbum de Música</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setShowType('podcast'); setCategory('Podcasts'); }}
+                  className={`p-2.5 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
+                    showType === 'podcast' ? 'bg-emerald-600/10 border-emerald-500 text-emerald-500 shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Mic className="w-4 h-4" />
+                  <span>Podcast</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setShowType('playlist'); setCategory('Playlists & Sets'); }}
+                  className={`p-2.5 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
+                    showType === 'playlist' ? 'bg-emerald-600/10 border-emerald-500 text-emerald-500 shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Music2 className="w-4 h-4" />
+                  <span>Playlist / Set</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Folder Selector */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                Pasta de Origem no DriveGram *
+              </label>
+              <div className="relative">
+                <Folder className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <select
+                  value={selectedFolderId}
+                  onChange={(e) => handleFolderChange(e.target.value)}
+                  required
+                  className="w-full pl-9 pr-8 py-2.5 bg-gray-50 dark:bg-drive-darkBg rounded-2xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none appearance-none"
+                >
+                  <option value="">Selecione a pasta com as faixas de áudio...</option>
+                  {eligibleFolders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      📁 {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">
+                Todas as músicas ou episódios presentes nesta pasta serão indexados automaticamente.
+              </p>
+            </div>
+
+            {/* Title & Artist */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Título da Coleção *
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={showType === 'podcast' ? 'Nome do Podcast' : 'Nome do Álbum'}
+                  required
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                  {showType === 'podcast' ? 'Apresentador / Host' : 'Artista / Banda'}
+                </label>
+                <input
+                  type="text"
+                  value={artist}
+                  onChange={(e) => setArtist(e.target.value)}
+                  placeholder="Ex: Pink Floyd, Joe Rogan, etc."
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Category & Genre */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Categoria
+                </label>
+                {!isAddingNewCat ? (
+                  <div className="flex gap-2">
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none"
+                    >
+                      {categories.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewCat(true)}
+                      className="px-2.5 py-1 text-xs font-bold rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-emerald-500 hover:text-white transition-colors"
+                      title="Nova Categoria"
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Nome da categoria..."
+                      className="flex-1 px-3 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-emerald-500 focus:outline-none"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateNewCategory}
+                      className="px-2.5 py-1 text-xs font-bold rounded-xl bg-emerald-600 text-white"
+                    >
+                      OK
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewCat(false)}
+                      className="px-2 py-1 text-xs text-gray-400"
+                    >
+                      X
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Gênero Musical / Tema
+                </label>
+                <input
+                  type="text"
+                  value={genre}
+                  onChange={(e) => setGenre(e.target.value)}
+                  placeholder="Ex: Rock Clássico, Entrevistas, Lo-Fi"
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                Descrição ou Sinopse
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Breve descrição sobre o conteúdo deste álbum ou podcast..."
+                rows={2}
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Cover Picker */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                Imagem da Capa
+              </label>
+
+              <div className="flex items-center gap-3">
+                <div className="w-16 h-16 rounded-2xl overflow-hidden bg-black/60 shadow-md border border-gray-200 dark:border-gray-700 shrink-0">
+                  <img
+                    src={isCustomCover && customCoverUrl.trim() ? customCoverUrl : coverImage}
+                    alt="Cover preview"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+
+                <div className="flex-1 space-y-1.5">
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {PRESET_COVERS.map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setCoverImage(preset);
+                          setIsCustomCover(false);
+                        }}
+                        className={`w-full aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                          !isCustomCover && coverImage === preset ? 'border-emerald-500 scale-105 shadow-sm' : 'border-transparent opacity-60 hover:opacity-100'
+                        }`}
+                      >
+                        <img src={preset} alt="preset" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="url"
+                    value={customCoverUrl}
+                    onChange={(e) => {
+                      setCustomCoverUrl(e.target.value);
+                      setIsCustomCover(true);
+                    }}
+                    placeholder="Ou cole uma URL de imagem personalizada..."
+                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-[11px] border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Actions */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-2xl text-xs font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="submit"
+                disabled={loadingLocal || !title.trim() || !selectedFolderId}
+                className="px-6 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {loadingLocal ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Criando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Criar Álbum / Podcast</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

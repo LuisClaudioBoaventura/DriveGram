@@ -1246,6 +1246,14 @@ export function App() {
             fs.setActiveTab('podcasts');
           }
         }}
+        onImportPodcast={async (podcastData) => {
+          const newShow = await audioShows.importPodcast(podcastData);
+          fs.refresh();
+          if (newShow) {
+            setSelectedAudioForView(newShow);
+            fs.setActiveTab('podcasts');
+          }
+        }}
       />
 
       {/* Audio Show Metadata Editor Modal */}

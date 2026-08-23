@@ -1336,6 +1336,157 @@ app.delete('/api/audio-shows/:id', (req, res) => {
   res.status(204).end();
 });
 
+// ---------------- BUSCA & IMPORTAÇÃO DE PODCASTS (ITUNES / APPLE PODCASTS) ----------------
+app.get('/api/podcasts/search', async (req, res) => {
+  try {
+    const query = req.query.q as string;
+    if (!query || !query.trim()) {
+      return res.status(400).json({ error: 'Termo de busca é obrigatório' });
+    }
+
+    const searchUrl = new URL('https://itunes.apple.com/search');
+    searchUrl.searchParams.set('term', query.trim());
+    searchUrl.searchParams.set('media', 'podcast');
+    searchUrl.searchParams.set('entity', 'podcast');
+    searchUrl.searchParams.set('limit', '30');
+
+    const response = await fetch(searchUrl.toString());
+    const data: any = await response.json();
+
+    const results = (data.results || []).map((item: any) => ({
+      id: String(item.collectionId || item.trackId),
+      title: item.collectionName || item.trackName,
+      artist: item.artistName,
+      host: item.artistName,
+      coverImage: item.artworkUrl600 || item.artworkUrl100 || item.artworkUrl60,
+      genre: item.primaryGenreName,
+      category: item.primaryGenreName || 'Podcasts',
+      feedUrl: item.feedUrl,
+      trackCount: item.trackCount || 0,
+      releaseDate: item.releaseDate,
+      country: item.country
+    }));
+
+    res.json({ results });
+  } catch (error: any) {
+    console.error('Error searching podcasts from iTunes:', error);
+    res.status(500).json({ error: error.message || 'Erro ao buscar podcasts' });
+  }
+});
+
+app.get('/api/podcasts/episodes', async (req, res) => {
+  try {
+    const podcastId = req.query.id as string;
+    if (!podcastId) {
+      return res.status(400).json({ error: 'ID do podcast é obrigatório' });
+    }
+
+    const lookupUrl = new URL('https://itunes.apple.com/lookup');
+    lookupUrl.searchParams.set('id', podcastId);
+    lookupUrl.searchParams.set('entity', 'podcastEpisode');
+    lookupUrl.searchParams.set('limit', '50');
+
+    const response = await fetch(lookupUrl.toString());
+    const data: any = await response.json();
+
+    if (data.results && data.results.length > 1) {
+      const episodes = data.results.slice(1).map((ep: any, index: number) => {
+        const durationSeconds = ep.trackTimeMillis ? Math.round(ep.trackTimeMillis / 1000) : 0;
+        const mins = Math.floor(durationSeconds / 60);
+        const secs = durationSeconds % 60;
+        const durationStr = durationSeconds > 0 ? `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : '45:00';
+
+        return {
+          id: `ep-${ep.trackId || Date.now() + '-' + index}`,
+          title: ep.trackName || `Episódio ${index + 1}`,
+          duration: durationStr,
+          durationSeconds,
+          audioUrl: ep.episodeUrl || ep.previewUrl,
+          order: index + 1,
+          trackNumber: index + 1,
+          releaseDate: ep.releaseDate,
+          description: ep.description || ep.shortDescription || ''
+        };
+      });
+
+      return res.json({ episodes });
+    }
+
+    res.json({ episodes: [] });
+  } catch (error: any) {
+    console.error('Error fetching podcast episodes:', error);
+    res.status(500).json({ error: error.message || 'Erro ao buscar episódios do podcast' });
+  }
+});
+
+app.post('/api/audio-shows/import-podcast', async (req, res) => {
+  try {
+    const { podcastId, title, artist, host, category, genre, description, coverImage, feedUrl, folderId } = req.body;
+    if (!title) return res.status(400).json({ error: 'Título do podcast é obrigatório' });
+
+    let episodes: any[] = [];
+    if (podcastId) {
+      try {
+        const lookupUrl = `https://itunes.apple.com/lookup?id=${podcastId}&entity=podcastEpisode&limit=50`;
+        const epRes = await fetch(lookupUrl);
+        const epData: any = await epRes.json();
+        if (epData.results && epData.results.length > 1) {
+          episodes = epData.results.slice(1).map((ep: any, index: number) => {
+            const durationSeconds = ep.trackTimeMillis ? Math.round(ep.trackTimeMillis / 1000) : 0;
+            const mins = Math.floor(durationSeconds / 60);
+            const secs = durationSeconds % 60;
+            const durationStr = durationSeconds > 0 ? `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : '45:00';
+
+            return {
+              id: `ep-${ep.trackId || Date.now() + '-' + index}`,
+              title: ep.trackName || `Episódio ${index + 1}`,
+              artist: host || artist,
+              duration: durationStr,
+              durationSeconds,
+              audioUrl: ep.episodeUrl || ep.previewUrl,
+              order: index + 1,
+              trackNumber: index + 1
+            };
+          });
+        }
+      } catch (e) {
+        console.warn('Could not fetch podcast episodes for import:', e);
+      }
+    }
+
+    let finalFolderId = folderId;
+    if (!finalFolderId) {
+      const allFolders = db.getFolders();
+      const podcastsRoot = allFolders.find(f => !f.parentId && f.name.toLowerCase().includes('podcast'));
+      
+      const newFolder = db.createFolder(
+        `🎙️ ${title.trim()}`,
+        podcastsRoot ? podcastsRoot.id : null,
+        `Podcast: ${title.trim()}`
+      );
+      finalFolderId = newFolder.id;
+    }
+
+    const newShow = db.saveAudioShow({
+      title: title.trim(),
+      artist: artist || host,
+      host: host || artist,
+      showType: 'podcast',
+      category: category || 'Podcasts',
+      genre: genre || 'Podcast',
+      description: description || '',
+      coverImage: coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
+      folderId: finalFolderId,
+      tracks: episodes
+    });
+
+    res.status(201).json(newShow);
+  } catch (error: any) {
+    console.error('Error importing podcast:', error);
+    res.status(500).json({ error: error.message || 'Erro ao importar podcast' });
+  }
+});
+
 app.get('/api/audio-categories', (_req, res) => {
   res.json(db.getAudioCategories());
 });

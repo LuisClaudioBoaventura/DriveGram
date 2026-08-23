@@ -341,11 +341,11 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg overflow-hidden text-gray-900 dark:text-gray-100 select-none">
       {/* Hidden Audio Player */}
-      {activeFile && (
+      {(activeTrack?.audioUrl || activeFile) && (
         <audio
           ref={audioRef}
-          key={activeFile.id}
-          src={`/api/stream/${activeFile.id}`}
+          key={activeTrack?.id || activeFile?.id}
+          src={activeTrack?.audioUrl || (activeFile ? `/api/stream/${activeFile.id}` : undefined)}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration || 0)}
           onEnded={handleTrackEnded}

@@ -357,6 +357,7 @@ export interface AudioTrack {
   duration?: string;
   durationSeconds?: number;
   fileId?: string; // driveItem id
+  audioUrl?: string; // direct online streaming URL for podcasts
   order: number;
   trackNumber?: number;
   isCompleted?: boolean;

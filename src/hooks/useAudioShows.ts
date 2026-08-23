@@ -236,6 +236,39 @@ export function useAudioShows() {
     await updateAudioShow(updatedShow);
   };
 
+  const importPodcast = async (podcastData: {
+    podcastId?: string;
+    title: string;
+    artist?: string;
+    host?: string;
+    category?: string;
+    genre?: string;
+    description?: string;
+    coverImage?: string;
+    feedUrl?: string;
+    folderId?: string;
+  }): Promise<AudioShow | null> => {
+    try {
+      const res = await fetch('/api/audio-shows/import-podcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(podcastData)
+      });
+      if (res.ok) {
+        const newShow: AudioShow = await res.json();
+        setAudioShows(prev => [newShow, ...prev]);
+        setActiveShow(newShow);
+        if (newShow.tracks?.[0]) {
+          setActiveTrack(newShow.tracks[0]);
+        }
+        return newShow;
+      }
+    } catch (e) {
+      console.error('Error importing podcast:', e);
+    }
+    return null;
+  };
+
   return {
     audioShows,
     categories,
@@ -247,6 +280,7 @@ export function useAudioShows() {
     fetchAudioShows,
     createAudioShow,
     createAudioShowFromFolder,
+    importPodcast,
     updateAudioShow,
     deleteAudioShow,
     toggleTrackCompletion,
