@@ -902,6 +902,7 @@ export function App() {
                   onMoveItem={handleMoveItemWithFeedback}
                   onUploadToFolder={(files, targetId) => handleSafeUpload(files, targetId)}
                   onRetryUploadTelegram={(id) => fs.retryUploadToTelegram(id)}
+                  retryingFileIds={fs.retryingFileIds}
                 />
               ) : (
                 <FileList
@@ -936,6 +937,7 @@ export function App() {
                   onMoveItem={handleMoveItemWithFeedback}
                   onUploadToFolder={(files, targetId) => handleSafeUpload(files, targetId)}
                   onRetryUploadTelegram={(id) => fs.retryUploadToTelegram(id)}
+                  retryingFileIds={fs.retryingFileIds}
                 />
               )}
             </div>
@@ -973,6 +975,7 @@ export function App() {
         onClose={() => setActivePreviewFile(null)}
         onSelectFile={(f) => setActivePreviewFile(f)}
         onRetryUploadTelegram={(id) => fs.retryUploadToTelegram(id)}
+        retryingFileIds={fs.retryingFileIds}
       />
 
       {/* Login Required Warning Modal */}

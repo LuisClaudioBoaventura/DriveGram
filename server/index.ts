@@ -1797,7 +1797,7 @@ app.post('/api/telegram/sync-pending', async (_req, res) => {
       continue;
     }
 
-    const uploadId = `retry-${file.id}-${Date.now()}`;
+    const uploadId = `retry-${file.id}`;
     const caption = `📁 DriveGram File\n📄 Nome: ${file.name}\n📦 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB\n🏷️ Pasta: ${file.parentId || 'Raiz'}`;
     const startTime = Date.now();
 
@@ -1900,7 +1900,7 @@ app.post('/api/telegram/retry-file/:id', async (req, res) => {
     return res.status(400).json({ error: 'Arquivo físico não encontrado no cache local para envio.' });
   }
 
-  const uploadId = `retry-${file.id}-${Date.now()}`;
+  const uploadId = (req.body?.uploadId as string) || `retry-${file.id}`;
   const caption = `📁 DriveGram File\n📄 Nome: ${file.name}\n📦 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB\n🏷️ Pasta: ${file.parentId || 'Raiz'}`;
   const startTime = Date.now();
 

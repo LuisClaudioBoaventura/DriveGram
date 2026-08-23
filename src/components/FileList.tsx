@@ -18,7 +18,8 @@ import {
   ArrowDownToLine,
   BookOpen,
   LockKeyhole,
-  CloudUpload
+  CloudUpload,
+  RefreshCw
 } from 'lucide-react';
 import { DriveItem, FolderItem, FileType } from '../types/index.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
@@ -40,6 +41,7 @@ interface FileListProps {
   onMoveItem?: (id: string, isFolder: boolean, targetParentId: string | null) => Promise<boolean>;
   onUploadToFolder?: (files: FileList | File[] | { file: File; relativePath?: string }[], targetFolderId: string) => Promise<void>;
   onRetryUploadTelegram?: (fileId: string) => Promise<any> | void;
+  retryingFileIds?: string[];
 }
 
 export const FileList: React.FC<FileListProps> = ({
@@ -57,7 +59,8 @@ export const FileList: React.FC<FileListProps> = ({
   onEmptyTrash,
   onMoveItem,
   onUploadToFolder,
-  onRetryUploadTelegram
+  onRetryUploadTelegram,
+  retryingFileIds = []
 }) => {
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -422,6 +425,11 @@ export const FileList: React.FC<FileListProps> = ({
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 px-2 py-0.5 rounded-full">
                         <Send className="w-2.5 h-2.5" />
                         <span>Salvas</span>
+                      </span>
+                    ) : retryingFileIds.includes(file.id) ? (
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-950/60 border border-sky-300 dark:border-sky-700/60 px-2.5 py-0.5 rounded-full shadow-xs animate-pulse">
+                        <RefreshCw className="w-3 h-3 text-sky-600 dark:text-sky-400 animate-spin" />
+                        <span>Enviando...</span>
                       </span>
                     ) : (
                       <button

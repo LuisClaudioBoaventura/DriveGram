@@ -485,22 +485,98 @@ export function useFileSystem() {
         : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
+  const [retryingFileIds, setRetryingFileIds] = useState<string[]>([]);
   const pendingFilesList = allFiles.filter(f => !f.isTrash && (!f.telegramMeta?.isUploadedToTelegram || !f.telegramMeta?.messageId));
   const pendingUploadsCount = pendingFilesList.length;
   const pendingUploadsBytes = pendingFilesList.reduce((acc, f) => acc + (f.size || 0), 0);
 
   const retryUploadToTelegram = async (fileId: string) => {
+    const targetFile = allFiles.find(f => f.id === fileId);
+    const uploadId = `retry-${fileId}`;
+
+    setRetryingFileIds(prev => Array.from(new Set([...prev, fileId])));
+
+    if (targetFile) {
+      const newUpload: UploadProgress = {
+        id: uploadId,
+        fileName: targetFile.name,
+        size: targetFile.size,
+        transferred: 0,
+        progress: 15,
+        speed: 'Conectando ao Telegram...',
+        status: 'uploading',
+        stage: 'cloud',
+        stageLabel: 'Enviando para o Telegram Cloud...',
+        targetFolderId: targetFile.parentId || null
+      };
+      setUploads(prev => [newUpload, ...prev.filter(u => u.id !== uploadId)]);
+    }
+
+    let pollTimer: any = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/uploads/progress/${uploadId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.progress !== undefined) {
+            setUploads(prev => prev.map(u => u.id === uploadId && u.status === 'uploading' ? {
+              ...u,
+              transferred: data.transferred !== undefined ? data.transferred : u.transferred,
+              progress: data.progress,
+              speed: data.speed || u.speed,
+              stage: data.stage || 'cloud',
+              stageLabel: data.stageLabel || 'Enviando para o Telegram Cloud...'
+            } : u));
+          }
+        }
+      } catch (e) {}
+    }, 250);
+
     try {
-      const res = await fetch(`/api/telegram/retry-file/${fileId}`, { method: 'POST' });
+      const res = await fetch(`/api/telegram/retry-file/${fileId}`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId })
+      });
       const data = await res.json();
+      clearInterval(pollTimer);
+      if (data.success) {
+        setUploads(prev => prev.map(u => u.id === uploadId ? {
+          ...u,
+          progress: 100,
+          status: 'completed',
+          stage: 'completed',
+          stageLabel: 'Salvo com sucesso no Telegram',
+          speed: 'Concluído'
+        } : u));
+      } else {
+        setUploads(prev => prev.map(u => u.id === uploadId ? {
+          ...u,
+          status: 'error',
+          stage: 'error',
+          stageLabel: 'Falha no envio',
+          error: data.error || 'Erro no envio'
+        } : u));
+      }
       await fetchItems();
       return data;
     } catch (e: any) {
+      clearInterval(pollTimer);
+      setUploads(prev => prev.map(u => u.id === uploadId ? {
+        ...u,
+        status: 'error',
+        stage: 'error',
+        stageLabel: 'Falha no envio',
+        error: e.message || 'Erro no envio'
+      } : u));
       return { success: false, error: e.message || 'Erro ao reenviar arquivo para o Telegram' };
+    } finally {
+      setRetryingFileIds(prev => prev.filter(id => id !== fileId));
     }
   };
 
   const syncAllPendingToTelegram = async () => {
+    const pendingIds = allFiles.filter(f => !f.isTrash && (!f.telegramMeta?.isUploadedToTelegram || !f.telegramMeta?.messageId)).map(f => f.id);
+    setRetryingFileIds(prev => Array.from(new Set([...prev, ...pendingIds])));
     try {
       const res = await fetch('/api/telegram/sync-pending', { method: 'POST' });
       const data = await res.json();
@@ -508,6 +584,8 @@ export function useFileSystem() {
       return data;
     } catch (e: any) {
       return { success: false, error: e.message || 'Erro ao sincronizar arquivos pendentes' };
+    } finally {
+      setRetryingFileIds(prev => prev.filter(id => !pendingIds.includes(id)));
     }
   };
 
@@ -520,6 +598,7 @@ export function useFileSystem() {
     allFiles,
     pendingUploadsCount,
     pendingUploadsBytes,
+    retryingFileIds,
     searchQuery,
     setSearchQuery,
     filterType,

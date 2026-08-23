@@ -21,7 +21,8 @@ import {
   Clock,
   ArrowDownToLine,
   BookOpen,
-  CloudUpload
+  CloudUpload,
+  RefreshCw
 } from 'lucide-react';
 import { DriveItem, FolderItem, FileType } from '../types/index.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
@@ -45,6 +46,7 @@ interface FileGridProps {
   onMoveItem?: (id: string, isFolder: boolean, targetParentId: string | null) => Promise<boolean>;
   onUploadToFolder?: (files: FileList | File[] | { file: File; relativePath?: string }[], targetFolderId: string) => Promise<void>;
   onRetryUploadTelegram?: (fileId: string) => Promise<any> | void;
+  retryingFileIds?: string[];
 }
 
 export const FileGrid: React.FC<FileGridProps> = ({
@@ -63,7 +65,8 @@ export const FileGrid: React.FC<FileGridProps> = ({
   onEmptyTrash,
   onMoveItem,
   onUploadToFolder,
-  onRetryUploadTelegram
+  onRetryUploadTelegram,
+  retryingFileIds = []
 }) => {
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -404,8 +407,19 @@ export const FileGrid: React.FC<FileGridProps> = ({
                       </div>
                     )}
 
+                    {/* Sending to Telegram Indicator */}
+                    {!isTrashView && !file.telegramMeta?.isUploadedToTelegram && retryingFileIds.includes(file.id) && (
+                      <div 
+                        title="Enviando arquivo para o Telegram Cloud..."
+                        className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-700 dark:text-sky-300 text-[10px] font-bold backdrop-blur-sm border border-sky-500/40 shadow-xs animate-pulse"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5 text-sky-600 dark:text-sky-400 animate-spin" />
+                        <span>Enviando...</span>
+                      </div>
+                    )}
+
                     {/* Pending Upload Indicator & Retry Action */}
-                    {!isTrashView && !file.telegramMeta?.isUploadedToTelegram && (
+                    {!isTrashView && !file.telegramMeta?.isUploadedToTelegram && !retryingFileIds.includes(file.id) && (
                       <button 
                         type="button"
                         onClick={(e) => {

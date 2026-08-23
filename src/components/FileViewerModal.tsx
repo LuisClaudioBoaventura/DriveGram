@@ -23,7 +23,8 @@ import {
   Plus,
   Trash2,
   Upload,
-  CloudUpload
+  CloudUpload,
+  RefreshCw
 } from 'lucide-react';
 import { DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { ComicReader } from './ComicReader.js';
@@ -75,6 +76,7 @@ interface FileViewerModalProps {
   onClose: () => void;
   onSelectFile: (file: DriveItem) => void;
   onRetryUploadTelegram?: (fileId: string) => Promise<any> | void;
+  retryingFileIds?: string[];
 }
 
 export const FileViewerModal: React.FC<FileViewerModalProps> = ({
@@ -82,7 +84,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   folderFiles,
   onClose,
   onSelectFile,
-  onRetryUploadTelegram
+  onRetryUploadTelegram,
+  retryingFileIds = []
 }) => {
   const [isAutoPlaySequence, setIsAutoPlaySequence] = useState(true);
   const [showInfo, setShowInfo] = useState(false);
@@ -272,6 +275,11 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-400 text-[10px] font-bold">
                   <Send className="w-2.5 h-2.5" />
                   TG #{file.telegramMeta.messageId || 'Salvas'}
+                </span>
+              ) : retryingFileIds.includes(file.id) ? (
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 text-[11px] font-bold border border-sky-500/40 animate-pulse shadow-xs">
+                  <RefreshCw className="w-3 h-3 text-sky-400 animate-spin" />
+                  <span>Enviando ao Telegram...</span>
                 </span>
               ) : (
                 <button
