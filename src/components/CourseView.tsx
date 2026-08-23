@@ -1140,7 +1140,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
 
                   <div className="space-y-1.5 max-h-64 overflow-y-auto">
                     {activeLesson.timestamps && activeLesson.timestamps.length > 0 ? (
-                      activeLesson.timestamps.map((ts) => (
+                      [...activeLesson.timestamps].sort((a, b) => a.seconds - b.seconds).map((ts) => (
                         <div
                           key={ts.id}
                           className="flex items-center justify-between p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-drive-darkHover border border-gray-100 dark:border-drive-darkBorder group transition-colors"

@@ -101,7 +101,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
 
   useEffect(() => {
     if (file) {
-      setTimestamps(file.timestamps || []);
+      setTimestamps([...(file.timestamps || [])].sort((a, b) => a.seconds - b.seconds));
       setSubtitles(file.subtitles || []);
       if (file.subtitles && file.subtitles.length > 0) {
         setSelectedSubtitleId(file.subtitles[0].id);
@@ -507,7 +507,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   </div>
 
                   <div className="space-y-1.5 flex-1 overflow-y-auto">
-                    {timestamps.map((ts) => (
+                    {[...timestamps].sort((a, b) => a.seconds - b.seconds).map((ts) => (
                       <div
                         key={ts.id}
                         className="flex items-center justify-between p-2 rounded-lg bg-gray-800/60 hover:bg-gray-800 border border-gray-750 group transition-colors"

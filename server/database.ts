@@ -1142,7 +1142,7 @@ class Database {
       isFavorite: !!item.isFavorite,
       telegramMeta: item.telegramMeta,
       tags: item.tags || [],
-      timestamps: item.timestamps || [],
+      timestamps: (item.timestamps || []).sort((a, b) => (a.seconds || 0) - (b.seconds || 0)),
       subtitles: item.subtitles || [],
       courseId: item.courseId,
       moduleId: item.moduleId,
@@ -1157,6 +1157,9 @@ class Database {
   public updateFile(id: string, updates: Partial<DriveItem>): DriveItem | null {
     const idx = this.data.files.findIndex(f => f.id === id);
     if (idx === -1) return null;
+    if (updates.timestamps) {
+      updates.timestamps = [...updates.timestamps].sort((a, b) => (a.seconds || 0) - (b.seconds || 0));
+    }
     this.data.files[idx] = {
       ...this.data.files[idx],
       ...updates,
@@ -1346,6 +1349,16 @@ class Database {
   }
 
   public saveCourse(course: Course): Course {
+    // Ensure all lessons' timestamps are sorted sequentially
+    const sanitizedModules = (course.modules || []).map(mod => ({
+      ...mod,
+      lessons: (mod.lessons || []).map(l => ({
+        ...l,
+        timestamps: (l.timestamps || []).sort((a: any, b: any) => (a.seconds || 0) - (b.seconds || 0))
+      }))
+    }));
+    course.modules = sanitizedModules;
+
     const idx = this.data.courses.findIndex(c => c.id === course.id);
     if (idx >= 0) {
       const oldCourse = this.data.courses[idx];
@@ -1395,6 +1408,13 @@ class Database {
 
   public saveBook(book: Book): Book {
     if (!this.data.books) this.data.books = [];
+    // Ensure all chapters' timestamps are sorted sequentially
+    const sanitizedChapters = (book.chapters || []).map(ch => ({
+      ...ch,
+      timestamps: (ch.timestamps || []).sort((a: any, b: any) => (a.seconds || 0) - (b.seconds || 0))
+    }));
+    book.chapters = sanitizedChapters;
+
     const idx = this.data.books.findIndex(b => b.id === book.id);
     if (idx >= 0) {
       this.data.books[idx] = {
@@ -1600,7 +1620,7 @@ class Database {
       coverImage: videoData.coverImage,
       fileId: videoData.fileId,
       folderId: videoData.folderId,
-      timestamps: videoData.timestamps || [],
+      timestamps: (videoData.timestamps || []).sort((a: any, b: any) => (a.seconds || 0) - (b.seconds || 0)),
       subtitles: videoData.subtitles || [],
       lastPositionSeconds: videoData.lastPositionSeconds || 0,
       isCompleted: videoData.isCompleted || false,
@@ -1710,7 +1730,7 @@ class Database {
       coverImage: videoData.coverImage || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60',
       fileId: videoData.fileId,
       folderId: videoData.folderId,
-      timestamps: videoData.timestamps || [],
+      timestamps: (videoData.timestamps || []).sort((a: any, b: any) => (a.seconds || 0) - (b.seconds || 0)),
       subtitles: videoData.subtitles || [],
       lastPositionSeconds: videoData.lastPositionSeconds || 0,
       isCompleted: videoData.isCompleted || false,

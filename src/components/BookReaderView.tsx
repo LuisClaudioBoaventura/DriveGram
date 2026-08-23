@@ -339,7 +339,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
   const activeAudioFile = activeChapter?.fileId ? allFiles.find(f => f.id === activeChapter.fileId) : null;
   const allBookTimestamps = (book.chapters || []).flatMap(c => 
     (c.timestamps || []).map(ts => ({ ...ts, chapter: c }))
-  );
+  ).sort((a, b) => a.seconds - b.seconds);
 
   return (
     <div className="flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg overflow-hidden">
@@ -629,7 +629,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                   </span>
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {activeChapter?.timestamps && activeChapter.timestamps.length > 0 ? (
-                      activeChapter.timestamps.map(ts => (
+                      [...activeChapter.timestamps].sort((a, b) => a.seconds - b.seconds).map(ts => (
                         <button
                           key={ts.id}
                           onClick={() => handleSeekTimestamp(ts.seconds)}
@@ -944,7 +944,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                   </h4>
                   <div className="space-y-1.5">
                     {activeChapter.timestamps && activeChapter.timestamps.length > 0 ? (
-                      activeChapter.timestamps.map(ts => (
+                      [...activeChapter.timestamps].sort((a, b) => a.seconds - b.seconds).map(ts => (
                         <div key={ts.id} className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-drive-darkBg hover:bg-purple-50/50 dark:hover:bg-purple-950/20 transition-colors">
                           <button onClick={() => handleSeekTimestamp(ts.seconds)} className="flex items-center gap-2.5 text-xs font-semibold flex-1 text-left">
                             <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-mono font-bold text-[10px] shrink-0">

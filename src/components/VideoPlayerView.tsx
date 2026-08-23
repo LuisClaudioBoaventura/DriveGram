@@ -38,12 +38,14 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const videoFile = video.fileId ? allFiles.find(f => f.id === video.fileId) : null;
   const subtitles = video.subtitles || videoFile?.subtitles || [];
   const [localTimestamps, setLocalTimestamps] = useState<VideoTimestamp[]>(() => {
-    return video.timestamps || videoFile?.timestamps || [];
+    const raw = video.timestamps || videoFile?.timestamps || [];
+    return [...raw].sort((a, b) => a.seconds - b.seconds);
   });
   const [newTimestampLabel, setNewTimestampLabel] = useState('');
 
   useEffect(() => {
-    setLocalTimestamps(video.timestamps || videoFile?.timestamps || []);
+    const raw = video.timestamps || videoFile?.timestamps || [];
+    setLocalTimestamps([...raw].sort((a, b) => a.seconds - b.seconds));
   }, [video.id, video.timestamps]);
 
   // Resume last position on mount
