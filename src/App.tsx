@@ -143,6 +143,7 @@ export function App() {
   const [selectedVideoForView, setSelectedVideoForView] = useState<MovieVideo | null>(null);
   const [selectedPersonalVideoForView, setSelectedPersonalVideoForView] = useState<PersonalVideo | null>(null);
   const [activePipVideo, setActivePipVideo] = useState<{ video: MovieVideo; isPersonal?: boolean } | null>(null);
+  const [activePipCourse, setActivePipCourse] = useState<Course | null>(null);
 
   const activePlayingMovie = (selectedVideoForView || (selectedPersonalVideoForView ? {
     ...selectedPersonalVideoForView,
@@ -156,6 +157,9 @@ export function App() {
     (selectedVideoForView && fs.activeTab === 'videos') ||
     (selectedPersonalVideoForView && fs.activeTab === 'personal-videos')
   );
+
+  const activePlayingCourse = selectedCourseForView || activePipCourse;
+  const isCourseVisibleInMain = Boolean(selectedCourseForView && fs.activeTab === 'courses');
 
   const [selectedSeriesForView, setSelectedSeriesForView] = useState<SeriesShow | null>(null);
   const [selectedAudioForView, setSelectedAudioForView] = useState<AudioShow | null>(null);
@@ -368,7 +372,11 @@ export function App() {
           activeTab={fs.activeTab}
           setActiveTab={(tab) => {
             fs.setActiveTab(tab);
-            if (tab !== 'courses') setSelectedCourseForView(null);
+            if (tab !== 'courses') {
+              setSelectedCourseForView(null);
+            } else if (activePipCourse) {
+              setSelectedCourseForView(activePipCourse);
+            }
             if (tab !== 'books') setSelectedBookForView(null);
             if (tab !== 'comics') setSelectedComicForView(null);
             if (tab !== 'videos') {
@@ -474,34 +482,51 @@ export function App() {
             />
           )}
 
-          {!isMovieVisibleInMain && (
+          {/* Persistent Course Player / View */}
+          {activePlayingCourse && (
+            <CourseView
+              course={activePlayingCourse}
+              isPiPHidden={!isCourseVisibleInMain}
+              activeLesson={courses.activeLesson}
+              onSelectLesson={courses.selectLesson}
+              onToggleCompletion={courses.toggleLessonCompletion}
+              onSaveNotes={courses.saveLessonNotes}
+              onUpdateCourse={async (updated) => {
+                await courses.updateCourse(updated);
+                if (selectedCourseForView) setSelectedCourseForView(updated);
+                if (activePipCourse) setActivePipCourse(updated);
+                fs.refresh();
+              }}
+              onDeleteCourse={async (id) => {
+                await courses.deleteCourse(id);
+                setSelectedCourseForView(null);
+                setActivePipCourse(null);
+                fs.refresh();
+              }}
+              onBackToDrive={() => {
+                setActivePipCourse(null);
+                setSelectedCourseForView(null);
+              }}
+              onOpenFileViewer={(f) => setActivePreviewFile(f)}
+              onUpdateLessonProgress={courses.updateLessonProgress}
+              getNextLesson={courses.getNextLesson}
+              getPreviousLesson={courses.getPreviousLesson}
+              allFiles={fs.allFiles}
+              onEnterPiP={() => {
+                setActivePipCourse(activePlayingCourse);
+              }}
+              onLeavePiP={() => {}}
+              onRestoreToTab={() => {
+                fs.setActiveTab('courses');
+                setSelectedCourseForView(activePlayingCourse);
+                setActivePipCourse(null);
+              }}
+            />
+          )}
+
+          {!isMovieVisibleInMain && !isCourseVisibleInMain && (
             <>
-              {/* Active Course View */}
-              {selectedCourseForView ? (
-                <CourseView
-                  course={selectedCourseForView}
-                  activeLesson={courses.activeLesson}
-                  onSelectLesson={courses.selectLesson}
-                  onToggleCompletion={courses.toggleLessonCompletion}
-                  onSaveNotes={courses.saveLessonNotes}
-                  onUpdateCourse={async (updated) => {
-                    await courses.updateCourse(updated);
-                    setSelectedCourseForView(updated);
-                    fs.refresh();
-                  }}
-                  onDeleteCourse={async (id) => {
-                    await courses.deleteCourse(id);
-                    setSelectedCourseForView(null);
-                    fs.refresh();
-                  }}
-                  onBackToDrive={() => setSelectedCourseForView(null)}
-                  onOpenFileViewer={(f) => setActivePreviewFile(f)}
-                  onUpdateLessonProgress={courses.updateLessonProgress}
-                  getNextLesson={courses.getNextLesson}
-                  getPreviousLesson={courses.getPreviousLesson}
-                  allFiles={fs.allFiles}
-                />
-              ) : selectedBookForView ? (
+              {selectedBookForView ? (
                 /* Active Audiobook / E-Book Reader Studio */
                 <BookReaderView
                   book={selectedBookForView}

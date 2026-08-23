@@ -57,6 +57,10 @@ interface CourseViewProps {
   getNextLesson: () => Lesson | null;
   getPreviousLesson: () => Lesson | null;
   allFiles: DriveItem[];
+  isPiPHidden?: boolean;
+  onEnterPiP?: () => void;
+  onLeavePiP?: () => void;
+  onRestoreToTab?: () => void;
 }
 
 interface SubtitleCue {
@@ -121,7 +125,11 @@ export const CourseView: React.FC<CourseViewProps> = ({
   onUpdateLessonProgress,
   getNextLesson,
   getPreviousLesson,
-  allFiles
+  allFiles,
+  isPiPHidden = false,
+  onEnterPiP,
+  onLeavePiP,
+  onRestoreToTab
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -293,6 +301,29 @@ export const CourseView: React.FC<CourseViewProps> = ({
       console.error('PiP error:', err);
     }
   };
+
+  // Listen to native Picture-in-Picture enter / exit (e.g. "Voltar para a guia")
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    const handleEnterPiP = () => {
+      if (onEnterPiP) onEnterPiP();
+    };
+
+    const handleLeavePiP = () => {
+      if (onLeavePiP) onLeavePiP();
+      if (onRestoreToTab) onRestoreToTab();
+    };
+
+    videoEl.addEventListener('enterpictureinpicture', handleEnterPiP);
+    videoEl.addEventListener('leavepictureinpicture', handleLeavePiP);
+
+    return () => {
+      videoEl.removeEventListener('leavepictureinpicture', handleLeavePiP);
+      videoEl.removeEventListener('enterpictureinpicture', handleEnterPiP);
+    };
+  }, [activeLesson?.id, onEnterPiP, onLeavePiP, onRestoreToTab]);
 
   const handleCopyStreamUrl = () => {
     const urlToCopy = lanStreamUrl || streamUrl;
@@ -730,14 +761,24 @@ export const CourseView: React.FC<CourseViewProps> = ({
   const progressPercent = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
 
   return (
-    <div className="flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg">
+    <div
+      className={
+        isPiPHidden
+          ? 'fixed bottom-0 right-0 w-px h-px opacity-0 pointer-events-none -z-50 overflow-hidden'
+          : 'flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg'
+      }
+    >
       {/* Top Course Bar with Inline Editing & Change Cover Button */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface">
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
+              if (document.pictureInPictureElement && document.exitPictureInPicture) {
+                document.exitPictureInPicture().catch(() => {});
+              }
               if (videoRef.current && activeLesson) {
                 onUpdateLessonProgress?.(activeLesson.id, videoRef.current.currentTime, false);
+                videoRef.current.pause();
               }
               onBackToDrive();
             }}
