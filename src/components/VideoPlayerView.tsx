@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, Download, Edit3, Film, Settings, Star, User, Clock, Airplay } from 'lucide-react';
-import { MovieVideo, DriveItem } from '../types/index.js';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2 } from 'lucide-react';
+import { MovieVideo, DriveItem, VideoTimestamp } from '../types/index.js';
 
 interface VideoPlayerViewProps {
   video: MovieVideo;
@@ -11,6 +11,7 @@ interface VideoPlayerViewProps {
   onEnterPiP?: () => void;
   onLeavePiP?: () => void;
   onRestoreToTab?: () => void;
+  onUpdateVideo?: (updated: MovieVideo) => Promise<void>;
   isPiPHidden?: boolean;
 }
 
@@ -23,6 +24,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   onEnterPiP,
   onLeavePiP,
   onRestoreToTab,
+  onUpdateVideo,
   isPiPHidden = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -35,7 +37,14 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
   const videoFile = video.fileId ? allFiles.find(f => f.id === video.fileId) : null;
   const subtitles = video.subtitles || videoFile?.subtitles || [];
-  const timestamps = video.timestamps || videoFile?.timestamps || [];
+  const [localTimestamps, setLocalTimestamps] = useState<VideoTimestamp[]>(() => {
+    return video.timestamps || videoFile?.timestamps || [];
+  });
+  const [newTimestampLabel, setNewTimestampLabel] = useState('');
+
+  useEffect(() => {
+    setLocalTimestamps(video.timestamps || videoFile?.timestamps || []);
+  }, [video.id, video.timestamps]);
 
   // Resume last position on mount
   useEffect(() => {
@@ -158,6 +167,68 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     setPlaybackRate(rate);
     if (videoRef.current) {
       videoRef.current.playbackRate = rate;
+    }
+  };
+
+  const handleAddTimestamp = async () => {
+    const time = videoRef.current ? Math.floor(videoRef.current.currentTime) : 0;
+    const label = newTimestampLabel.trim() || `Capítulo ${localTimestamps.length + 1} (${formatTime(time)})`;
+    const newTs: VideoTimestamp = {
+      id: `ts-${Date.now()}`,
+      label,
+      seconds: time,
+      timeFormatted: formatTime(time)
+    };
+
+    const updated = [...localTimestamps, newTs].sort((a, b) => a.seconds - b.seconds);
+    setLocalTimestamps(updated);
+    setNewTimestampLabel('');
+
+    const updatedVideo: MovieVideo = {
+      ...video,
+      timestamps: updated
+    };
+
+    if (onUpdateVideo) {
+      await onUpdateVideo(updatedVideo);
+    } else {
+      try {
+        const isPersonal = Boolean((video as any).date || (video as any).people || (video as any).location);
+        const endpoint = isPersonal ? `/api/personal-videos/${video.id}` : `/api/videos/${video.id}`;
+        await fetch(endpoint, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedVideo)
+        });
+      } catch (e) {
+        console.error('Error saving timestamp:', e);
+      }
+    }
+  };
+
+  const handleDeleteTimestamp = async (tsId: string) => {
+    const updated = localTimestamps.filter(ts => ts.id !== tsId);
+    setLocalTimestamps(updated);
+
+    const updatedVideo: MovieVideo = {
+      ...video,
+      timestamps: updated
+    };
+
+    if (onUpdateVideo) {
+      await onUpdateVideo(updatedVideo);
+    } else {
+      try {
+        const isPersonal = Boolean((video as any).date || (video as any).people || (video as any).location);
+        const endpoint = isPersonal ? `/api/personal-videos/${video.id}` : `/api/videos/${video.id}`;
+        await fetch(endpoint, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedVideo)
+        });
+      } catch (e) {
+        console.error('Error deleting timestamp:', e);
+      }
     }
   };
 
@@ -370,38 +441,87 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </div>
 
           {/* Timestamps / Chapters Panel */}
-          <div className="space-y-3 bg-gray-900/60 p-6 rounded-3xl border border-gray-800/80">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Bookmark className="w-4 h-4 text-red-500" />
-              <span>Capítulos / Timestamps ({timestamps.length})</span>
-            </h3>
+          <div className="space-y-4 bg-gray-900/70 p-5 sm:p-6 rounded-3xl border border-gray-800 shadow-xl backdrop-blur-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Bookmark className="w-4 h-4 text-red-500" />
+                <span>Capítulos / Timestamps ({localTimestamps.length})</span>
+              </h3>
+            </div>
 
-            {timestamps.length > 0 ? (
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {timestamps.map(ts => (
-                  <button
+            {/* Quick Add Timestamp Input */}
+            <div className="flex flex-col sm:flex-row gap-2 pt-1 pb-2">
+              <input
+                type="text"
+                value={newTimestampLabel}
+                onChange={(e) => setNewTimestampLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddTimestamp();
+                  }
+                }}
+                placeholder="Nome do capítulo ou cena (ex: Início da Batalha)..."
+                className="flex-1 px-3.5 py-2 text-xs rounded-xl bg-gray-950/90 border border-gray-700/80 text-white placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors"
+              />
+              <button
+                type="button"
+                onClick={handleAddTimestamp}
+                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/20 transition-all active:scale-95 shrink-0"
+                title="Criar marcador no tempo atual da reprodução"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Marcar Tempo Atual</span>
+              </button>
+            </div>
+
+            {/* Timestamps List */}
+            {localTimestamps.length > 0 ? (
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {localTimestamps.map(ts => (
+                  <div
                     key={ts.id}
-                    onClick={() => {
-                      if (videoRef.current) {
-                        videoRef.current.currentTime = ts.seconds;
-                        videoRef.current.play();
-                      }
-                    }}
-                    className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gray-800/60 hover:bg-red-600/20 text-left transition-colors group"
+                    className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gray-950/60 hover:bg-red-600/15 border border-gray-800/80 hover:border-red-500/40 text-left transition-all group"
                   >
-                    <span className="text-xs font-semibold text-gray-200 group-hover:text-red-400 truncate mr-2">
-                      {ts.label}
-                    </span>
-                    <span className="text-[10px] font-mono text-gray-400 bg-gray-800 px-2 py-0.5 rounded-md shrink-0">
-                      {formatTime(ts.seconds)}
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (videoRef.current) {
+                          videoRef.current.currentTime = ts.seconds;
+                          videoRef.current.play();
+                        }
+                      }}
+                      className="flex items-center gap-2.5 flex-1 min-w-0 pr-2 text-left"
+                      title={`Pular para ${formatTime(ts.seconds)}`}
+                    >
+                      <span className="text-[10px] font-mono font-bold text-red-400 bg-red-950/60 border border-red-800/60 px-2 py-0.5 rounded-md shrink-0">
+                        ▶ {formatTime(ts.seconds)}
+                      </span>
+                      <span className="text-xs font-semibold text-gray-200 group-hover:text-red-300 truncate">
+                        {ts.label}
+                      </span>
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTimestamp(ts.id)}
+                      className="p-1.5 text-gray-500 hover:text-rose-400 rounded-lg hover:bg-rose-950/30 transition-colors shrink-0"
+                      title="Excluir capítulo"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-500">
-                Nenhum timestamp ou capítulo configurado para este vídeo.
-              </p>
+              <div className="p-4 rounded-2xl bg-gray-950/40 border border-gray-800/60 text-center">
+                <p className="text-xs text-gray-400 font-medium">
+                  Nenhum capítulo marcado ainda.
+                </p>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Pause ou dê play no filme no momento desejado, digite o nome e clique em <strong>"+ Marcar Tempo Atual"</strong>.
+                </p>
+              </div>
             )}
           </div>
         </div>

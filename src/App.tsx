@@ -464,6 +464,13 @@ export function App() {
                 }
                 setActivePipVideo(null);
               }}
+              onUpdateVideo={async (updated) => {
+                if (isPersonalMovie) {
+                  await personalVideos.updatePersonalVideo(updated as any);
+                } else {
+                  await videos.updateVideo(updated);
+                }
+              }}
             />
           )}
 
