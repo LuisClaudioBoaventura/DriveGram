@@ -228,19 +228,47 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     setHasSearched(true);
 
     try {
-      const res = await fetch(`/api/podcasts/search?q=${encodeURIComponent(trimmed)}`, {
-        signal: controller.signal
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSearchResults(data.results || []);
-      } else {
-        setSearchError('Erro ao buscar podcasts. Tente novamente.');
+      let results: OnlinePodcastResult[] = [];
+
+      // Strategy 1: Backend search endpoint
+      try {
+        const res = await fetch(`/api/podcasts/search?q=${encodeURIComponent(trimmed)}`, {
+          signal: controller.signal
+        });
+        if (res.ok) {
+          const data = await res.json();
+          results = data.results || [];
+        }
+      } catch (beErr: any) {
+        if (beErr.name === 'AbortError') return;
+        console.warn('Backend search failed, trying direct iTunes search:', beErr);
       }
+
+      // Strategy 2: Direct iTunes API query fallback
+      if (results.length === 0) {
+        const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&media=podcast&entity=podcast&limit=30`;
+        const directRes = await fetch(itunesUrl, { signal: controller.signal });
+        if (directRes.ok) {
+          const directData = await directRes.json();
+          results = (directData.results || []).map((item: any) => ({
+            id: String(item.collectionId || item.trackId),
+            title: item.collectionName || item.trackName,
+            artist: item.artistName,
+            host: item.artistName,
+            coverImage: item.artworkUrl600 || item.artworkUrl100 || item.artworkUrl60,
+            genre: item.primaryGenreName,
+            category: item.primaryGenreName || 'Podcasts',
+            feedUrl: item.feedUrl,
+            trackCount: item.trackCount || 0,
+            releaseDate: item.releaseDate,
+            country: item.country
+          }));
+        }
+      }
+
+      setSearchResults(results);
     } catch (e: any) {
-      if (e.name === 'AbortError') {
-        return;
-      }
+      if (e.name === 'AbortError') return;
       setSearchError('Falha ao conectar com o serviço de busca.');
     } finally {
       setIsSearching(false);
@@ -286,6 +314,51 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     if (!onImportPodcast) return;
     setImportingPodcastId(podcast.id);
     try {
+      let episodesToSave = podcast.episodes || [];
+
+      // If no episodes yet, fetch them from RSS or iTunes lookup
+      if (episodesToSave.length === 0 && podcast.feedUrl) {
+        try {
+          const rssData = await fetchAndParsePodcastRss(podcast.feedUrl);
+          if (rssData.episodes && rssData.episodes.length > 0) {
+            episodesToSave = rssData.episodes;
+          }
+        } catch (rssErr) {
+          console.warn('Could not parse feedUrl for episodes:', rssErr);
+        }
+      }
+
+      if (episodesToSave.length === 0 && podcast.id && !podcast.id.startsWith('rss-')) {
+        try {
+          const lookupUrl = `https://itunes.apple.com/lookup?id=${podcast.id}&entity=podcastEpisode&limit=50`;
+          const res = await fetch(lookupUrl);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.results && data.results.length > 1) {
+              episodesToSave = data.results.slice(1).map((ep: any, index: number) => {
+                const durationSeconds = ep.trackTimeMillis ? Math.round(ep.trackTimeMillis / 1000) : 0;
+                const mins = Math.floor(durationSeconds / 60);
+                const secs = durationSeconds % 60;
+                const durationStr = durationSeconds > 0 ? `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : '45:00';
+
+                return {
+                  id: `ep-${ep.trackId || Date.now() + '-' + index}`,
+                  title: ep.trackName || `Episódio ${index + 1}`,
+                  artist: podcast.host || podcast.artist,
+                  duration: durationStr,
+                  durationSeconds,
+                  audioUrl: ep.episodeUrl || ep.previewUrl,
+                  order: index + 1,
+                  trackNumber: index + 1
+                };
+              });
+            }
+          }
+        } catch (lookupErr) {
+          console.warn('Could not lookup iTunes episodes:', lookupErr);
+        }
+      }
+
       await onImportPodcast({
         podcastId: podcast.id.startsWith('rss-') ? undefined : podcast.id,
         title: podcast.title,
@@ -296,7 +369,7 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
         description: podcast.description || `Podcast oficial ${podcast.title} por ${podcast.artist || podcast.host}`,
         coverImage: podcast.coverImage,
         feedUrl: podcast.feedUrl,
-        episodes: podcast.episodes
+        episodes: episodesToSave
       });
       onClose();
     } catch (e) {

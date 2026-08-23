@@ -247,7 +247,9 @@ export function useAudioShows() {
     coverImage?: string;
     feedUrl?: string;
     folderId?: string;
+    episodes?: any[];
   }): Promise<AudioShow | null> => {
+    // Strategy 1: Try backend import endpoint
     try {
       const res = await fetch('/api/audio-shows/import-podcast', {
         method: 'POST',
@@ -264,8 +266,54 @@ export function useAudioShows() {
         return newShow;
       }
     } catch (e) {
-      console.error('Error importing podcast:', e);
+      console.warn('Backend /api/audio-shows/import-podcast failed, trying direct /api/audio-shows save:', e);
     }
+
+    // Strategy 2 (Resilient Fallback): Save directly using standard /api/audio-shows endpoint
+    try {
+      const fallbackTracks = (podcastData.episodes || []).map((ep: any, idx: number) => ({
+        id: ep.id || `ep-${Date.now()}-${idx}`,
+        title: ep.title || `Episódio ${idx + 1}`,
+        artist: ep.artist || podcastData.host || podcastData.artist,
+        duration: ep.duration || '45:00',
+        durationSeconds: ep.durationSeconds || 0,
+        audioUrl: ep.audioUrl,
+        order: idx + 1,
+        trackNumber: idx + 1
+      }));
+
+      const fallbackShowData: Partial<AudioShow> = {
+        title: podcastData.title.trim(),
+        artist: podcastData.artist || podcastData.host,
+        host: podcastData.host || podcastData.artist,
+        showType: 'podcast',
+        category: podcastData.category || 'Podcasts',
+        genre: podcastData.genre || 'Podcast',
+        description: podcastData.description || '',
+        coverImage: podcastData.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
+        folderId: podcastData.folderId || undefined,
+        tracks: fallbackTracks
+      };
+
+      const res = await fetch('/api/audio-shows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fallbackShowData)
+      });
+
+      if (res.ok) {
+        const newShow: AudioShow = await res.json();
+        setAudioShows(prev => [newShow, ...prev]);
+        setActiveShow(newShow);
+        if (newShow.tracks?.[0]) {
+          setActiveTrack(newShow.tracks[0]);
+        }
+        return newShow;
+      }
+    } catch (fallbackErr) {
+      console.error('Error saving podcast fallback:', fallbackErr);
+    }
+
     return null;
   };
 
