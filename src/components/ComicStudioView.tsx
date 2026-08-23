@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { ComicBook, ComicIssue, DriveItem } from '../types/index.js';
 import { ComicReader } from './ComicReader.js';
+import { EpubReader } from './EpubReader.js';
 
 interface ComicStudioViewProps {
   comic: ComicBook;
@@ -299,7 +300,7 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
               <BookOpen className="w-12 h-12 text-gray-400 mb-3" />
               <h3 className="font-bold text-sm">Nenhum arquivo de HQ encontrado na pasta vinculada</h3>
               <p className="text-xs text-gray-500 max-w-sm mt-1">
-                Adicione arquivos no formato .cbr, .cbz ou .pdf na pasta de origem do Drive para que as edições apareçam aqui automaticamente.
+                Adicione arquivos no formato .cbr, .cbz, .pdf ou .epub na pasta de origem do Drive para que as edições apareçam aqui automaticamente.
               </p>
             </div>
           )}
@@ -347,13 +348,17 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
               </div>
             </div>
 
-            {/* Comic Reader Content */}
+            {/* Comic / EPUB Reader Content */}
             <div className="flex-1 w-full h-full overflow-hidden">
-              <ComicReader 
-                file={activeFile} 
-                initialPage={readingIssue.currentPage || 0}
-                onPageChange={(page, total) => handleUpdateProgress(readingIssue.id, page, total)}
-              />
+              {activeFile.extension?.toLowerCase() === 'epub' || activeFile.type === 'ebook' || activeFile.mimeType?.includes('epub') ? (
+                <EpubReader file={activeFile} />
+              ) : (
+                <ComicReader 
+                  file={activeFile} 
+                  initialPage={readingIssue.currentPage || 0}
+                  onPageChange={(page, total) => handleUpdateProgress(readingIssue.id, page, total)}
+                />
+              )}
             </div>
           </div>
         </div>

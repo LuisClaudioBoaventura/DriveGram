@@ -153,7 +153,7 @@ export const NewComicModal: React.FC<NewComicModalProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                 <Folder className="w-3.5 h-3.5 text-pink-500" />
-                <span>Pasta de Origem (.cbr, .cbz ou .pdf) *</span>
+                <span>Pasta de Origem (.cbr, .cbz, .pdf ou .epub) *</span>
               </label>
               <span className="px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 text-[10px] font-bold">
                 📁 {rootFolder ? rootFolder.name : "HQ's"}
@@ -171,7 +171,7 @@ export const NewComicModal: React.FC<NewComicModalProps> = ({
               ))}
             </select>
             <span className="text-[11px] text-gray-400 block">
-              💡 Todas as edições e capítulos (.cbr, .cbz, .pdf) dentro desta pasta serão detectados automaticamente.
+              💡 Todas as edições e capítulos (.cbr, .cbz, .pdf, .epub) dentro desta pasta serão detectados automaticamente.
             </span>
           </div>
 

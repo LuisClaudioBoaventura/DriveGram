@@ -740,7 +740,7 @@ class Database {
 
       const comicFiles = files.filter(f => 
         (f.parentId === comic.folderId || subFolderIds.has(f.parentId || '')) &&
-        (f.type === 'comic' || ['cbr', 'cbz', 'pdf', 'zip'].includes(f.extension.toLowerCase()) || /\.(cbr|cbz|pdf)$/i.test(f.name))
+        (f.type === 'comic' || f.type === 'ebook' || ['cbr', 'cbz', 'pdf', 'zip', 'epub'].includes(f.extension.toLowerCase()) || /\.(cbr|cbz|pdf|epub)$/i.test(f.name))
       );
 
       // Natural sort for issues

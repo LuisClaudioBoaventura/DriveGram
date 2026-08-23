@@ -887,7 +887,7 @@ app.post('/api/comics/from-folder', (req, res) => {
 
     const comicFiles = allFiles.filter(f => 
       (f.parentId === folderId || subFolderIds.has(f.parentId || '')) &&
-      (f.type === 'comic' || ['cbr', 'cbz', 'pdf', 'zip'].includes(f.extension.toLowerCase()) || /\.(cbr|cbz|pdf)$/i.test(f.name))
+      (f.type === 'comic' || f.type === 'ebook' || ['cbr', 'cbz', 'pdf', 'zip', 'epub'].includes(f.extension.toLowerCase()) || /\.(cbr|cbz|pdf|epub)$/i.test(f.name))
     );
 
     // Natural sort for files

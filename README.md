@@ -95,8 +95,8 @@ O DriveGram é dividido em módulos inteligentes e dedicados para cada tipo de m
 ---
 
 ### 📚 6. Quadrinhos, HQs & Mangás
-- **Leitor Dedicado**: Suporte a leitura de PDFs, imagens e arquivos de quadrinhos `.cbr` e `.cbz`.
-- **Modo Leitura**: Ajuste de zoom, modo noturno e transição suave entre páginas.
+- **Leitor Dedicado**: Suporte completo a leitura de quadrinhos e mangás em formatos **.cbr**, **.cbz**, **.pdf** e **.epub**.
+- **Modo Leitura**: Ajuste de zoom, modo noturno, ferramenta de lupa/ampliação, transição suave entre páginas e leitor interativo de EPUB.
 
 ---
 
