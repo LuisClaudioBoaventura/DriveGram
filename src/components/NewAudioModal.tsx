@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Headphones, 
   X, 
@@ -13,6 +13,8 @@ import {
   Loader2, 
   Plus, 
   Radio, 
+  Square,
+  XCircle,
   ExternalLink,
   Layers,
   Globe
@@ -122,6 +124,9 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
   const [importingPodcastId, setImportingPodcastId] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
+  // AbortController ref to cancel / stop ongoing search
+  const searchAbortControllerRef = useRef<AbortController | null>(null);
+
   if (!isOpen) return null;
 
   const handleFolderChange = (folderId: string) => {
@@ -169,16 +174,34 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     }
   };
 
+  const handleStopSearch = () => {
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+      searchAbortControllerRef.current = null;
+    }
+    setIsSearching(false);
+  };
+
   const handleSearchPodcasts = async (queryToSearch = searchQuery) => {
     const trimmed = queryToSearch.trim();
     if (!trimmed) return;
+
+    // Abort previous search if running
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    searchAbortControllerRef.current = controller;
 
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
 
     try {
-      const res = await fetch(`/api/podcasts/search?q=${encodeURIComponent(trimmed)}`);
+      const res = await fetch(`/api/podcasts/search?q=${encodeURIComponent(trimmed)}`, {
+        signal: controller.signal
+      });
       if (res.ok) {
         const data = await res.json();
         setSearchResults(data.results || []);
@@ -186,9 +209,14 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
         setSearchError('Erro ao buscar podcasts. Tente novamente.');
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') {
+        // Search was cancelled by user
+        return;
+      }
       setSearchError('Falha ao conectar com o serviço de busca.');
     } finally {
       setIsSearching(false);
+      searchAbortControllerRef.current = null;
     }
   };
 
@@ -230,7 +258,10 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              handleStopSearch();
+              onClose();
+            }}
             className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -252,7 +283,10 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
           </button>
 
           <button
-            onClick={() => setModalTab('local_folder')}
+            onClick={() => {
+              handleStopSearch();
+              setModalTab('local_folder');
+            }}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
               modalTab === 'local_folder'
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
@@ -279,21 +313,48 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearchPodcasts()}
+                    onKeyDown={(e) => e.key === 'Enter' && !isSearching && handleSearchPodcasts()}
                     placeholder="Ex: Podpah, Flow, Nerdcast, Huberman Lab, BBC, Ciência..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-drive-darkBg rounded-2xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none text-gray-900 dark:text-gray-100"
+                    className="w-full pl-10 pr-9 py-2.5 bg-gray-50 dark:bg-drive-darkBg rounded-2xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-emerald-500 focus:outline-none text-gray-900 dark:text-gray-100"
                     autoFocus
                   />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        handleStopSearch();
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                      title="Limpar pesquisa"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleSearchPodcasts()}
-                  disabled={isSearching || !searchQuery.trim()}
-                  className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all disabled:opacity-50 flex items-center gap-1.5 shrink-0"
-                >
-                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                  <span>Buscar</span>
-                </button>
+
+                {/* Search / Stop Button Switcher */}
+                {isSearching ? (
+                  <button
+                    type="button"
+                    onClick={handleStopSearch}
+                    className="px-4 py-2.5 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold shadow-md shadow-rose-500/25 transition-all flex items-center gap-1.5 shrink-0 active:scale-95 animate-in fade-in"
+                    title="Parar e cancelar busca"
+                  >
+                    <Square className="w-3 h-3 fill-current" />
+                    <span>Parar Busca</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleSearchPodcasts()}
+                    disabled={!searchQuery.trim()}
+                    className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all disabled:opacity-50 flex items-center gap-1.5 shrink-0 active:scale-95"
+                  >
+                    <Search className="w-4 h-4" />
+                    <span>Buscar</span>
+                  </button>
+                )}
               </div>
 
               {/* Quick Search Chips */}
@@ -317,17 +378,40 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
 
             {/* Error state */}
             {searchError && (
-              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-semibold">
-                {searchError}
+              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-semibold flex items-center justify-between">
+                <span>{searchError}</span>
+                <button
+                  type="button"
+                  onClick={() => setSearchError(null)}
+                  className="text-rose-500 hover:text-rose-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )}
 
-            {/* Search Results List */}
+            {/* Search Results List / Loading / Empty */}
             <div className="space-y-3">
               {isSearching ? (
-                <div className="flex flex-col items-center justify-center p-12 text-center space-y-3">
-                  <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-                  <p className="text-xs text-gray-400 font-medium">Buscando podcasts no acervo online...</p>
+                <div className="flex flex-col items-center justify-center p-12 text-center space-y-4 bg-gray-50/70 dark:bg-drive-darkBg/60 rounded-3xl border border-gray-200/60 dark:border-gray-800">
+                  <div className="relative">
+                    <Loader2 className="w-9 h-9 text-emerald-500 animate-spin" />
+                    <Radio className="w-4 h-4 text-emerald-600 dark:text-emerald-400 absolute inset-0 m-auto" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-800 dark:text-gray-200 font-bold">Buscando podcasts no acervo online...</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Consultando títulos, apresentadores e catálogo de episódios</p>
+                  </div>
+                  
+                  {/* Prominent Stop Search button during loading */}
+                  <button
+                    type="button"
+                    onClick={handleStopSearch}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition-all shadow-xs active:scale-95"
+                  >
+                    <Square className="w-3.5 h-3.5 fill-current" />
+                    <span>Parar Busca</span>
+                  </button>
                 </div>
               ) : searchResults.length > 0 ? (
                 <div className="space-y-2.5">
