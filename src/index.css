@@ -130,3 +130,16 @@ select option:checked {
 select option:hover {
   background-color: #18181b !important;
 }
+
+/* ================= VIDEO SUBTITLES / CLOSED CAPTIONS STYLING ================= */
+video::cue {
+  background-color: rgba(0, 0, 0, 0.75) !important;
+  color: #ffffff !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9) !important;
+  font-family: inherit !important;
+}

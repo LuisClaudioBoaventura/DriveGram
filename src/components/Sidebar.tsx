@@ -13,6 +13,7 @@ import {
   BookOpen,
   Sparkles,
   Film,
+  Video,
   Tv,
   Headphones,
   LockKeyhole,
@@ -24,7 +25,7 @@ import {
 import { TelegramAuthState } from '../types/index.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
 
-export type SidebarTab = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
+export type SidebarTab = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
 
 interface SidebarProps {
   activeTab: SidebarTab;
@@ -34,6 +35,7 @@ interface SidebarProps {
   onNewBook: () => void;
   onNewComic: () => void;
   onNewVideo?: () => void;
+  onNewPersonalVideo?: () => void;
   onNewSeries?: () => void;
   onNewAudio?: () => void;
   onNewAdultVideo?: () => void;
@@ -55,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewBook,
   onNewComic,
   onNewVideo,
+  onNewPersonalVideo,
   onNewSeries,
   onNewAudio,
   onNewAdultVideo,
@@ -104,7 +107,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'courses', label: 'Cursos & Estudos', icon: <GraduationCap className="w-4 h-4 text-indigo-500" />, badge: 'Estúdio', color: 'indigo' },
     { id: 'books', label: 'Livros & Audiolivros', icon: <BookOpen className="w-4 h-4 text-purple-500" />, badge: 'Biblioteca', color: 'purple' },
     { id: 'comics', label: 'HQs & Mangás', icon: <Sparkles className="w-4 h-4 text-pink-500" />, badge: 'Biblioteca', color: 'pink' },
-    { id: 'videos', label: 'Filmes & Vídeos', icon: <Film className="w-4 h-4 text-red-500" />, badge: 'Cinema', color: 'red' },
+    { id: 'videos', label: 'Filmes & Cinema', icon: <Film className="w-4 h-4 text-red-500" />, badge: 'Cinema', color: 'red' },
+    { id: 'personal-videos', label: 'Vídeos Pessoais', icon: <Video className="w-4 h-4 text-amber-500" />, badge: 'Memórias', color: 'amber' },
     { id: 'series', label: 'Séries & Animes', icon: <Tv className="w-4 h-4 text-purple-500" />, badge: 'TV Shows', color: 'purple' },
     { id: 'podcasts', label: 'Músicas & Podcasts', icon: <Headphones className="w-4 h-4 text-emerald-500" />, badge: 'Áudios', color: 'emerald' },
     { 
@@ -303,7 +307,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                 >
                   <Film className="w-4 h-4 text-red-500" />
-                  <span>Novo Filme / Vídeo</span>
+                  <span>Novo Filme / Cinema</span>
+                </button>
+              )}
+
+              {onNewPersonalVideo && (
+                <button
+                  onClick={() => {
+                    setShowNewMenu(false);
+                    onNewPersonalVideo();
+                  }}
+                  className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
+                >
+                  <Video className="w-4 h-4 text-amber-500" />
+                  <span>Novo Vídeo Pessoal</span>
                 </button>
               )}
 

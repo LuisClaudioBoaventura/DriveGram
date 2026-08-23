@@ -53,6 +53,7 @@ interface CourseViewProps {
   onDeleteCourse: (courseId: string) => Promise<void>;
   onBackToDrive: () => void;
   onOpenFileViewer?: (file: DriveItem) => void;
+  onUpdateLessonProgress?: (lessonId: string, seconds: number, isCompleted?: boolean) => Promise<void>;
   getNextLesson: () => Lesson | null;
   getPreviousLesson: () => Lesson | null;
   allFiles: DriveItem[];
@@ -117,6 +118,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
   onDeleteCourse,
   onBackToDrive,
   onOpenFileViewer,
+  onUpdateLessonProgress,
   getNextLesson,
   getPreviousLesson,
   allFiles
@@ -140,40 +142,22 @@ export const CourseView: React.FC<CourseViewProps> = ({
   // Subtitles state
   const [selectedSubtitleId, setSelectedSubtitleId] = useState<string | null>(null);
   const subtitleInputRef = useRef<HTMLInputElement>(null);
+  const currentSub = activeLesson?.subtitles?.find(s => s.id === selectedSubtitleId);
 
-  // Load & parse active subtitle content
+  // Sync native HTML5 textTrack mode with selectedSubtitleId
   useEffect(() => {
-    async function loadSubtitleCues() {
-      if (!selectedSubtitleId || !activeLesson?.subtitles) {
-        setSubtitleCues([]);
-        return;
-      }
-
-      const activeSub = activeLesson.subtitles.find(s => s.id === selectedSubtitleId);
-      if (!activeSub || !activeSub.url) {
-        setSubtitleCues([]);
-        return;
-      }
-
-      try {
-        let content = '';
-        if (activeSub.url.startsWith('data:')) {
-          const encoded = activeSub.url.split(',')[1];
-          content = decodeURIComponent(encoded || '');
+    if (videoRef.current && videoRef.current.textTracks) {
+      const tracks = videoRef.current.textTracks;
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
+        if (selectedSubtitleId && (track.label === currentSub?.label || track.language === currentSub?.srclang)) {
+          track.mode = 'showing';
         } else {
-          const res = await fetch(activeSub.url);
-          content = await res.text();
+          track.mode = 'disabled';
         }
-
-        const parsed = parseSubtitleContent(content);
-        setSubtitleCues(parsed);
-      } catch (e) {
-        console.error('Error loading subtitle:', e);
       }
     }
-
-    loadSubtitleCues();
-  }, [selectedSubtitleId, activeLesson?.id, activeLesson?.subtitles]);
+  }, [selectedSubtitleId, currentSub]);
 
   // Editing state for Course, Modules & Lessons
   const [isEditingCourse, setIsEditingCourse] = useState(false);
@@ -318,7 +302,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
     setTimeout(() => setCopiedStreamUrl(false), 2500);
   };
 
-  // Sync lesson notes and subtitles when active lesson changes
+  // Sync lesson notes, subtitles and auto-resume position when active lesson changes
   useEffect(() => {
     if (activeLesson) {
       setLessonNotes(activeLesson.notes || '');
@@ -332,11 +316,47 @@ export const CourseView: React.FC<CourseViewProps> = ({
       }
 
       if (videoRef.current) {
-        videoRef.current.currentTime = activeLesson.lastPositionSeconds || 0;
+        const resumePos = activeLesson.lastPositionSeconds || 0;
+        if (resumePos > 0) {
+          videoRef.current.currentTime = resumePos;
+        }
         videoRef.current.playbackRate = playbackSpeed;
         videoRef.current.play().catch(() => setIsPlaying(false));
       }
     }
+  }, [activeLesson?.id]);
+
+  const onUpdateLessonProgressRef = useRef(onUpdateLessonProgress);
+  useEffect(() => {
+    onUpdateLessonProgressRef.current = onUpdateLessonProgress;
+  }, [onUpdateLessonProgress]);
+
+  const lastSavedLessonTimeRef = useRef<number>(-1);
+
+  // Periodic auto-save progress for active lesson
+  useEffect(() => {
+    if (!activeLesson?.id) return;
+
+    const interval = setInterval(() => {
+      if (videoRef.current && !videoRef.current.paused && activeLesson) {
+        const curr = Math.floor(videoRef.current.currentTime);
+        if (curr !== lastSavedLessonTimeRef.current && curr > 0) {
+          lastSavedLessonTimeRef.current = curr;
+          onUpdateLessonProgressRef.current?.(activeLesson.id, curr, false);
+        }
+      }
+    }, 4000);
+
+    return () => {
+      clearInterval(interval);
+      if (videoRef.current && activeLesson) {
+        const curr = Math.floor(videoRef.current.currentTime);
+        if (curr > 0 && curr !== lastSavedLessonTimeRef.current) {
+          lastSavedLessonTimeRef.current = curr;
+          onUpdateLessonProgressRef.current?.(activeLesson.id, curr, false);
+        }
+      }
+    };
   }, [activeLesson?.id]);
 
   // Autoplay countdown timer
@@ -359,6 +379,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
   const handleVideoEnded = () => {
     setIsPlaying(false);
     if (activeLesson) {
+      onUpdateLessonProgress?.(activeLesson.id, videoRef.current?.duration || videoCurrentTime, true);
       if (!activeLesson.isCompleted) {
         onToggleCompletion(activeLesson.id);
       }
@@ -708,15 +729,18 @@ export const CourseView: React.FC<CourseViewProps> = ({
   const completedLessons = course.modules.reduce((acc, m) => acc + m.lessons.filter(l => l.isCompleted).length, 0);
   const progressPercent = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
 
-  const currentSub = activeLesson?.subtitles?.find(s => s.id === selectedSubtitleId);
-
   return (
     <div className="flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg">
       {/* Top Course Bar with Inline Editing & Change Cover Button */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface">
         <div className="flex items-center gap-3">
           <button
-            onClick={onBackToDrive}
+            onClick={() => {
+              if (videoRef.current && activeLesson) {
+                onUpdateLessonProgress?.(activeLesson.id, videoRef.current.currentTime, false);
+              }
+              onBackToDrive();
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors border border-gray-200 dark:border-drive-darkBorder"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -824,57 +848,48 @@ export const CourseView: React.FC<CourseViewProps> = ({
       </div>
 
       {/* Main Studio Layout */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
         {/* Left: Video Player, Subtitles, Timestamps & Materials Area */}
-        <div className="flex-1 flex flex-col overflow-y-auto p-4 lg:p-6">
+        <div className="flex-1 flex flex-col overflow-y-auto p-4 lg:p-6 min-w-0">
           {/* Video Container with Track Subtitles */}
-          <div className="relative rounded-2xl overflow-hidden bg-black shadow-2xl aspect-video border border-gray-800 flex items-center justify-center">
+          <div className="relative w-full aspect-video shrink-0 rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800 flex items-center justify-center">
             {activeLesson ? (
               <>
                 <video
                   ref={videoRef}
-                  key={activeLesson.id + (selectedSubtitleId || 'nosub')}
+                  key={activeLesson.id}
                   className="w-full h-full object-contain"
                   controls
                   crossOrigin="anonymous"
                   playsInline
                   src={activeMediaFile ? `/api/stream/${activeMediaFile.id}` : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
-                  onEnded={handleVideoEnded}
-                  onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
-                  onPlay={() => {
-                    setIsPlaying(true);
-                    if (videoRef.current?.textTracks?.[0]) {
-                      videoRef.current.textTracks[0].mode = 'showing';
+                  onLoadedMetadata={() => {
+                    if (videoRef.current && (activeLesson.lastPositionSeconds || 0) > 0) {
+                      videoRef.current.currentTime = activeLesson.lastPositionSeconds || 0;
                     }
                   }}
-                  onPause={() => setIsPlaying(false)}
+                  onEnded={handleVideoEnded}
+                  onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => {
+                    setIsPlaying(false);
+                    if (videoRef.current && activeLesson) {
+                      onUpdateLessonProgress?.(activeLesson.id, videoRef.current.currentTime, false);
+                    }
+                  }}
                 >
-                  {/* Embedded WebVTT Subtitle Track */}
-                  {currentSub?.url && (
+                  {/* Embedded WebVTT Subtitle Tracks */}
+                  {activeLesson.subtitles?.map((sub) => (
                     <track
+                      key={sub.id}
                       kind="subtitles"
-                      src={currentSub.url}
-                      srcLang={currentSub.srclang || 'pt'}
-                      label={currentSub.label || 'Português'}
-                      default
+                      src={sub.url}
+                      srcLang={sub.srclang || 'pt'}
+                      label={sub.label || 'Português'}
+                      default={sub.id === selectedSubtitleId}
                     />
-                  )}
+                  ))}
                 </video>
-
-                {/* Always-Visible Crisp Subtitle Overlay */}
-                {selectedSubtitleId && (
-                  (() => {
-                    const activeCue = subtitleCues.find(c => videoCurrentTime >= c.start && videoCurrentTime <= c.end);
-                    if (!activeCue) return null;
-                    return (
-                      <div className="absolute bottom-14 left-1/2 -translate-x-1/2 max-w-[90%] pointer-events-none z-30 animate-in fade-in duration-75 text-center">
-                        <span className="inline-block px-4 py-1.5 rounded-xl bg-black/85 backdrop-blur-md text-white text-sm sm:text-base md:text-lg font-bold text-center leading-snug drop-shadow-[0_2px_8px_rgba(0,0,0,1)] border border-white/20 select-none">
-                          {activeCue.text}
-                        </span>
-                      </div>
-                    );
-                  })()
-                )}
               </>
             ) : (
               <div className="text-center text-gray-400 p-8">
@@ -920,7 +935,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
           </div>
 
           {/* Quick Toolbar: Sequential Autoplay, Timestamps Action, Subtitles */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 p-3 rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 p-3 rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-sm shrink-0">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
@@ -1010,7 +1025,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
 
           {/* Interactive Lesson Tabs */}
           {activeLesson && (
-            <div className="mt-6">
+            <div className="mt-6 shrink-0">
               <div className="flex items-center justify-between">
                 {editingLessonId === activeLesson.id ? (
                   <div className="flex items-center gap-2 w-full max-w-md mb-2">
@@ -1053,7 +1068,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
               {/* Tabs header */}
               <div className="flex border-b border-gray-200 dark:border-drive-darkBorder mt-4 mb-4 gap-6 overflow-x-auto">
                 <button
-                  onClick={() => setActiveTab('timestamps')}
+                  onClick={() => setActiveTab(prev => prev === 'timestamps' ? 'index' : 'timestamps')}
                   className={`pb-2 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-all ${
                     activeTab === 'timestamps'
                       ? 'border-amber-500 text-amber-600 dark:text-amber-400 font-bold'
@@ -1065,7 +1080,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('subtitles')}
+                  onClick={() => setActiveTab(prev => prev === 'subtitles' ? 'index' : 'subtitles')}
                   className={`pb-2 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-all ${
                     activeTab === 'subtitles'
                       ? 'border-sky-500 text-sky-600 dark:text-sky-400 font-bold'
@@ -1077,7 +1092,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('materials')}
+                  onClick={() => setActiveTab(prev => prev === 'materials' ? 'index' : 'materials')}
                   className={`pb-2 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-all ${
                     activeTab === 'materials'
                       ? 'border-rose-500 text-rose-600 dark:text-rose-400 font-bold'
@@ -1089,7 +1104,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('notes')}
+                  onClick={() => setActiveTab(prev => prev === 'notes' ? 'index' : 'notes')}
                   className={`pb-2 text-xs font-semibold border-b-2 transition-all ${
                     activeTab === 'notes'
                       ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'

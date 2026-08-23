@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Film, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, Clock, Video } from 'lucide-react';
+import { Film, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, Clock, Video, Star, Key } from 'lucide-react';
 import { MovieVideo, FolderItem } from '../types/index.js';
+import { getStoredOmdbApiKey } from '../services/omdbService.js';
 
 interface VideosCatalogProps {
   videos: MovieVideo[];
@@ -10,6 +11,7 @@ interface VideosCatalogProps {
   onOpenNewModal: () => void;
   onEditVideo?: (video: MovieVideo) => void;
   onDeleteVideo?: (id: string) => void;
+  onOpenOmdbKeyModal?: () => void;
 }
 
 export const VideosCatalog: React.FC<VideosCatalogProps> = ({
@@ -18,14 +20,18 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
   onSelectVideo,
   onOpenNewModal,
   onEditVideo,
-  onDeleteVideo
+  onDeleteVideo,
+  onOpenOmdbKeyModal
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'watching' | 'completed'>('all');
+  const hasOmdbKey = Boolean(getStoredOmdbApiKey());
 
   const filteredVideos = videos.filter(video => {
-    const matchesSearch = video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch =
+      (video.titlePt && video.titlePt.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (video.director && video.director.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (video.genre && video.genre.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -81,8 +87,14 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                 </div>
 
                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight py-1 drop-shadow-sm">
-                  {featuredVideo.title}
+                  {featuredVideo.titlePt || featuredVideo.title}
                 </h1>
+
+                {featuredVideo.titlePt && featuredVideo.titlePt !== featuredVideo.title && (
+                  <p className="text-xs text-red-200/80 italic font-medium -mt-1">
+                    Título Original: <strong>{featuredVideo.title}</strong>
+                  </p>
+                )}
 
                 {featuredVideo.director && (
                   <p className="text-xs text-red-200 font-medium">
@@ -110,6 +122,21 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                     <Plus className="w-4 h-4" />
                     <span>Adicionar Filme / Vídeo</span>
                   </button>
+
+                  {onOpenOmdbKeyModal && (
+                    <button
+                      onClick={onOpenOmdbKeyModal}
+                      className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all border shadow-sm ${
+                        hasOmdbKey 
+                          ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border-amber-500/40' 
+                          : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-amber-500/20'
+                      }`}
+                      title="Configurar Chave da API OMDb para puxar capas, notas IMDb e metadados automáticos"
+                    >
+                      <Key className="w-3.5 h-3.5" />
+                      <span>{hasOmdbKey ? 'Chave OMDb Ativa' : 'Configurar Chave OMDb'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -136,6 +163,21 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                   <Plus className="w-4 h-4 text-red-600" />
                   <span>Adicionar Filme / Vídeo</span>
                 </button>
+
+                {onOpenOmdbKeyModal && (
+                  <button
+                    onClick={onOpenOmdbKeyModal}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all border shadow-sm ${
+                      hasOmdbKey 
+                        ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border-amber-500/40' 
+                        : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-amber-500/20'
+                    }`}
+                    title="Configurar Chave da API OMDb para puxar capas, notas IMDb e metadados automáticos"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span>{hasOmdbKey ? 'Chave OMDb Ativa' : 'Configurar Chave OMDb'}</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -235,6 +277,12 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                       <span className="px-2 py-0.5 rounded-md bg-red-600/90 text-white text-[9px] font-black uppercase shadow">
                         {video.category || 'Filme'}
                       </span>
+                      {video.imdbRating && video.imdbRating !== 'N/A' && (
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[9px] font-black shadow backdrop-blur-sm w-fit">
+                          <Star className="w-2.5 h-2.5 fill-current" />
+                          <span>{video.imdbRating}</span>
+                        </span>
+                      )}
                     </div>
 
                     {/* Play Hover Trigger */}
@@ -285,10 +333,15 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                       <h3
                         onClick={() => onSelectVideo(video)}
                         className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate hover:text-red-500 cursor-pointer transition-colors"
-                        title={video.title}
+                        title={video.titlePt ? `${video.titlePt} (${video.title})` : video.title}
                       >
-                        {video.title}
+                        {video.titlePt || video.title}
                       </h3>
+                      {video.titlePt && video.titlePt !== video.title && (
+                        <p className="text-[10px] text-gray-400 italic truncate -mt-0.5" title={`Original: ${video.title}`}>
+                          {video.title}
+                        </p>
+                      )}
                       {video.genre && (
                         <p className="text-[10px] text-gray-400 truncate">{video.genre}</p>
                       )}

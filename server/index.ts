@@ -977,7 +977,10 @@ app.post('/api/videos', (req, res) => {
 
 app.post('/api/videos/from-folder', (req, res) => {
   try {
-    const { folderId, title, category, genre, year, director, description, coverImage } = req.body;
+    const { 
+      folderId, title, titlePt, category, genre, year, director, description, coverImage,
+      imdbId, imdbRating, actors, rated, runtime, awards, writer, metascore, country
+    } = req.body;
     if (!folderId) return res.status(400).json({ error: 'folderId é obrigatório' });
 
     const folder = db.getFolderById(folderId);
@@ -988,6 +991,7 @@ app.post('/api/videos/from-folder', (req, res) => {
 
     const newVideo = db.saveVideo({
       title: title || folder.name.replace(/^[🎬🎥🎞️📽️\s]+/, '').trim(),
+      titlePt,
       category: category || 'Filmes',
       genre,
       year,
@@ -997,7 +1001,16 @@ app.post('/api/videos/from-folder', (req, res) => {
       folderId,
       fileId: videoFile?.id,
       timestamps: videoFile?.timestamps || [],
-      subtitles: videoFile?.subtitles || []
+      subtitles: videoFile?.subtitles || [],
+      imdbId,
+      imdbRating,
+      actors,
+      rated,
+      runtime,
+      awards,
+      writer,
+      metascore,
+      country
     });
 
     res.status(201).json(newVideo);
@@ -1015,6 +1028,75 @@ app.put('/api/videos/:id', (req, res) => {
 app.delete('/api/videos/:id', (req, res) => {
   db.deleteVideo(req.params.id);
   res.status(204).end();
+});
+
+// ---------------- OMDB API INTEGRATION ----------------
+app.get('/api/omdb/search', async (req, res) => {
+  try {
+    const query = req.query.query as string;
+    const year = req.query.year as string;
+    const apiKey = (req.query.apiKey as string) || process.env.OMDB_API_KEY || 'trilogy';
+
+    if (!query || !query.trim()) {
+      return res.status(400).json({ error: 'Query de busca é obrigatória' });
+    }
+
+    const omdbUrl = new URL('https://www.omdbapi.com/');
+    omdbUrl.searchParams.set('s', query.trim());
+    if (year && year.trim()) omdbUrl.searchParams.set('y', year.trim());
+    omdbUrl.searchParams.set('type', 'movie');
+    omdbUrl.searchParams.set('apikey', apiKey);
+
+    const response = await fetch(omdbUrl.toString());
+    const data: any = await response.json();
+
+    if (data.Response === 'False') {
+      return res.json({ results: [], totalResults: 0, error: data.Error || 'Nenhum filme encontrado' });
+    }
+
+    res.json({
+      results: data.Search || [],
+      totalResults: parseInt(data.totalResults || '0', 10)
+    });
+  } catch (error: any) {
+    console.error('Error fetching from OMDb search:', error);
+    res.status(500).json({ error: error.message || 'Erro ao consultar API OMDb' });
+  }
+});
+
+app.get('/api/omdb/movie', async (req, res) => {
+  try {
+    const title = req.query.title as string;
+    const year = req.query.year as string;
+    const imdbId = req.query.imdbId as string;
+    const apiKey = (req.query.apiKey as string) || process.env.OMDB_API_KEY || 'trilogy';
+
+    if ((!title || !title.trim()) && (!imdbId || !imdbId.trim())) {
+      return res.status(400).json({ error: 'Título ou ID IMDb é obrigatório' });
+    }
+
+    const omdbUrl = new URL('https://www.omdbapi.com/');
+    if (imdbId && imdbId.trim()) {
+      omdbUrl.searchParams.set('i', imdbId.trim());
+    } else if (title && title.trim()) {
+      omdbUrl.searchParams.set('t', title.trim());
+      if (year && year.trim()) omdbUrl.searchParams.set('y', year.trim());
+    }
+    omdbUrl.searchParams.set('plot', 'full');
+    omdbUrl.searchParams.set('apikey', apiKey);
+
+    const response = await fetch(omdbUrl.toString());
+    const data: any = await response.json();
+
+    if (data.Response === 'False') {
+      return res.status(404).json({ error: data.Error || 'Filme não encontrado no OMDb' });
+    }
+
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error fetching movie from OMDb:', error);
+    res.status(500).json({ error: error.message || 'Erro ao obter dados do filme no OMDb' });
+  }
 });
 
 app.get('/api/video-categories', (_req, res) => {
@@ -1037,6 +1119,88 @@ app.put('/api/video-categories', (req, res) => {
 
 app.delete('/api/video-categories/:category', (req, res) => {
   const updated = db.deleteVideoCategory(decodeURIComponent(req.params.category));
+  res.json(updated);
+});
+
+// ---------------- VÍDEOS & MÍDIAS PESSOAIS ----------------
+app.get('/api/personal-videos', (_req, res) => {
+  res.json(db.getPersonalVideos());
+});
+
+app.get('/api/personal-videos/:id', (req, res) => {
+  const video = db.getPersonalVideoById(req.params.id);
+  if (!video) return res.status(404).json({ error: 'Vídeo pessoal não encontrado' });
+  res.json(video);
+});
+
+app.post('/api/personal-videos', (req, res) => {
+  const video = db.savePersonalVideo(req.body);
+  res.status(201).json(video);
+});
+
+app.post('/api/personal-videos/from-folder', (req, res) => {
+  try {
+    const { folderId, title, category, date, location, people, description, coverImage, tags } = req.body;
+    if (!folderId) return res.status(400).json({ error: 'folderId é obrigatório' });
+
+    const folder = db.getFolderById(folderId);
+    if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' });
+
+    const files = db.getFiles(folderId);
+    const videoFile = files.find(f => f.type === 'video');
+
+    const newVideo = db.savePersonalVideo({
+      title: title || folder.name.replace(/^[🎬🎥🎞️📽️📹📼\s]+/, '').trim(),
+      category: category || 'Memórias & Momentos',
+      date,
+      location,
+      people,
+      tags: tags || [],
+      description: description || folder.description || '',
+      coverImage: coverImage || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60',
+      folderId,
+      fileId: videoFile?.id,
+      timestamps: videoFile?.timestamps || [],
+      subtitles: videoFile?.subtitles || []
+    });
+
+    res.status(201).json(newVideo);
+  } catch (e: any) {
+    console.error('Error creating personal video from folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao criar vídeo pessoal da pasta' });
+  }
+});
+
+app.put('/api/personal-videos/:id', (req, res) => {
+  const updated = db.savePersonalVideo({ ...req.body, id: req.params.id });
+  res.json(updated);
+});
+
+app.delete('/api/personal-videos/:id', (req, res) => {
+  db.deletePersonalVideo(req.params.id);
+  res.status(204).end();
+});
+
+app.get('/api/personal-video-categories', (_req, res) => {
+  res.json(db.getPersonalVideoCategories());
+});
+
+app.post('/api/personal-video-categories', (req, res) => {
+  const { category } = req.body;
+  if (!category) return res.status(400).json({ error: 'Categoria é obrigatória' });
+  const updated = db.addPersonalVideoCategory(category);
+  res.json(updated);
+});
+
+app.put('/api/personal-video-categories', (req, res) => {
+  const { oldCategory, newCategory } = req.body;
+  if (!oldCategory || !newCategory) return res.status(400).json({ error: 'Categorias são obrigatórias' });
+  const updated = db.updatePersonalVideoCategory(oldCategory, newCategory);
+  res.json(updated);
+});
+
+app.delete('/api/personal-video-categories/:category', (req, res) => {
+  const updated = db.deletePersonalVideoCategory(decodeURIComponent(req.params.category));
   res.json(updated);
 });
 

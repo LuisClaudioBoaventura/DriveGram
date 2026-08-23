@@ -23,14 +23,12 @@ export function useVideos() {
       if (res.ok) {
         const data = await res.json();
         setVideos(data);
-        if (data.length > 0 && !activeVideo) {
-          setActiveVideo(data[0]);
-        }
+        setActiveVideo(prev => prev ? (data.find((v: MovieVideo) => v.id === prev.id) || prev) : (data[0] || null));
       }
     } catch (e) {
       console.warn('Backend unavailable for videos');
     }
-  }, [activeVideo]);
+  }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -123,12 +121,22 @@ export function useVideos() {
   const createVideoFromFolder = async (params: {
     folderId: string;
     title?: string;
+    titlePt?: string;
     description?: string;
     category?: string;
     genre?: string;
     year?: string | number;
     director?: string;
     coverImage?: string;
+    imdbId?: string;
+    imdbRating?: string;
+    actors?: string;
+    rated?: string;
+    runtime?: string;
+    awards?: string;
+    writer?: string;
+    metascore?: string;
+    country?: string;
   }): Promise<MovieVideo | null> => {
     try {
       const res = await fetch('/api/videos/from-folder', {
@@ -148,7 +156,9 @@ export function useVideos() {
     return null;
   };
 
-  const updateVideo = async (updatedVideo: MovieVideo): Promise<void> => {
+  const updateVideo = useCallback(async (updatedVideo: MovieVideo): Promise<void> => {
+    setVideos(prev => prev.map(v => v.id === updatedVideo.id ? updatedVideo : v));
+    setActiveVideo(prev => prev?.id === updatedVideo.id ? updatedVideo : prev);
     try {
       const res = await fetch(`/api/videos/${updatedVideo.id}`, {
         method: 'PUT',
@@ -158,43 +168,63 @@ export function useVideos() {
       if (res.ok) {
         const saved: MovieVideo = await res.json();
         setVideos(prev => prev.map(v => v.id === saved.id ? saved : v));
-        if (activeVideo?.id === saved.id) {
-          setActiveVideo(saved);
-        }
+        setActiveVideo(prev => prev?.id === saved.id ? saved : prev);
       }
     } catch (e) {
       console.error('Error updating video:', e);
     }
-  };
+  }, []);
 
-  const deleteVideo = async (videoId: string): Promise<void> => {
+  const deleteVideo = useCallback(async (videoId: string): Promise<void> => {
+    setVideos(prev => prev.filter(v => v.id !== videoId));
+    setActiveVideo(prev => prev?.id === videoId ? null : prev);
     try {
-      const res = await fetch(`/api/videos/${videoId}`, {
+      await fetch(`/api/videos/${videoId}`, {
         method: 'DELETE'
       });
-      if (res.ok || res.status === 204) {
-        setVideos(prev => prev.filter(v => v.id !== videoId));
-        if (activeVideo?.id === videoId) {
-          const remaining = videos.filter(v => v.id !== videoId);
-          setActiveVideo(remaining[0] || null);
-        }
-      }
     } catch (e) {
       console.error('Error deleting video:', e);
     }
-  };
+  }, []);
 
-  const updateVideoProgress = async (videoId: string, seconds: number, isCompleted = false): Promise<void> => {
-    const video = videos.find(v => v.id === videoId);
-    if (!video) return;
-    const updated: MovieVideo = {
-      ...video,
-      lastPositionSeconds: seconds,
-      isCompleted: isCompleted || video.isCompleted,
-      updatedAt: new Date().toISOString()
-    };
-    await updateVideo(updated);
-  };
+  const updateVideoProgress = useCallback(async (videoId: string, seconds: number, isCompleted = false): Promise<void> => {
+    const currentSecs = Math.floor(seconds);
+    let updatedObj: MovieVideo | null = null;
+
+    setVideos(prev => {
+      const video = prev.find(v => v.id === videoId);
+      if (!video) return prev;
+      updatedObj = {
+        ...video,
+        lastPositionSeconds: currentSecs,
+        isCompleted: isCompleted || video.isCompleted,
+        updatedAt: new Date().toISOString()
+      };
+      return prev.map(v => v.id === videoId ? updatedObj! : v);
+    });
+
+    setActiveVideo(prev => {
+      if (prev?.id === videoId) {
+        return {
+          ...prev,
+          lastPositionSeconds: currentSecs,
+          isCompleted: isCompleted || prev.isCompleted,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return prev;
+    });
+
+    if (updatedObj) {
+      try {
+        await fetch(`/api/videos/${videoId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedObj)
+        });
+      } catch (e) {}
+    }
+  }, []);
 
   return {
     videos,

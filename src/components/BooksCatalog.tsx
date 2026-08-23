@@ -31,6 +31,7 @@ interface BooksCatalogProps {
   onNewBook: () => void;
   onDeleteBook: (bookId: string) => void;
   onEditBook?: (book: Book) => void;
+  onToggleBookCompletion?: (bookId: string) => void;
   categories?: string[];
   onOpenCategoryManager?: () => void;
 }
@@ -41,15 +42,36 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
   onNewBook,
   onDeleteBook,
   onEditBook,
+  onToggleBookCompletion,
   categories = [],
   onOpenCategoryManager
 }) => {
-  const [filterType, setFilterType] = useState<'all' | 'audiobook' | 'ebook' | 'completed'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'audiobook' | 'ebook' | 'in-progress' | 'completed'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedNarrationType, setSelectedNarrationType] = useState<string>('all');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
   const [selectedVersion, setSelectedVersion] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Helper functions for completion and progress status
+  const isBookCompleted = (book: Book) => {
+    if (book.isCompleted) return true;
+    const total = book.chapters?.length || 0;
+    return total > 0 && (book.chapters?.every(c => c.isCompleted) ?? false);
+  };
+
+  const isBookInProgress = (book: Book) => {
+    if (isBookCompleted(book)) return false;
+    if ((book.lastPositionSeconds || 0) > 0) return true;
+    return (book.chapters || []).some(c => c.isCompleted || (c.lastPositionSeconds || 0) > 0);
+  };
+
+  const formatSeconds = (sec: number) => {
+    if (isNaN(sec) || !isFinite(sec)) return '00:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
 
   // Extract unique languages and versions present in current books
   const presentLanguages = Array.from(new Set(books.map(b => b.language).filter(Boolean))) as string[];
@@ -80,14 +102,11 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
       if (!match) return false;
     }
 
-    // 2. Format filter
+    // 2. Format / Status filter
     if (filterType === 'audiobook' && !(book.format === 'audiobook' || (book.chapters && book.chapters.length > 0))) return false;
     if (filterType === 'ebook' && !(book.format === 'ebook' || !!book.ebookFileId)) return false;
-    if (filterType === 'completed') {
-      const total = book.chapters?.length || 0;
-      const completed = book.chapters?.filter(c => c.isCompleted).length || 0;
-      if (total === 0 || completed < total) return false;
-    }
+    if (filterType === 'in-progress' && !isBookInProgress(book)) return false;
+    if (filterType === 'completed' && !isBookCompleted(book)) return false;
 
     // 3. Category filter
     if (selectedCategory !== 'all' && book.category !== selectedCategory) return false;
@@ -107,10 +126,8 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
   const totalBooks = books.length;
   const audiobooksCount = books.filter(b => b.format === 'audiobook' || (b.chapters && b.chapters.length > 0)).length;
   const ebooksCount = books.filter(b => b.format === 'ebook' || !!b.ebookFileId).length;
-  const completedBooksCount = books.filter(b => {
-    const total = b.chapters?.length || 0;
-    return total > 0 && b.chapters?.every(c => c.isCompleted);
-  }).length;
+  const inProgressCount = books.filter(isBookInProgress).length;
+  const completedBooksCount = books.filter(isBookCompleted).length;
 
   return (
     <div className="w-full flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-4 sm:p-6 space-y-6">
@@ -225,6 +242,18 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
             </button>
 
             <button
+              onClick={() => setFilterType('in-progress')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                filterType === 'in-progress'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+                  : 'bg-white dark:bg-drive-darkSurface text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-drive-darkHover border border-gray-200 dark:border-drive-darkBorder'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Em Andamento ({inProgressCount})</span>
+            </button>
+
+            <button
               onClick={() => setFilterType('completed')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                 filterType === 'completed'
@@ -233,7 +262,7 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
               }`}
             >
               <CheckCircle className="w-3.5 h-3.5" />
-              <span>Concluídos</span>
+              <span>Concluídos ({completedBooksCount})</span>
             </button>
           </div>
 
@@ -334,6 +363,11 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
           const totalChapters = book.chapters?.length || 0;
           const completedChapters = book.chapters?.filter(c => c.isCompleted).length || 0;
           const progressPercent = totalChapters > 0 ? Math.round((completedChapters / totalChapters) * 100) : 0;
+          const isCompleted = isBookCompleted(book);
+          const inProgress = isBookInProgress(book);
+          const activeChap = book.lastPlayedChapterId 
+            ? book.chapters?.find(c => c.id === book.lastPlayedChapterId) 
+            : book.chapters?.find(c => (c.lastPositionSeconds || 0) > 0);
 
           return (
             <div
@@ -379,15 +413,42 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                   </div>
                 )}
 
-                {/* Quick Actions overlay (Edit / Delete) */}
-                <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                {/* Top Right Actions: Concluir / Concluído Toggle & Edit/Delete */}
+                <div className="absolute top-3 right-3 flex items-center gap-1 z-10">
+                  {/* Completed Quick Toggle */}
+                  {isCompleted ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleBookCompletion?.(book.id);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-lg shadow-emerald-950/50 transition-transform hover:scale-105 border border-emerald-400/40"
+                      title="Concluído! Clique para marcar como não lido"
+                    >
+                      <CheckCircle className="w-3 h-3 fill-current" />
+                      <span>Concluído</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleBookCompletion?.(book.id);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/70 hover:bg-emerald-600 text-gray-200 hover:text-white text-[10px] font-bold backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all hover:scale-105 border border-white/20 hover:border-emerald-500 shadow-md"
+                      title="Marcar livro como Concluído"
+                    >
+                      <CheckCircle className="w-3 h-3" />
+                      <span>Concluir</span>
+                    </button>
+                  )}
+
                   {onEditBook && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onEditBook(book);
                       }}
-                      className="p-1.5 rounded-full bg-black/60 hover:bg-purple-600 text-white backdrop-blur-md transition-colors"
+                      className="p-1.5 rounded-full bg-black/60 hover:bg-purple-600 text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Editar Informações"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -400,7 +461,7 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                         onDeleteBook(book.id);
                       }
                     }}
-                    className="p-1.5 rounded-full bg-black/60 hover:bg-rose-600 text-white backdrop-blur-md transition-colors"
+                    className="p-1.5 rounded-full bg-black/60 hover:bg-rose-600 text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity"
                     title="Excluir Livro"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -437,25 +498,60 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                 </div>
 
                 {/* Progress & Duration Footer */}
-                <div className="pt-2 border-t border-gray-100 dark:border-drive-darkBorder space-y-2 text-xs text-gray-500">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">
-                      {totalChapters > 0 ? `${totalChapters} capítulos` : 'E-Book'}
-                    </span>
-                    <span className="font-mono text-purple-600 dark:text-purple-400 font-bold">
-                      {book.totalDuration || (totalChapters > 0 ? `${totalChapters * 25}m` : '')}
-                    </span>
+                {isCompleted ? (
+                  <div className="pt-2 border-t border-gray-100 dark:border-drive-darkBorder space-y-1.5 text-xs text-gray-500">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle className="w-3.5 h-3.5 fill-current" />
+                        <span>Lido / Concluído</span>
+                      </span>
+                      <span className="font-mono text-gray-400 font-medium">
+                        {book.totalDuration || (totalChapters > 0 ? `${totalChapters} cap.` : 'E-Book')}
+                      </span>
+                    </div>
+                    <div className="w-full bg-emerald-100 dark:bg-emerald-950/40 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-emerald-500 h-full rounded-full w-full" />
+                    </div>
                   </div>
-
-                  {totalChapters > 0 && (
+                ) : inProgress ? (
+                  <div className="pt-2 border-t border-gray-100 dark:border-drive-darkBorder space-y-1.5 text-xs text-gray-500">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1 truncate max-w-[160px]" title={activeChap ? `Retomar: ${activeChap.title}` : 'Continuar'}>
+                        <Clock className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{activeChap ? activeChap.title : 'Em andamento'}</span>
+                      </span>
+                      <span className="font-mono text-purple-600 dark:text-purple-400 font-bold shrink-0">
+                        {activeChap && (activeChap.lastPositionSeconds || 0) > 0 ? formatSeconds(activeChap.lastPositionSeconds || 0) : `${progressPercent}%`}
+                      </span>
+                    </div>
                     <div className="w-full bg-gray-100 dark:bg-drive-darkBg h-1.5 rounded-full overflow-hidden">
                       <div
                         className="bg-purple-600 h-full rounded-full transition-all duration-300"
-                        style={{ width: `${progressPercent}%` }}
+                        style={{ width: `${Math.max(progressPercent, 8)}%` }}
                       />
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="pt-2 border-t border-gray-100 dark:border-drive-darkBorder space-y-2 text-xs text-gray-500">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">
+                        {totalChapters > 0 ? `${totalChapters} capítulos` : 'E-Book'}
+                      </span>
+                      <span className="font-mono text-purple-600 dark:text-purple-400 font-bold">
+                        {book.totalDuration || (totalChapters > 0 ? `${totalChapters * 25}m` : '')}
+                      </span>
+                    </div>
+
+                    {totalChapters > 0 && (
+                      <div className="w-full bg-gray-100 dark:bg-drive-darkBg h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-purple-600 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );

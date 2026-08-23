@@ -15,7 +15,8 @@ import {
   Layers,
   BookOpen,
   Archive,
-  FileCode
+  FileCode,
+  Key
 } from 'lucide-react';
 import { TelegramAuthState, FileType } from '../types/index.js';
 
@@ -29,6 +30,7 @@ interface NavbarProps {
   telegramState: TelegramAuthState;
   onOpenAuth: () => void;
   onOpenSync: () => void;
+  onOpenOmdbKeyModal?: () => void;
   onSyncNow: () => void;
   isSyncing: boolean;
 }
@@ -43,6 +45,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   telegramState,
   onOpenAuth,
   onOpenSync,
+  onOpenOmdbKeyModal,
   onSyncNow,
   isSyncing
 }) => {
@@ -125,6 +128,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <HardDrive className="w-4 h-4 text-emerald-500" />
           </button>
+
+          {/* OMDb API Key Modal Trigger */}
+          {onOpenOmdbKeyModal && (
+            <button
+              onClick={onOpenOmdbKeyModal}
+              title="Configurar Chave da API OMDb (Filmes & Cinema)"
+              className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all"
+            >
+              <Key className="w-4 h-4 text-amber-500" />
+            </button>
+          )}
 
           {/* Telegram Connection Badge & Login Button */}
           <button

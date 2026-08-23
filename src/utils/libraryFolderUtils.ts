@@ -1,6 +1,6 @@
 import { FolderItem } from '../types/index.js';
 
-export type LibraryType = 'courses' | 'books' | 'comics' | 'videos' | 'series' | 'podcasts' | 'adult';
+export type LibraryType = 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult';
 
 export interface LibraryFolderConfig {
   type: LibraryType;
@@ -42,12 +42,36 @@ export const LIBRARY_FOLDERS_CONFIG: Record<LibraryType, LibraryFolderConfig> = 
   },
   videos: {
     type: 'videos',
-    displayName: 'Filmes e Videos',
+    displayName: 'Filmes & Cinema',
     folderName: 'Filmes',
-    folderNameAliases: ['filmes e videos', 'filmes e vídeos', 'filmes & videos', 'filmes & vídeos', 'filmes', 'cinema', 'videos', 'vídeos'],
+    folderNameAliases: ['filmes', 'filme', 'cinema', 'movies', 'filmes e cinema', 'filmes & cinema', 'longas', 'filmes e videos', 'filmes e vídeos', 'filmes & videos', 'filmes & vídeos'],
     defaultColor: '#ef4444',
     emoji: '🎬',
     accentColor: 'red'
+  },
+  'personal-videos': {
+    type: 'personal-videos',
+    displayName: 'Vídeos e Mídias Pessoais',
+    folderName: 'Vídeos e Mídias Pessoais',
+    folderNameAliases: [
+      'videos e midias pessoais',
+      'vídeos e mídias pessoais',
+      'videos e midias',
+      'vídeos e mídias',
+      'midias pessoais',
+      'mídias pessoais',
+      'videos pessoais',
+      'vídeos pessoais',
+      'gravacoes',
+      'gravações',
+      'home videos',
+      'familia',
+      'família',
+      'pessoal'
+    ],
+    defaultColor: '#f59e0b',
+    emoji: '📹',
+    accentColor: 'amber'
   },
   series: {
     type: 'series',
@@ -87,19 +111,25 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-function matchesFolder(folderName: string, config: LibraryFolderConfig): boolean {
+function matchesFolderExact(folderName: string, config: LibraryFolderConfig): boolean {
   const norm = normalizeText(folderName);
   const expectedNorm = normalizeText(config.folderName);
   if (norm === expectedNorm) return true;
 
   for (const alias of config.folderNameAliases) {
+    if (norm === normalizeText(alias)) return true;
+  }
+  return false;
+}
+
+function matchesFolderFuzzy(folderName: string, config: LibraryFolderConfig): boolean {
+  const norm = normalizeText(folderName);
+  for (const alias of config.folderNameAliases) {
     const aliasNorm = normalizeText(alias);
-    if (norm === aliasNorm) return true;
     if (norm.startsWith(aliasNorm + ' ') || norm.endsWith(' ' + aliasNorm) || norm.includes(' ' + aliasNorm + ' ')) {
       return true;
     }
   }
-
   return false;
 }
 
@@ -112,16 +142,30 @@ export function findLibraryRootFolder(libraryType: LibraryType, allFolders: Fold
 
   const nonTrashFolders = allFolders.filter(f => !f.isTrash);
 
-  // 1. Search top-level folders first (parentId === null)
+  // 1. Exact match among top-level folders first (parentId === null)
   for (const f of nonTrashFolders) {
-    if (f.parentId === null && matchesFolder(f.name, config)) {
+    if (f.parentId === null && matchesFolderExact(f.name, config)) {
       return f;
     }
   }
 
-  // 2. Search any folder if not found in root
+  // 2. Exact match anywhere in folder tree
   for (const f of nonTrashFolders) {
-    if (matchesFolder(f.name, config)) {
+    if (matchesFolderExact(f.name, config)) {
+      return f;
+    }
+  }
+
+  // 3. Fuzzy/alias match among top-level folders
+  for (const f of nonTrashFolders) {
+    if (f.parentId === null && matchesFolderFuzzy(f.name, config)) {
+      return f;
+    }
+  }
+
+  // 4. Fuzzy/alias match anywhere
+  for (const f of nonTrashFolders) {
+    if (matchesFolderFuzzy(f.name, config)) {
       return f;
     }
   }

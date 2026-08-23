@@ -8,6 +8,7 @@ import { CourseCatalog } from './components/CourseCatalog.js';
 import { CourseView } from './components/CourseView.js';
 import { BooksCatalog } from './components/BooksCatalog.js';
 import { BookReaderView } from './components/BookReaderView.js';
+import { FloatingAudiobookPlayer } from './components/FloatingAudiobookPlayer.js';
 import { ComicsCatalog } from './components/ComicsCatalog.js';
 import { ComicStudioView } from './components/ComicStudioView.js';
 import { NewComicModal } from './components/NewComicModal.js';
@@ -16,6 +17,10 @@ import { VideosCatalog } from './components/VideosCatalog.js';
 import { VideoPlayerView } from './components/VideoPlayerView.js';
 import { NewVideoModal } from './components/NewVideoModal.js';
 import { EditVideoModal } from './components/EditVideoModal.js';
+import { OmdbKeyModal } from './components/OmdbKeyModal.js';
+import { PersonalVideosCatalog } from './components/PersonalVideosCatalog.js';
+import { NewPersonalVideoModal } from './components/NewPersonalVideoModal.js';
+import { EditPersonalVideoModal } from './components/EditPersonalVideoModal.js';
 import { SeriesCatalog } from './components/SeriesCatalog.js';
 import { SeriesStudioView } from './components/SeriesStudioView.js';
 import { NewSeriesModal } from './components/NewSeriesModal.js';
@@ -49,10 +54,11 @@ import { useCourses } from './hooks/useCourses.js';
 import { useBooks } from './hooks/useBooks.js';
 import { useComics } from './hooks/useComics.js';
 import { useVideos } from './hooks/useVideos.js';
+import { usePersonalVideos } from './hooks/usePersonalVideos.js';
 import { useSeries } from './hooks/useSeries.js';
 import { useAudioShows } from './hooks/useAudioShows.js';
 import { useAdultVault } from './hooks/useAdultVault.js';
-import { DriveItem, FolderItem, Course, Book, ComicBook, MovieVideo, SeriesShow, AudioShow, AdultVideo, AdultPerformer } from './types/index.js';
+import { DriveItem, FolderItem, Course, Book, ComicBook, MovieVideo, PersonalVideo, SeriesShow, AudioShow, AdultVideo, AdultPerformer } from './types/index.js';
 import { getFilesFromDataTransfer } from './utils/dragDropUtils.js';
 import { isRedLockerFolder } from './utils/libraryFolderUtils.js';
 import { UploadCloud, Lock, Flame, LockKeyhole } from 'lucide-react';
@@ -89,6 +95,7 @@ export function App() {
   const books = useBooks();
   const comics = useComics();
   const videos = useVideos();
+  const personalVideos = usePersonalVideos();
   const series = useSeries();
   const audioShows = useAudioShows();
   const adultVault = useAdultVault();
@@ -113,6 +120,8 @@ export function App() {
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const [isComicModalOpen, setIsComicModalOpen] = useState(false);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [isOmdbKeyModalOpen, setIsOmdbKeyModalOpen] = useState(false);
+  const [isPersonalVideoModalOpen, setIsPersonalVideoModalOpen] = useState(false);
   const [isSeriesModalOpen, setIsSeriesModalOpen] = useState(false);
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
   const [isAdultLockModalOpen, setIsAdultLockModalOpen] = useState(false);
@@ -122,6 +131,7 @@ export function App() {
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [editingComic, setEditingComic] = useState<ComicBook | null>(null);
   const [editingVideo, setEditingVideo] = useState<MovieVideo | null>(null);
+  const [editingPersonalVideo, setEditingPersonalVideo] = useState<PersonalVideo | null>(null);
   const [editingSeries, setEditingSeries] = useState<SeriesShow | null>(null);
   const [editingAudioShow, setEditingAudioShow] = useState<AudioShow | null>(null);
   const [editingAdultVideo, setEditingAdultVideo] = useState<AdultVideo | null>(null);
@@ -131,6 +141,22 @@ export function App() {
   const [selectedBookForView, setSelectedBookForView] = useState<Book | null>(null);
   const [selectedComicForView, setSelectedComicForView] = useState<ComicBook | null>(null);
   const [selectedVideoForView, setSelectedVideoForView] = useState<MovieVideo | null>(null);
+  const [selectedPersonalVideoForView, setSelectedPersonalVideoForView] = useState<PersonalVideo | null>(null);
+  const [activePipVideo, setActivePipVideo] = useState<{ video: MovieVideo; isPersonal?: boolean } | null>(null);
+
+  const activePlayingMovie = (selectedVideoForView || (selectedPersonalVideoForView ? {
+    ...selectedPersonalVideoForView,
+    year: selectedPersonalVideoForView.date || undefined,
+    director: selectedPersonalVideoForView.people || undefined,
+    genre: selectedPersonalVideoForView.location || selectedPersonalVideoForView.category
+  } as MovieVideo : null) || activePipVideo?.video) as MovieVideo | null;
+
+  const isPersonalMovie = Boolean(selectedPersonalVideoForView || activePipVideo?.isPersonal);
+  const isMovieVisibleInMain = Boolean(
+    (selectedVideoForView && fs.activeTab === 'videos') ||
+    (selectedPersonalVideoForView && fs.activeTab === 'personal-videos')
+  );
+
   const [selectedSeriesForView, setSelectedSeriesForView] = useState<SeriesShow | null>(null);
   const [selectedAudioForView, setSelectedAudioForView] = useState<AudioShow | null>(null);
   const [selectedAdultVideoForView, setSelectedAdultVideoForView] = useState<AdultVideo | null>(null);
@@ -318,6 +344,7 @@ export function App() {
             setIsSyncModalOpen(true);
           }
         }}
+        onOpenOmdbKeyModal={() => setIsOmdbKeyModalOpen(true)}
         onSyncNow={async () => {
           if (!tg.authState.isConnected) {
             setLoginPromptReason({
@@ -344,7 +371,16 @@ export function App() {
             if (tab !== 'courses') setSelectedCourseForView(null);
             if (tab !== 'books') setSelectedBookForView(null);
             if (tab !== 'comics') setSelectedComicForView(null);
-            if (tab !== 'videos') setSelectedVideoForView(null);
+            if (tab !== 'videos') {
+              setSelectedVideoForView(null);
+            } else if (activePipVideo && !activePipVideo.isPersonal) {
+              setSelectedVideoForView(activePipVideo.video);
+            }
+            if (tab !== 'personal-videos') {
+              setSelectedPersonalVideoForView(null);
+            } else if (activePipVideo && activePipVideo.isPersonal) {
+              setSelectedPersonalVideoForView(activePipVideo.video as any);
+            }
             if (tab !== 'series') setSelectedSeriesForView(null);
             if (tab !== 'podcasts') setSelectedAudioForView(null);
             if (tab !== 'adult') setSelectedAdultVideoForView(null);
@@ -357,6 +393,7 @@ export function App() {
           onNewBook={() => setIsBookModalOpen(true)}
           onNewComic={() => setIsComicModalOpen(true)}
           onNewVideo={() => setIsVideoModalOpen(true)}
+          onNewPersonalVideo={() => setIsPersonalVideoModalOpen(true)}
           onNewSeries={() => setIsSeriesModalOpen(true)}
           onNewAudio={() => setIsAudioModalOpen(true)}
           onNewAdultVideo={() => {
@@ -395,93 +432,133 @@ export function App() {
 
         {/* Content Area */}
         <main ref={mainContentRef} className="flex-1 flex flex-col overflow-y-auto relative">
-          {/* Active Course View */}
-          {selectedCourseForView ? (
-            <CourseView
-              course={selectedCourseForView}
-              activeLesson={courses.activeLesson}
-              onSelectLesson={courses.selectLesson}
-              onToggleCompletion={courses.toggleLessonCompletion}
-              onSaveNotes={courses.saveLessonNotes}
-              onUpdateCourse={async (updated) => {
-                await courses.updateCourse(updated);
-                setSelectedCourseForView(updated);
-                fs.refresh();
-              }}
-              onDeleteCourse={async (id) => {
-                await courses.deleteCourse(id);
-                setSelectedCourseForView(null);
-                fs.refresh();
-              }}
-              onBackToDrive={() => setSelectedCourseForView(null)}
-              onOpenFileViewer={(f) => setActivePreviewFile(f)}
-              getNextLesson={courses.getNextLesson}
-              getPreviousLesson={courses.getPreviousLesson}
-              allFiles={fs.allFiles}
-            />
-          ) : selectedBookForView ? (
-            /* Active Audiobook / E-Book Reader Studio */
-            <BookReaderView
-              book={selectedBookForView}
-              activeChapter={books.activeChapter}
-              onSelectChapter={books.selectChapter}
-              onToggleChapterCompletion={books.toggleChapterCompletion}
-              onSaveChapterNotes={books.saveChapterNotes}
-              onUpdateBook={async (updated) => {
-                await books.updateBook(updated);
-                setSelectedBookForView(updated);
-                fs.refresh();
-              }}
-              onDeleteBook={async (id) => {
-                await books.deleteBook(id);
-                setSelectedBookForView(null);
-                fs.refresh();
-              }}
-              onBackToLibrary={() => setSelectedBookForView(null)}
-              getNextChapter={books.getNextChapter}
-              getPreviousChapter={books.getPreviousChapter}
-              allFiles={fs.allFiles}
-            />
-          ) : selectedComicForView ? (
-            /* Active Comic / HQ Studio & Reader */
-            <ComicStudioView
-              comic={selectedComicForView}
-              activeIssue={comics.activeIssue}
-              onSelectIssue={comics.setActiveIssue}
-              onToggleIssueCompletion={comics.toggleIssueCompletion}
-              onUpdateComic={async (updated) => {
-                await comics.updateComic(updated);
-                setSelectedComicForView(updated);
-                fs.refresh();
-              }}
-              onDeleteComic={async (id) => {
-                await comics.deleteComic(id);
-                setSelectedComicForView(null);
-                fs.refresh();
-              }}
-              onBackToLibrary={() => setSelectedComicForView(null)}
-              onOpenEditModal={() => setEditingComic(selectedComicForView)}
-              allFiles={fs.allFiles}
-            />
-          ) : selectedVideoForView ? (
-            /* Active Cinema Video Player */
+          {/* Single Persistent Video Player */}
+          {activePlayingMovie && (
             <VideoPlayerView
-              video={selectedVideoForView}
+              video={activePlayingMovie}
               allFiles={fs.allFiles}
-              onBackToCatalog={() => setSelectedVideoForView(null)}
-              onUpdateProgress={async (videoId, seconds, isCompleted) => {
-                await videos.updateVideoProgress(videoId, seconds, isCompleted);
+              isPiPHidden={!isMovieVisibleInMain}
+              onBackToCatalog={() => {
+                setActivePipVideo(null);
+                setSelectedVideoForView(null);
+                setSelectedPersonalVideoForView(null);
               }}
-              onOpenEditModal={() => setEditingVideo(selectedVideoForView)}
+              onUpdateProgress={isPersonalMovie ? personalVideos.updateProgress : videos.updateVideoProgress}
+              onOpenEditModal={() => {
+                if (isPersonalMovie && selectedPersonalVideoForView) {
+                  setEditingPersonalVideo(selectedPersonalVideoForView);
+                } else if (selectedVideoForView) {
+                  setEditingVideo(selectedVideoForView);
+                }
+              }}
+              onEnterPiP={() => {
+                setActivePipVideo({ video: activePlayingMovie, isPersonal: isPersonalMovie });
+              }}
+              onLeavePiP={() => {}}
+              onRestoreToTab={() => {
+                fs.setActiveTab(isPersonalMovie ? 'personal-videos' : 'videos');
+                if (isPersonalMovie) {
+                  setSelectedPersonalVideoForView(activePlayingMovie as any);
+                } else {
+                  setSelectedVideoForView(activePlayingMovie);
+                }
+                setActivePipVideo(null);
+              }}
             />
-          ) : selectedSeriesForView ? (
-            /* Active Series & Anime Studio */
-            <SeriesStudioView
-              series={selectedSeriesForView}
-              allFiles={fs.allFiles}
-              onBackToCatalog={() => setSelectedSeriesForView(null)}
-              onUpdateSeries={async (updated) => {
-                await series.updateSeries(updated);
+          )}
+
+          {!isMovieVisibleInMain && (
+            <>
+              {/* Active Course View */}
+              {selectedCourseForView ? (
+                <CourseView
+                  course={selectedCourseForView}
+                  activeLesson={courses.activeLesson}
+                  onSelectLesson={courses.selectLesson}
+                  onToggleCompletion={courses.toggleLessonCompletion}
+                  onSaveNotes={courses.saveLessonNotes}
+                  onUpdateCourse={async (updated) => {
+                    await courses.updateCourse(updated);
+                    setSelectedCourseForView(updated);
+                    fs.refresh();
+                  }}
+                  onDeleteCourse={async (id) => {
+                    await courses.deleteCourse(id);
+                    setSelectedCourseForView(null);
+                    fs.refresh();
+                  }}
+                  onBackToDrive={() => setSelectedCourseForView(null)}
+                  onOpenFileViewer={(f) => setActivePreviewFile(f)}
+                  onUpdateLessonProgress={courses.updateLessonProgress}
+                  getNextLesson={courses.getNextLesson}
+                  getPreviousLesson={courses.getPreviousLesson}
+                  allFiles={fs.allFiles}
+                />
+              ) : selectedBookForView ? (
+                /* Active Audiobook / E-Book Reader Studio */
+                <BookReaderView
+                  book={selectedBookForView}
+                  activeChapter={books.activeChapter}
+                  onSelectChapter={(chap, autoPlay) => books.selectChapter(chap, autoPlay !== undefined ? autoPlay : true)}
+                  onToggleChapterCompletion={books.toggleChapterCompletion}
+                  onToggleBookCompletion={books.toggleBookCompletion}
+                  onSaveChapterNotes={books.saveChapterNotes}
+                  onUpdateBook={async (updated) => {
+                    await books.updateBook(updated);
+                    setSelectedBookForView(updated);
+                    fs.refresh();
+                  }}
+                  onDeleteBook={async (id) => {
+                    await books.deleteBook(id);
+                    setSelectedBookForView(null);
+                    fs.refresh();
+                  }}
+                  onBackToLibrary={() => setSelectedBookForView(null)}
+                  getNextChapter={books.getNextChapter}
+                  getPreviousChapter={books.getPreviousChapter}
+                  allFiles={fs.allFiles}
+                  // Global Player bindings
+                  isPlaying={books.isPlaying}
+                  currentTime={books.currentTime}
+                  duration={books.duration}
+                  playbackSpeed={books.playbackSpeed}
+                  onTogglePlay={books.togglePlay}
+                  onSeek={books.seekTo}
+                  onSkip={books.skip}
+                  onSpeedChange={books.setPlaybackSpeed}
+                  onPlayNextChapter={books.playNextChapter}
+                  onPlayPreviousChapter={books.playPreviousChapter}
+                  onMinimizeToFloating={() => setSelectedBookForView(null)}
+                />
+              ) : selectedComicForView ? (
+                /* Active Comic / HQ Studio & Reader */
+                <ComicStudioView
+                  comic={selectedComicForView}
+                  activeIssue={comics.activeIssue}
+                  onSelectIssue={comics.setActiveIssue}
+                  onToggleIssueCompletion={comics.toggleIssueCompletion}
+                  onUpdateComic={async (updated) => {
+                    await comics.updateComic(updated);
+                    setSelectedComicForView(updated);
+                    fs.refresh();
+                  }}
+                  onDeleteComic={async (id) => {
+                    await comics.deleteComic(id);
+                    setSelectedComicForView(null);
+                    fs.refresh();
+                  }}
+                  onBackToLibrary={() => setSelectedComicForView(null)}
+                  onOpenEditModal={() => setEditingComic(selectedComicForView)}
+                  allFiles={fs.allFiles}
+                />
+              ) : selectedSeriesForView ? (
+                /* Active Series & Anime Studio */
+                <SeriesStudioView
+                  series={selectedSeriesForView}
+                  allFiles={fs.allFiles}
+                  onBackToCatalog={() => setSelectedSeriesForView(null)}
+                  onUpdateSeries={async (updated) => {
+                    await series.updateSeries(updated);
                 setSelectedSeriesForView(updated);
                 fs.refresh();
               }}
@@ -591,6 +668,7 @@ export function App() {
                 fs.refresh();
               }}
               onEditBook={(book) => setEditingBook(book)}
+              onToggleBookCompletion={books.toggleBookCompletion}
               onOpenCategoryManager={() => setIsCategoryManagerOpen(true)}
             />
           ) : fs.activeTab === 'comics' ? (
@@ -620,11 +698,30 @@ export function App() {
                 setSelectedVideoForView(v);
               }}
               onOpenNewModal={() => setIsVideoModalOpen(true)}
+              onOpenOmdbKeyModal={() => setIsOmdbKeyModalOpen(true)}
               onEditVideo={(v) => setEditingVideo(v)}
               onDeleteVideo={(id) => {
                 videos.deleteVideo(id);
                 fs.refresh();
               }}
+            />
+          ) : fs.activeTab === 'personal-videos' ? (
+            /* Personal Videos & Media Catalog */
+            <PersonalVideosCatalog
+              videos={personalVideos.personalVideos}
+              categories={personalVideos.categories}
+              folders={fs.allFolders}
+              onSelectVideo={(v) => {
+                personalVideos.setActiveVideo(v);
+                setSelectedPersonalVideoForView(v);
+              }}
+              onOpenNewModal={() => setIsPersonalVideoModalOpen(true)}
+              onEditVideo={(v) => setEditingPersonalVideo(v)}
+              onDeleteVideo={(id) => {
+                personalVideos.deletePersonalVideo(id);
+                fs.refresh();
+              }}
+              onToggleFavorite={personalVideos.toggleFavorite}
             />
           ) : fs.activeTab === 'series' ? (
             /* Series & Animes Catalog */
@@ -809,6 +906,8 @@ export function App() {
               )}
             </div>
           )}
+        </>
+      )}
 
           {/* Drag & Drop Visual Overlay */}
           {isDragging && (
@@ -1016,6 +1115,46 @@ export function App() {
           fs.refresh();
           if (selectedVideoForView?.id === updated.id) {
             setSelectedVideoForView(updated);
+          }
+        }}
+      />
+
+      {/* OMDb API Key Manager Modal */}
+      <OmdbKeyModal
+        isOpen={isOmdbKeyModalOpen}
+        onClose={() => setIsOmdbKeyModalOpen(false)}
+      />
+
+      {/* Personal Video Creation Modal */}
+      <NewPersonalVideoModal
+        isOpen={isPersonalVideoModalOpen}
+        onClose={() => setIsPersonalVideoModalOpen(false)}
+        folders={fs.allFolders}
+        categories={personalVideos.categories}
+        onAddCategory={personalVideos.addCategory}
+        onCreateVideo={async (data) => {
+          const newVideo = await personalVideos.createPersonalVideoFromFolder(data);
+          fs.refresh();
+          if (newVideo) {
+            setSelectedPersonalVideoForView(newVideo);
+            fs.setActiveTab('personal-videos');
+          }
+        }}
+      />
+
+      {/* Personal Video Metadata Editor Modal */}
+      <EditPersonalVideoModal
+        isOpen={editingPersonalVideo !== null}
+        onClose={() => setEditingPersonalVideo(null)}
+        video={editingPersonalVideo}
+        categories={personalVideos.categories}
+        allFiles={fs.allFiles}
+        onAddCategory={personalVideos.addCategory}
+        onSave={async (updated) => {
+          await personalVideos.updatePersonalVideo(updated);
+          fs.refresh();
+          if (selectedPersonalVideoForView?.id === updated.id) {
+            setSelectedPersonalVideoForView(updated);
           }
         }}
       />
@@ -1254,6 +1393,38 @@ export function App() {
           }
         }}
       />
+
+      {/* Persistent Global Floating Audiobook Player */}
+      {books.activeBook && books.isFloatingOpen && (
+        <FloatingAudiobookPlayer
+          book={books.activeBook}
+          activeChapter={books.activeChapter}
+          allFiles={fs.allFiles}
+          isPlaying={books.isPlaying}
+          currentTime={books.currentTime}
+          duration={books.duration}
+          playbackSpeed={books.playbackSpeed}
+          volume={books.volume}
+          isMuted={books.isMuted}
+          audioRef={books.audioRef}
+          onTogglePlay={books.togglePlay}
+          onSeek={books.seekTo}
+          onSkip={books.skip}
+          onSpeedChange={books.setPlaybackSpeed}
+          onVolumeChange={books.setVolume}
+          onToggleMute={books.toggleMute}
+          onNextChapter={books.playNextChapter}
+          onPreviousChapter={books.playPreviousChapter}
+          onOpenFullReader={(b) => setSelectedBookForView(b)}
+          onClose={books.closeFloatingPlayer}
+          onAudioEnded={books.handleAudioEnded}
+          onTimeUpdate={books.setCurrentTime}
+          onLoadedMetadata={books.setDuration}
+          hasNextChapter={!!books.getNextChapter()}
+          hasPreviousChapter={!!books.getPreviousChapter()}
+          isCardVisible={selectedBookForView === null}
+        />
+      )}
 
       {/* Modern Floating Toast Notification */}
       {toast && (

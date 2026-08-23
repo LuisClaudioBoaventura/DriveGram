@@ -111,33 +111,20 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     }
   }, [file?.id]);
 
-  // Load and parse subtitle cues
+  // Sync native HTML5 textTrack mode with selectedSubtitleId
   useEffect(() => {
-    async function loadSubtitleCues() {
-      if (!selectedSubtitleId || !subtitles.length) {
-        setSubtitleCues([]);
-        return;
-      }
+    if (videoRef.current && videoRef.current.textTracks) {
+      const tracks = videoRef.current.textTracks;
       const active = subtitles.find(s => s.id === selectedSubtitleId);
-      if (!active || !active.url) {
-        setSubtitleCues([]);
-        return;
-      }
-      try {
-        let content = '';
-        if (active.url.startsWith('data:')) {
-          const encoded = active.url.split(',')[1];
-          content = decodeURIComponent(encoded || '');
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
+        if (selectedSubtitleId && (track.label === active?.label || track.language === active?.srclang)) {
+          track.mode = 'showing';
         } else {
-          const res = await fetch(active.url);
-          content = await res.text();
+          track.mode = 'disabled';
         }
-        setSubtitleCues(parseSubtitleContent(content));
-      } catch (e) {
-        console.error('Error loading subtitle cues:', e);
       }
     }
-    loadSubtitleCues();
   }, [selectedSubtitleId, subtitles]);
 
   if (!file) return null;
@@ -361,40 +348,27 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               <div className="relative max-h-full max-w-full flex items-center justify-center">
                 <video
                   ref={videoRef}
-                  key={file.id + (selectedSubtitleId || '')}
+                  key={file.id}
                   controls
                   autoPlay
                   playsInline
                   crossOrigin="anonymous"
                   onEnded={handleMediaEnded}
                   onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
-                  onPlay={() => {
-                    if (videoRef.current?.textTracks?.[0]) {
-                      videoRef.current.textTracks[0].mode = 'showing';
-                    }
-                  }}
                   src={`/api/stream/${file.id}`}
                   className="max-h-full max-w-full rounded-xl shadow-2xl object-contain"
                 >
-                  {activeSub?.url && (
+                  {subtitles.map((sub) => (
                     <track
+                      key={sub.id}
                       kind="subtitles"
-                      src={activeSub.url}
-                      srcLang={activeSub.srclang || 'pt'}
-                      label={activeSub.label || 'Português'}
-                      default
+                      src={sub.url}
+                      srcLang={sub.srclang || 'pt'}
+                      label={sub.label || 'Português'}
+                      default={sub.id === selectedSubtitleId}
                     />
-                  )}
+                  ))}
                 </video>
-
-                {/* Subtitle Visual Overlay */}
-                {selectedSubtitleId && activeCue && (
-                  <div className="absolute bottom-16 left-1/2 -translate-x-1/2 max-w-[90%] pointer-events-none z-30 animate-in fade-in duration-75 text-center">
-                    <span className="inline-block px-4 py-1.5 rounded-xl bg-black/85 backdrop-blur-md text-white text-sm sm:text-base md:text-lg font-bold text-center leading-snug drop-shadow-[0_2px_8px_rgba(0,0,0,1)] border border-white/20 select-none">
-                      {activeCue.text}
-                    </span>
-                  </div>
-                )}
               </div>
             )}
 

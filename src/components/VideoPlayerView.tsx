@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, Download, Edit3, Film, Settings } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, Download, Edit3, Film, Settings, Star, User, Clock, Airplay } from 'lucide-react';
 import { MovieVideo, DriveItem } from '../types/index.js';
 
 interface VideoPlayerViewProps {
@@ -8,6 +8,10 @@ interface VideoPlayerViewProps {
   onBackToCatalog: () => void;
   onUpdateProgress: (videoId: string, seconds: number, isCompleted?: boolean) => Promise<void>;
   onOpenEditModal?: () => void;
+  onEnterPiP?: () => void;
+  onLeavePiP?: () => void;
+  onRestoreToTab?: () => void;
+  isPiPHidden?: boolean;
 }
 
 export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
@@ -15,7 +19,11 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   allFiles,
   onBackToCatalog,
   onUpdateProgress,
-  onOpenEditModal
+  onOpenEditModal,
+  onEnterPiP,
+  onLeavePiP,
+  onRestoreToTab,
+  isPiPHidden = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -34,7 +42,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     if (videoRef.current && (video.lastPositionSeconds || 0) > 0) {
       videoRef.current.currentTime = video.lastPositionSeconds || 0;
     }
-  }, [video.id, video.lastPositionSeconds]);
+  }, [video.id]);
 
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
@@ -49,15 +57,92 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     onUpdateProgress(video.id, duration, true);
   };
 
-  // Periodic progress auto-save
+  const onUpdateProgressRef = useRef(onUpdateProgress);
+  useEffect(() => {
+    onUpdateProgressRef.current = onUpdateProgress;
+  }, [onUpdateProgress]);
+
+  const onEnterPiPRef = useRef(onEnterPiP);
+  const onLeavePiPRef = useRef(onLeavePiP);
+  const onRestoreToTabRef = useRef(onRestoreToTab);
+  useEffect(() => {
+    onEnterPiPRef.current = onEnterPiP;
+    onLeavePiPRef.current = onLeavePiP;
+    onRestoreToTabRef.current = onRestoreToTab;
+  }, [onEnterPiP, onLeavePiP, onRestoreToTab]);
+
+  const lastSavedTimeRef = useRef<number>(-1);
+
+  // Periodic progress auto-save & unmount sync
   useEffect(() => {
     const interval = setInterval(() => {
       if (videoRef.current && !videoRef.current.paused) {
-        onUpdateProgress(video.id, videoRef.current.currentTime, false);
+        const curr = Math.floor(videoRef.current.currentTime);
+        if (curr !== lastSavedTimeRef.current && curr > 0) {
+          lastSavedTimeRef.current = curr;
+          onUpdateProgressRef.current(video.id, curr, false);
+        }
       }
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [video.id, onUpdateProgress]);
+    }, 4000);
+
+    return () => {
+      clearInterval(interval);
+      if (videoRef.current) {
+        const curr = Math.floor(videoRef.current.currentTime);
+        if (curr > 0 && curr !== lastSavedTimeRef.current) {
+          lastSavedTimeRef.current = curr;
+          onUpdateProgressRef.current(video.id, curr, false);
+        }
+      }
+    };
+  }, [video.id]);
+
+  // Picture-in-Picture event listeners
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    const handleLeavePiP = () => {
+      if (videoEl) {
+        const curr = Math.floor(videoEl.currentTime);
+        lastSavedTimeRef.current = curr;
+        onUpdateProgressRef.current(video.id, curr, false);
+        if (!videoEl.paused) {
+          videoEl.play().catch(() => {});
+        }
+      }
+      onLeavePiPRef.current?.();
+      onRestoreToTabRef.current?.();
+    };
+
+    const handleEnterPiP = () => {
+      if (videoEl) {
+        const curr = Math.floor(videoEl.currentTime);
+        lastSavedTimeRef.current = curr;
+        onUpdateProgressRef.current(video.id, curr, false);
+      }
+      onEnterPiPRef.current?.();
+    };
+
+    videoEl.addEventListener('leavepictureinpicture', handleLeavePiP);
+    videoEl.addEventListener('enterpictureinpicture', handleEnterPiP);
+
+    return () => {
+      videoEl.removeEventListener('leavepictureinpicture', handleLeavePiP);
+      videoEl.removeEventListener('enterpictureinpicture', handleEnterPiP);
+    };
+  }, [video.id]);
+
+  const handleBack = () => {
+    if (document.pictureInPictureElement && document.exitPictureInPicture) {
+      document.exitPictureInPicture().catch(() => {});
+    }
+    if (videoRef.current) {
+      onUpdateProgress(video.id, videoRef.current.currentTime, false);
+      videoRef.current.pause();
+    }
+    onBackToCatalog();
+  };
 
   const formatTime = (secs: number) => {
     const h = Math.floor(secs / 3600);
@@ -79,74 +164,107 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const activeSub = subtitles.find(s => s.id === selectedSubId);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-black text-white overflow-y-auto select-none">
+    <div
+      className={
+        isPiPHidden
+          ? 'fixed bottom-0 right-0 w-px h-px opacity-0 pointer-events-none -z-50 overflow-hidden'
+          : 'flex-1 flex flex-col h-full bg-black text-white overflow-y-auto select-none'
+      }
+    >
       {/* Slim Top Navbar Bar with Icon-Only Actions */}
-      <div className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-4 py-1.5 bg-gray-950/95 backdrop-blur-md border-b border-gray-800/80 shrink-0 h-11">
-        {/* Back Button (Icon Only) */}
-        <button
-          onClick={() => {
-            if (videoRef.current) {
-              onUpdateProgress(video.id, videoRef.current.currentTime, false);
-            }
-            onBackToCatalog();
-          }}
-          className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-red-400 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
-          title="Voltar para Catálogo de Filmes"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
+      {!isPiPHidden && (
+        <div className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-4 py-1.5 bg-gray-950/95 backdrop-blur-md border-b border-gray-800/80 shrink-0 h-11">
+          {/* Back Button (Icon Only) */}
+          <button
+            onClick={handleBack}
+            className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-red-400 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
+            title="Voltar para Catálogo de Filmes"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
 
-        {/* Video Title & Category */}
-        <div className="flex items-center gap-2 overflow-hidden px-2 max-w-[50vw] sm:max-w-md md:max-w-lg">
-          <span className="px-2 py-0.5 rounded-lg bg-red-600/90 text-white text-[10px] font-black uppercase shadow-sm shrink-0">
-            {video.category || 'Filme'}
-          </span>
-          <h2 className="text-xs sm:text-sm font-bold text-white truncate">
-            {video.title}
-          </h2>
-        </div>
+          {/* Video Title & Category */}
+          <div className="flex items-center gap-2 overflow-hidden px-2 max-w-[50vw] sm:max-w-md md:max-w-lg">
+            <span className="px-2 py-0.5 rounded-lg bg-red-600/90 text-white text-[10px] font-black uppercase shadow-sm shrink-0">
+              {video.category || 'Filme'}
+            </span>
+            <h2 className="text-xs sm:text-sm font-bold text-white truncate">
+              {video.titlePt || video.title}
+            </h2>
+          </div>
 
-        {/* Action Controls (Icons Only) */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {onOpenEditModal && (
+          {/* Action Controls (Icons Only) */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* PiP Button */}
             <button
-              onClick={onOpenEditModal}
-              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
-              title="Editar Obra / Capa"
+              onClick={async () => {
+                if (!videoRef.current) return;
+                try {
+                  if (document.pictureInPictureElement) {
+                    await document.exitPictureInPicture();
+                  } else if (videoRef.current.requestPictureInPicture) {
+                    await videoRef.current.requestPictureInPicture();
+                  }
+                } catch (e) {
+                  console.warn('PiP error:', e);
+                }
+              }}
+              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-purple-400 hover:text-purple-300 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
+              title="Janela Flutuante (Picture-in-Picture) - Assista enquanto navega"
             >
-              <Edit3 className="w-4 h-4" />
+              <Airplay className="w-4 h-4" />
             </button>
-          )}
 
-          {videoFile && (
-            <a
-              href={`/api/stream/${videoFile.id}`}
-              download={videoFile.name}
-              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
-              title="Baixar Vídeo"
-            >
-              <Download className="w-4 h-4" />
-            </a>
-          )}
+            {onOpenEditModal && (
+              <button
+                onClick={onOpenEditModal}
+                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
+                title="Editar Obra / Capa"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+            )}
+
+            {videoFile && (
+              <a
+                href={`/api/stream/${videoFile.id}`}
+                download={videoFile.name}
+                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
+                title="Baixar Vídeo"
+              >
+                <Download className="w-4 h-4" />
+              </a>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Cinema Player Container */}
-      <div className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 max-w-6xl w-full mx-auto space-y-4">
+      <div className={isPiPHidden ? 'w-px h-px overflow-hidden' : 'flex-1 flex flex-col items-center justify-center p-2 sm:p-4 max-w-6xl w-full mx-auto space-y-4'}>
         {videoFile ? (
-          <div className="relative w-full max-h-[72vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center group">
+          <div className={isPiPHidden ? 'w-px h-px' : 'relative w-full max-h-[72vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center group'}>
             <video
               ref={videoRef}
               src={`/api/stream/${videoFile.id}`}
-              controls
+              controls={!isPiPHidden}
               autoPlay
               playsInline
               crossOrigin="anonymous"
+              onLoadedMetadata={() => {
+                if (videoRef.current && (video.lastPositionSeconds || 0) > 0) {
+                  videoRef.current.currentTime = video.lastPositionSeconds || 0;
+                }
+              }}
               onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
+              onPause={() => {
+                setIsPlaying(false);
+                if (videoRef.current) {
+                  onUpdateProgress(video.id, videoRef.current.currentTime, false);
+                }
+              }}
               onTimeUpdate={handleTimeUpdate}
               onEnded={handleVideoEnded}
-              className="w-full h-full max-h-[72vh] object-contain"
+              className={isPiPHidden ? 'w-px h-px' : 'w-full h-full max-h-[72vh] object-contain'}
             >
               {subtitles.map(sub => (
                 <track
@@ -160,7 +278,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               ))}
             </video>
           </div>
-        ) : (
+        ) : !isPiPHidden ? (
           <div className="flex flex-col items-center justify-center p-16 text-center bg-gray-900/50 rounded-3xl border border-gray-800 max-w-md w-full">
             <Film className="w-12 h-12 text-red-500 mb-3" />
             <h3 className="text-sm font-bold">Arquivo de vídeo não encontrado</h3>
@@ -168,10 +286,11 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               Certifique-se de que a pasta vinculada contém um arquivo de vídeo .mp4 ou .mkv válido.
             </p>
           </div>
-        )}
+        ) : null}
 
         {/* Video Information & Chapters Hub */}
-        <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 text-gray-300">
+        {!isPiPHidden && (
+          <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 text-gray-300">
           {/* Metadata Section */}
           <div className="md:col-span-2 space-y-4 bg-gray-900/60 p-6 rounded-3xl border border-gray-800/80">
             <div>
@@ -179,9 +298,26 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 <span className="px-2.5 py-1 rounded-lg bg-red-600/20 text-red-400 text-xs font-bold">
                   {video.category || 'Filmes'}
                 </span>
+                {video.imdbRating && video.imdbRating !== 'N/A' && (
+                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 text-xs font-black shadow">
+                    <Star className="w-3.5 h-3.5 fill-current" />
+                    <span>IMDb {video.imdbRating}</span>
+                  </span>
+                )}
+                {video.rated && video.rated !== 'N/A' && (
+                  <span className="px-2.5 py-1 rounded-lg bg-gray-800 text-gray-300 text-xs font-bold">
+                    {video.rated}
+                  </span>
+                )}
                 {video.year && (
-                  <span className="px-2 py-0.5 rounded-lg bg-gray-800 text-gray-300 text-xs font-mono">
+                  <span className="px-2.5 py-1 rounded-lg bg-gray-800 text-gray-300 text-xs font-mono">
                     {video.year}
+                  </span>
+                )}
+                {video.runtime && video.runtime !== 'N/A' && (
+                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-800 text-gray-300 text-xs font-mono">
+                    <Clock className="w-3 h-3 text-gray-400" />
+                    <span>{video.runtime}</span>
                   </span>
                 )}
                 {video.genre && (
@@ -191,10 +327,23 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 )}
               </div>
 
-              <h1 className="text-xl sm:text-2xl font-black text-white">{video.title}</h1>
+              <h1 className="text-xl sm:text-2xl font-black text-white">{video.titlePt || video.title}</h1>
+              {video.titlePt && video.titlePt !== video.title && (
+                <p className="text-xs text-red-300 italic mt-0.5">
+                  Título Original: <strong>{video.title}</strong>
+                </p>
+              )}
+              
               {video.director && (
-                <p className="text-xs text-gray-400 mt-1">
-                  Direção: <strong>{video.director}</strong>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  Direção: <strong className="text-gray-200">{video.director}</strong>
+                </p>
+              )}
+
+              {video.actors && (
+                <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                  <User className="w-3 h-3 text-gray-500 shrink-0" />
+                  <span>Elenco: <strong className="text-gray-300">{video.actors}</strong></span>
                 </p>
               )}
             </div>
@@ -256,6 +405,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             )}
           </div>
         </div>
+      )}
       </div>
     </div>
   );

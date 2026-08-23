@@ -14,17 +14,12 @@ export function useCourses() {
       if (res.ok) {
         const data = await res.json();
         setCourses(data);
-        if (data.length > 0 && !activeCourse) {
-          setActiveCourse(data[0]);
-          if (data[0].modules?.[0]?.lessons?.[0]) {
-            setActiveLesson(data[0].modules[0].lessons[0]);
-          }
-        }
+        setActiveCourse(prev => prev ? (data.find((c: Course) => c.id === prev.id) || prev) : (data[0] || null));
       }
     } catch (e) {
       console.warn('Backend unavailable for courses');
     }
-  }, [activeCourse]);
+  }, []);
 
   useEffect(() => {
     fetchCourses();
@@ -32,15 +27,18 @@ export function useCourses() {
 
   const selectCourse = (course: Course) => {
     setActiveCourse(course);
-    if (course.modules?.[0]?.lessons?.[0]) {
-      setActiveLesson(course.modules[0].lessons[0]);
-    } else {
-      setActiveLesson(null);
-    }
+    const allLessons = course.modules.flatMap(m => m.lessons);
+    const lastPlayed = allLessons.find(l => l.id === course.lastPlayedLessonId);
+    const inProgress = allLessons.find(l => (l.lastPositionSeconds || 0) > 0 && !l.isCompleted);
+    const targetLesson = lastPlayed || inProgress || allLessons[0] || null;
+    setActiveLesson(targetLesson);
   };
 
   const selectLesson = (lesson: Lesson) => {
     setActiveLesson(lesson);
+    if (activeCourse) {
+      setActiveCourse(prev => prev ? { ...prev, lastPlayedLessonId: lesson.id } : prev);
+    }
   };
 
   // Find next lesson in the course hierarchy
@@ -78,7 +76,7 @@ export function useCourses() {
   }, [activeCourse, activeLesson]);
 
   // Update whole course
-  const updateCourse = async (updatedCourse: Course) => {
+  const updateCourse = useCallback(async (updatedCourse: Course) => {
     setActiveCourse(updatedCourse);
     setCourses(prev => prev.map(c => c.id === updatedCourse.id ? updatedCourse : c));
     if (activeLesson) {
@@ -95,10 +93,10 @@ export function useCourses() {
         body: JSON.stringify(updatedCourse)
       });
     } catch (e) {}
-  };
+  }, [activeLesson?.id]);
 
   // Toggle lesson completed
-  const toggleLessonCompletion = async (lessonId: string) => {
+  const toggleLessonCompletion = useCallback(async (lessonId: string) => {
     if (!activeCourse) return;
 
     const updatedModules = activeCourse.modules.map(module => ({
@@ -110,10 +108,10 @@ export function useCourses() {
 
     const updatedCourse = { ...activeCourse, modules: updatedModules };
     await updateCourse(updatedCourse);
-  };
+  }, [activeCourse, updateCourse]);
 
   // Save lesson notes
-  const saveLessonNotes = async (lessonId: string, notes: string) => {
+  const saveLessonNotes = useCallback(async (lessonId: string, notes: string) => {
     if (!activeCourse) return;
 
     const updatedModules = activeCourse.modules.map(module => ({
@@ -125,7 +123,49 @@ export function useCourses() {
 
     const updatedCourse = { ...activeCourse, modules: updatedModules };
     await updateCourse(updatedCourse);
-  };
+  }, [activeCourse, updateCourse]);
+
+  // Update playback progress for a lesson
+  const updateLessonProgress = useCallback(async (lessonId: string, seconds: number, isCompleted?: boolean) => {
+    const currentSeconds = Math.floor(seconds);
+    let updatedCourseObj: Course | null = null;
+
+    setActiveCourse(prev => {
+      if (!prev) return prev;
+      const updatedModules = prev.modules.map(module => ({
+        ...module,
+        lessons: module.lessons.map(lesson => 
+          lesson.id === lessonId 
+            ? { 
+                ...lesson, 
+                lastPositionSeconds: currentSeconds, 
+                ...(isCompleted !== undefined ? { isCompleted } : {}) 
+              } 
+            : lesson
+        )
+      }));
+
+      updatedCourseObj = { 
+        ...prev, 
+        lastPlayedLessonId: lessonId,
+        lastPositionSeconds: currentSeconds,
+        modules: updatedModules 
+      };
+      return updatedCourseObj;
+    });
+
+    if (updatedCourseObj) {
+      const savedCourse: Course = updatedCourseObj;
+      setCourses(prev => prev.map(c => c.id === savedCourse.id ? savedCourse : c));
+      try {
+        await fetch(`/api/courses/${savedCourse.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(savedCourse)
+        });
+      } catch (e) {}
+    }
+  }, []);
 
   // Create new course manually
   const createCourse = async (courseData: Partial<Course>) => {
@@ -210,6 +250,7 @@ export function useCourses() {
     getPreviousLesson,
     toggleLessonCompletion,
     saveLessonNotes,
+    updateLessonProgress,
     updateCourse,
     createCourse,
     createCourseFromFolder,

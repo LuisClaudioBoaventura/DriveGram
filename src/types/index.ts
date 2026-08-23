@@ -128,6 +128,9 @@ export interface Book {
   format?: 'audiobook' | 'ebook' | 'bundle';
   ebookFileId?: string;
   chapters: BookChapter[];
+  isCompleted?: boolean;
+  lastPlayedChapterId?: string;
+  lastPositionSeconds?: number;
 }
 
 export interface Course {
@@ -140,6 +143,8 @@ export interface Course {
   updatedAt: string;
   category?: string;
   modules: CourseModule[];
+  lastPlayedLessonId?: string;
+  lastPositionSeconds?: number;
 }
 
 export interface UploadProgress {
@@ -214,6 +219,7 @@ export interface ComicBook {
 export interface MovieVideo {
   id: string;
   title: string;
+  titlePt?: string; // Título em Português / Nome de exibição opcional
   description?: string;
   duration?: string; // Ex: "1h 45m" ou "45:00"
   durationSeconds?: number;
@@ -230,6 +236,74 @@ export interface MovieVideo {
   lastPositionSeconds?: number;
   isCompleted?: boolean;
   rating?: number; // 1 to 5
+  createdAt: string;
+  updatedAt: string;
+  // OMDb / IMDb Metadata
+  imdbId?: string;
+  imdbRating?: string;
+  actors?: string;
+  rated?: string;
+  runtime?: string;
+  awards?: string;
+  writer?: string;
+  metascore?: string;
+  country?: string;
+}
+
+export interface OMDbSearchResultItem {
+  Title: string;
+  Year: string;
+  imdbID: string;
+  Type: string;
+  Poster: string;
+}
+
+export interface OMDbMovieDetail {
+  Title: string;
+  Year: string;
+  Rated?: string;
+  Released?: string;
+  Runtime?: string;
+  Genre?: string;
+  Director?: string;
+  Writer?: string;
+  Actors?: string;
+  Plot?: string;
+  Language?: string;
+  Country?: string;
+  Awards?: string;
+  Poster?: string;
+  Ratings?: Array<{ Source: string; Value: string }>;
+  Metascore?: string;
+  imdbRating?: string;
+  imdbVotes?: string;
+  imdbID: string;
+  Type?: string;
+  Response: string;
+  Error?: string;
+}
+
+// ---------------- VÍDEOS & MÍDIAS PESSOAIS ----------------
+export interface PersonalVideo {
+  id: string;
+  title: string;
+  description?: string;
+  date?: string; // Data da gravação (ex: "2024-05-12" ou "Maio 2024")
+  location?: string; // Local/Cidade (ex: "Gramado, RS")
+  people?: string; // Pessoas no vídeo (ex: "Família, Amigos")
+  category?: string; // Viagens, Família & Eventos, Aniversários, Memórias, Gravações, Vlogs, Outros
+  tags?: string[];
+  duration?: string;
+  durationSeconds?: number;
+  resolution?: string;
+  coverImage?: string;
+  fileId?: string; // driveItem id
+  folderId?: string; // drive folder
+  timestamps?: VideoTimestamp[];
+  subtitles?: VideoSubtitle[];
+  lastPositionSeconds?: number;
+  isCompleted?: boolean;
+  isFavorite?: boolean;
   createdAt: string;
   updatedAt: string;
 }

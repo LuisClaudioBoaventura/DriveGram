@@ -13,6 +13,7 @@ import {
   ComicBook, 
   ComicIssue, 
   MovieVideo,
+  PersonalVideo,
   SeriesShow,
   SeriesSeason,
   SeriesEpisode,
@@ -47,6 +48,8 @@ export interface DatabaseSchema {
   comicCategories: string[];
   videos: MovieVideo[];
   videoCategories: string[];
+  personalVideos: PersonalVideo[];
+  personalVideoCategories: string[];
   series: SeriesShow[];
   seriesCategories: string[];
   audioShows: AudioShow[];
@@ -321,6 +324,16 @@ const initialDemoData: DatabaseSchema = {
     'Vídeos Curtos & Clipes',
     'Outros'
   ],
+  personalVideos: [],
+  personalVideoCategories: [
+    'Viagens',
+    'Família & Eventos',
+    'Aniversários & Festas',
+    'Memórias & Momentos',
+    'Gravações & Projetos',
+    'Vlogs & Dia a Dia',
+    'Outros'
+  ],
   series: [],
   seriesCategories: [
     'Séries de TV',
@@ -416,6 +429,10 @@ class Database {
         if (!parsed.videoCategories || parsed.videoCategories.length === 0) {
           parsed.videoCategories = initialDemoData.videoCategories;
         }
+        if (!parsed.personalVideos) parsed.personalVideos = [];
+        if (!parsed.personalVideoCategories || parsed.personalVideoCategories.length === 0) {
+          parsed.personalVideoCategories = initialDemoData.personalVideoCategories;
+        }
         if (!parsed.series) parsed.series = [];
         if (!parsed.seriesCategories || parsed.seriesCategories.length === 0) {
           parsed.seriesCategories = initialDemoData.seriesCategories;
@@ -446,7 +463,8 @@ class Database {
       { name: 'Cursos e Treinamentos', color: '#1a73e8', aliases: ['cursos e treinamentos', 'cursos & treinamentos', 'cursos e estudos', 'cursos & estudos', 'treinamentos', 'cursos'] },
       { name: 'Livros e Audiolivros', color: '#9333ea', aliases: ['livros e audiolivros', 'livros & audiolivros', 'livros', 'audiolivros', 'ebooks'] },
       { name: "HQ's", color: '#ec4899', aliases: ["hq's", 'hqs', 'hqs e mangás', 'hqs & mangas', 'quadrinhos', 'mangás', 'mangas'] },
-      { name: 'Filmes', color: '#ef4444', aliases: ['filmes e videos', 'filmes e vídeos', 'filmes & videos', 'filmes & vídeos', 'filmes', 'cinema', 'videos', 'vídeos'] },
+      { name: 'Filmes', color: '#ef4444', aliases: ['filmes', 'filme', 'cinema', 'movies', 'filmes e cinema', 'filmes & cinema', 'longas', 'filmes e videos', 'filmes e vídeos'] },
+      { name: 'Vídeos e Mídias Pessoais', color: '#f59e0b', aliases: ['videos e midias pessoais', 'vídeos e mídias pessoais', 'videos e midias', 'vídeos e mídias', 'midias pessoais', 'mídias pessoais', 'videos pessoais', 'vídeos pessoais', 'gravacoes', 'gravações', 'home videos', 'familia', 'família', 'pessoal'] },
       { name: 'Séries e Animes', color: '#8b5cf6', aliases: ['séries e animes', 'series e animes', 'séries & animes', 'series & animes', 'séries', 'series', 'animes'] },
       { name: 'Musicas e Podcasts', color: '#10b981', aliases: ['musicas e podcasts', 'músicas e podcasts', 'musicas & podcasts', 'músicas & podcasts', 'músicas', 'musicas', 'podcasts', 'albuns', 'álbuns'] },
       { name: 'Red Locker', color: '#e11d48', aliases: ['red locker', 'redlocker'] }
@@ -1570,6 +1588,7 @@ class Database {
     const video: MovieVideo = {
       id,
       title: videoData.title,
+      titlePt: videoData.titlePt,
       description: videoData.description || '',
       duration: videoData.duration || '1h 30m',
       durationSeconds: videoData.durationSeconds,
@@ -1586,6 +1605,15 @@ class Database {
       lastPositionSeconds: videoData.lastPositionSeconds || 0,
       isCompleted: videoData.isCompleted || false,
       rating: videoData.rating,
+      imdbId: videoData.imdbId,
+      imdbRating: videoData.imdbRating,
+      actors: videoData.actors,
+      rated: videoData.rated,
+      runtime: videoData.runtime,
+      awards: videoData.awards,
+      writer: videoData.writer,
+      metascore: videoData.metascore,
+      country: videoData.country,
       createdAt: videoData.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -1651,6 +1679,106 @@ class Database {
     this.data.videoCategories = categories.filter(c => c !== category);
     this.save(this.data);
     return this.data.videoCategories;
+  }
+
+  // ---------------- VÍDEOS & MÍDIAS PESSOAIS CRUD ----------------
+  public getPersonalVideos(): PersonalVideo[] {
+    return this.data.personalVideos || [];
+  }
+
+  public getPersonalVideoById(id: string): PersonalVideo | undefined {
+    return (this.data.personalVideos || []).find(v => v.id === id);
+  }
+
+  public savePersonalVideo(videoData: Partial<PersonalVideo> & { title: string }): PersonalVideo {
+    if (!this.data.personalVideos) this.data.personalVideos = [];
+    const id = videoData.id || 'pvid-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+    const existingIdx = this.data.personalVideos.findIndex(v => v.id === id);
+
+    const video: PersonalVideo = {
+      id,
+      title: videoData.title,
+      description: videoData.description || '',
+      date: videoData.date,
+      location: videoData.location,
+      people: videoData.people,
+      category: videoData.category || 'Memórias & Momentos',
+      tags: videoData.tags || [],
+      duration: videoData.duration || '00:00',
+      durationSeconds: videoData.durationSeconds,
+      resolution: videoData.resolution || '1080p',
+      coverImage: videoData.coverImage || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60',
+      fileId: videoData.fileId,
+      folderId: videoData.folderId,
+      timestamps: videoData.timestamps || [],
+      subtitles: videoData.subtitles || [],
+      lastPositionSeconds: videoData.lastPositionSeconds || 0,
+      isCompleted: videoData.isCompleted || false,
+      isFavorite: videoData.isFavorite || false,
+      createdAt: videoData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (existingIdx >= 0) {
+      this.data.personalVideos[existingIdx] = video;
+    } else {
+      this.data.personalVideos.push(video);
+    }
+
+    this.save(this.data);
+    return video;
+  }
+
+  public deletePersonalVideo(id: string): boolean {
+    if (!this.data.personalVideos) return false;
+    const initialLen = this.data.personalVideos.length;
+    this.data.personalVideos = this.data.personalVideos.filter(v => v.id !== id);
+    if (this.data.personalVideos.length !== initialLen) {
+      this.save(this.data);
+      return true;
+    }
+    return false;
+  }
+
+  public getPersonalVideoCategories(): string[] {
+    return this.data.personalVideoCategories || initialDemoData.personalVideoCategories;
+  }
+
+  public addPersonalVideoCategory(category: string): string[] {
+    const trimmed = category.trim();
+    if (!trimmed) return this.getPersonalVideoCategories();
+    const categories = this.getPersonalVideoCategories();
+    if (!categories.includes(trimmed)) {
+      categories.push(trimmed);
+      this.data.personalVideoCategories = categories;
+      this.save(this.data);
+    }
+    return this.data.personalVideoCategories;
+  }
+
+  public updatePersonalVideoCategory(oldCategory: string, newCategory: string): string[] {
+    const trimmedNew = newCategory.trim();
+    if (!trimmedNew) return this.getPersonalVideoCategories();
+    const categories = this.getPersonalVideoCategories();
+    const idx = categories.indexOf(oldCategory);
+    if (idx >= 0) {
+      categories[idx] = trimmedNew;
+      if (this.data.personalVideos) {
+        this.data.personalVideos.forEach(v => {
+          if (v.category === oldCategory) v.category = trimmedNew;
+        });
+      }
+      this.data.personalVideoCategories = categories;
+      this.save(this.data);
+    }
+    return this.data.personalVideoCategories;
+  }
+
+  public deletePersonalVideoCategory(category: string): string[] {
+    const categories = this.getPersonalVideoCategories();
+    this.data.personalVideoCategories = categories.filter(c => c !== category);
+    this.save(this.data);
+    return this.data.personalVideoCategories;
   }
 
   // ---------------- SÉRIES & TV SHOWS CRUD ----------------

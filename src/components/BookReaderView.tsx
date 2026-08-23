@@ -9,6 +9,8 @@ import {
   Headphones, 
   BookOpen, 
   CheckCircle, 
+  CheckCircle2,
+  Airplay,
   Circle, 
   Clock, 
   Moon, 
@@ -34,7 +36,9 @@ import {
   Tag,
   Sparkles,
   ExternalLink,
-  Layers
+  Layers,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Book, BookChapter, DriveItem, VideoTimestamp } from '../types/index.js';
 import { ComicReader } from './ComicReader.js';
@@ -43,8 +47,9 @@ import { EpubReader } from './EpubReader.js';
 interface BookReaderViewProps {
   book: Book;
   activeChapter: BookChapter | null;
-  onSelectChapter: (chapter: BookChapter) => void;
+  onSelectChapter: (chapter: BookChapter, autoPlay?: boolean) => void;
   onToggleChapterCompletion: (chapterId: string) => void;
+  onToggleBookCompletion?: (bookId: string) => void;
   onSaveChapterNotes: (chapterId: string, notes: string) => void;
   onUpdateBook: (updatedBook: Book) => Promise<void>;
   onDeleteBook: (bookId: string) => Promise<void>;
@@ -52,6 +57,18 @@ interface BookReaderViewProps {
   getNextChapter: () => BookChapter | null;
   getPreviousChapter: () => BookChapter | null;
   allFiles: DriveItem[];
+  // Global Audio Playback & Floating Window Controls
+  isPlaying?: boolean;
+  currentTime?: number;
+  duration?: number;
+  playbackSpeed?: number;
+  onTogglePlay?: () => void;
+  onSeek?: (seconds: number) => void;
+  onSkip?: (seconds: number) => void;
+  onSpeedChange?: (speed: number) => void;
+  onPlayNextChapter?: () => void;
+  onPlayPreviousChapter?: () => void;
+  onMinimizeToFloating?: () => void;
 }
 
 export const BookReaderView: React.FC<BookReaderViewProps> = ({
@@ -59,20 +76,38 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
   activeChapter,
   onSelectChapter,
   onToggleChapterCompletion,
+  onToggleBookCompletion,
   onSaveChapterNotes,
   onUpdateBook,
   onDeleteBook,
   onBackToLibrary,
   getNextChapter,
   getPreviousChapter,
-  allFiles
+  allFiles,
+  isPlaying: isPlayingProp,
+  currentTime: currentTimeProp,
+  duration: durationProp,
+  playbackSpeed: playbackSpeedProp,
+  onTogglePlay: onTogglePlayProp,
+  onSeek: onSeekProp,
+  onSkip: onSkipProp,
+  onSpeedChange: onSpeedChangeProp,
+  onPlayNextChapter: onPlayNextChapterProp,
+  onPlayPreviousChapter: onPlayPreviousChapterProp,
+  onMinimizeToFloating
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [localIsPlaying, setLocalIsPlaying] = useState(false);
+  const [localCurrentTime, setLocalCurrentTime] = useState(0);
+  const [localDuration, setLocalDuration] = useState(0);
+  const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<number>(1);
   const [isAutoPlayNext, setIsAutoPlayNext] = useState(true);
+
+  // Effective playback values (prioritize global player when provided)
+  const isPlaying = isPlayingProp !== undefined ? isPlayingProp : localIsPlaying;
+  const currentTime = currentTimeProp !== undefined ? currentTimeProp : localCurrentTime;
+  const duration = durationProp !== undefined ? durationProp : localDuration;
+  const playbackSpeed = playbackSpeedProp !== undefined ? playbackSpeedProp : localPlaybackSpeed;
 
   // Sleep Timer state
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
@@ -83,12 +118,23 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
     ? allFiles.find(f => f.id === book.ebookFileId) 
     : allFiles.find(f => f.parentId === book.folderId && (f.type === 'pdf' || f.extension === 'epub' || f.name.endsWith('.pdf')));
 
-  // Layout View Mode: 'audio' | 'split' | 'ebook'
+  // Layout View Mode: 'audio' | 'split' | 'ebook' (Default: 'audio' for audiobooks)
   const [viewMode, setViewMode] = useState<'audio' | 'split' | 'ebook'>(() => {
     if (ebookFile && (!book.chapters || book.chapters.length === 0)) return 'ebook';
-    if (ebookFile && book.chapters && book.chapters.length > 0) return 'split';
     return 'audio';
   });
+
+  // Reset to default audio mode on book change
+  useEffect(() => {
+    if (ebookFile && (!book.chapters || book.chapters.length === 0)) {
+      setViewMode('ebook');
+    } else {
+      setViewMode('audio');
+    }
+  }, [book.id]);
+
+  // Collapsible Chapters Sidebar state
+  const [isChaptersSidebarOpen, setIsChaptersSidebarOpen] = useState<boolean>(true);
 
   // Active Tab for details
   const [activeTab, setActiveTab] = useState<'timestamps' | 'notes'>('timestamps');
@@ -110,16 +156,10 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
   const [coverUrlInput, setCoverUrlInput] = useState(book.coverImage || '');
   const coverInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync active chapter
+  // Sync active chapter notes
   useEffect(() => {
     if (activeChapter) {
       setChapterNotes(activeChapter.notes || '');
-      setIsPlaying(true);
-      if (audioRef.current) {
-        audioRef.current.currentTime = activeChapter.lastPositionSeconds || 0;
-        audioRef.current.playbackRate = playbackSpeed;
-        audioRef.current.play().catch(() => setIsPlaying(false));
-      }
     }
   }, [activeChapter?.id]);
 
@@ -130,9 +170,11 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
       interval = setInterval(() => {
         setSleepTimerRemainingSeconds(prev => {
           if (prev && prev <= 1) {
-            if (audioRef.current) {
+            if (onTogglePlayProp && isPlaying) {
+              onTogglePlayProp();
+            } else if (audioRef.current) {
               audioRef.current.pause();
-              setIsPlaying(false);
+              setLocalIsPlaying(false);
             }
             return null;
           }
@@ -154,7 +196,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
   };
 
   const handleAudioEnded = () => {
-    setIsPlaying(false);
+    setLocalIsPlaying(false);
     if (activeChapter) {
       if (!activeChapter.isCompleted) {
         onToggleChapterCompletion(activeChapter.id);
@@ -167,23 +209,35 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
   };
 
   const handleTogglePlay = () => {
+    if (onTogglePlayProp) {
+      onTogglePlayProp();
+      return;
+    }
     if (!audioRef.current) return;
-    if (isPlaying) {
+    if (localIsPlaying) {
       audioRef.current.pause();
-      setIsPlaying(false);
+      setLocalIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      audioRef.current.play().then(() => setLocalIsPlaying(true)).catch(() => {});
     }
   };
 
   const handleSkip = (seconds: number) => {
+    if (onSkipProp) {
+      onSkipProp(seconds);
+      return;
+    }
     if (audioRef.current) {
       audioRef.current.currentTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + seconds));
     }
   };
 
   const handleSpeedChange = (speed: number) => {
-    setPlaybackSpeed(speed);
+    if (onSpeedChangeProp) {
+      onSpeedChangeProp(speed);
+      return;
+    }
+    setLocalPlaybackSpeed(speed);
     if (audioRef.current) {
       audioRef.current.playbackRate = speed;
     }
@@ -198,8 +252,8 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
 
   // ---------------- TIMESTAMPS / MARCADORES HANDLERS ----------------
   const handleAddTimestamp = async (customLabel?: string) => {
-    if (!activeChapter || !audioRef.current) return;
-    const currentSec = Math.floor(audioRef.current.currentTime);
+    if (!activeChapter) return;
+    const currentSec = Math.floor(currentTime);
     const formatted = formatSeconds(currentSec);
     const label = customLabel || newBookmarkLabel.trim() || `Marcador em ${formatted}`;
 
@@ -223,21 +277,25 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
 
   const handleSeekTimestamp = (sec: number, chapterToSeek?: BookChapter) => {
     if (chapterToSeek && chapterToSeek.id !== activeChapter?.id) {
-      onSelectChapter(chapterToSeek);
+      onSelectChapter(chapterToSeek, true);
       setTimeout(() => {
-        if (audioRef.current) {
+        if (onSeekProp) {
+          onSeekProp(sec);
+        } else if (audioRef.current) {
           audioRef.current.currentTime = sec;
           audioRef.current.play().catch(() => {});
-          setIsPlaying(true);
+          setLocalIsPlaying(true);
         }
       }, 100);
       return;
     }
 
-    if (audioRef.current) {
+    if (onSeekProp) {
+      onSeekProp(sec);
+    } else if (audioRef.current) {
       audioRef.current.currentTime = sec;
       audioRef.current.play().catch(() => {});
-      setIsPlaying(true);
+      setLocalIsPlaying(true);
     }
   };
 
@@ -286,17 +344,52 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
   return (
     <div className="flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg overflow-hidden">
       {/* Top Header Navigation */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface shrink-0">
-        <div className="flex items-center gap-3 overflow-hidden">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-2 border-b border-gray-200/80 dark:border-gray-800/80 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md shrink-0 h-13">
+        <div className="flex items-center gap-2 overflow-hidden">
+          {/* Back to Library (Minimalist) */}
           <button
             onClick={onBackToLibrary}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors border border-gray-200 dark:border-drive-darkBorder shrink-0"
+            className="p-2 rounded-xl bg-gray-100/90 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 border border-gray-200/80 dark:border-gray-800 transition-all active:scale-95 shadow-sm shrink-0"
+            title="Voltar para Biblioteca"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Biblioteca</span>
+            <ArrowLeft className="w-4 h-4" />
           </button>
 
-          <div className="h-4 w-px bg-gray-300 dark:bg-drive-darkBorder hidden sm:block shrink-0" />
+          {/* Floating Window Miniplayer (Minimalist) */}
+          <button
+            onClick={onMinimizeToFloating || onBackToLibrary}
+            className="p-2 rounded-xl bg-purple-50/90 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 text-purple-600 dark:text-purple-400 border border-purple-200/80 dark:border-purple-800/60 transition-all active:scale-95 shadow-sm shrink-0"
+            title="Janela Flutuante - Continuar ouvindo enquanto navega pelo DriveGram"
+          >
+            <Airplay className="w-4 h-4" />
+          </button>
+
+          {/* Mark as Completed (Minimalist Pill) */}
+          <button
+            onClick={() => {
+              if (onToggleBookCompletion) {
+                onToggleBookCompletion(book.id);
+              } else {
+                const nextDone = !book.isCompleted;
+                onUpdateBook({
+                  ...book,
+                  isCompleted: nextDone,
+                  chapters: (book.chapters || []).map(c => ({ ...c, isCompleted: nextDone }))
+                });
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 border ${
+              book.isCompleted
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-emerald-600/20'
+                : 'bg-gray-100/90 dark:bg-gray-900/90 text-gray-600 dark:text-gray-300 border-gray-200/80 dark:border-gray-800 hover:border-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-400'
+            }`}
+            title={book.isCompleted ? 'Livro marcado como Concluído (Clique para desmarcar)' : 'Marcar livro como Concluído'}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{book.isCompleted ? 'Concluído' : 'Concluir'}</span>
+          </button>
+
+          <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 hidden sm:block shrink-0" />
 
           {isEditingBook ? (
             <div className="flex items-center gap-2 flex-wrap">
@@ -347,56 +440,59 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                   setAuthorInput(book.author || '');
                   setIsEditingBook(true);
                 }}
-                className="p-1 text-gray-400 hover:text-purple-500"
+                className="p-1 text-gray-400 hover:text-purple-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 title="Editar Livro"
               >
-                <Edit3 className="w-3 h-3" />
+                <Edit3 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => {
                   setCoverUrlInput(book.coverImage || '');
                   setIsChangingCover(true);
                 }}
-                className="p-1 text-gray-400 hover:text-purple-500"
+                className="p-1 text-gray-400 hover:text-purple-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 title="Trocar Capa"
               >
-                <ImageIcon className="w-3 h-3 text-purple-500" />
+                <ImageIcon className="w-3.5 h-3.5 text-purple-500" />
               </button>
             </div>
           )}
         </div>
 
-        {/* View Mode Switcher (Áudio / Ouvir & Ler / PDF) */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-gray-100 dark:bg-drive-darkBg p-1 rounded-xl border border-gray-200 dark:border-drive-darkBorder">
+        {/* View Mode Switcher (Áudio / Ouvir & Ler / PDF) & Anexar */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center bg-gray-100/90 dark:bg-gray-900/90 p-0.5 rounded-xl border border-gray-200/80 dark:border-gray-800">
             <button
               onClick={() => setViewMode('audio')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'audio' ? 'bg-white dark:bg-drive-darkSurface text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500'
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'audio' ? 'bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
+              title="Modo Apenas Áudio"
             >
               <Headphones className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Apenas Áudio</span>
+              <span className="hidden md:inline">Áudio</span>
             </button>
 
             <button
               onClick={() => setViewMode('split')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'split' ? 'bg-white dark:bg-drive-darkSurface text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500'
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'split' ? 'bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
+              title="Modo Ouvir & Ler (Dividido)"
             >
               <SplitSquareVertical className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Ouvir & Ler (Dividido)</span>
+              <span className="hidden md:inline">Dividido</span>
             </button>
 
             <button
               onClick={() => setViewMode('ebook')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'ebook' ? 'bg-white dark:bg-drive-darkSurface text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500'
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'ebook' ? 'bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
+              title="Modo Leitor PDF"
             >
               <BookOpen className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Leitor PDF</span>
+              <span className="hidden md:inline">PDF</span>
             </button>
           </div>
 
@@ -404,11 +500,11 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
             <>
               <button
                 onClick={() => pdfInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold hover:bg-purple-100 transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-50/90 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/60 text-xs font-bold hover:bg-purple-100 transition-colors shadow-sm"
                 title="Carregar arquivo PDF do livro"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Anexar Livro (PDF)</span>
+                <span className="hidden lg:inline">Anexar PDF</span>
               </button>
               <input
                 type="file"
@@ -422,16 +518,18 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
         </div>
       </div>
 
-      {/* Hidden Global Audio Element so audio plays seamlessly across all view modes */}
-      <audio
-        ref={audioRef}
-        src={activeAudioFile ? `/api/stream/${activeAudioFile.id}` : undefined}
-        onTimeUpdate={(e) => setCurrentTime((e.target as HTMLAudioElement).currentTime)}
-        onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration)}
-        onEnded={handleAudioEnded}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-      />
+      {/* Hidden Audio Element (fallback only if global audio player is not provided) */}
+      {!onTogglePlayProp && (
+        <audio
+          ref={audioRef}
+          src={activeAudioFile ? `/api/stream/${activeAudioFile.id}` : undefined}
+          onTimeUpdate={(e) => setLocalCurrentTime((e.target as HTMLAudioElement).currentTime)}
+          onLoadedMetadata={(e) => setLocalDuration((e.target as HTMLAudioElement).duration)}
+          onEnded={handleAudioEnded}
+          onPlay={() => setLocalIsPlaying(true)}
+          onPause={() => setLocalIsPlaying(false)}
+        />
+      )}
 
       {/* Main Workspace */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
@@ -474,8 +572,12 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                       value={currentTime}
                       onChange={(e) => {
                         const val = Number(e.target.value);
-                        setCurrentTime(val);
-                        if (audioRef.current) audioRef.current.currentTime = val;
+                        if (onSeekProp) {
+                          onSeekProp(val);
+                        } else {
+                          setLocalCurrentTime(val);
+                          if (audioRef.current) audioRef.current.currentTime = val;
+                        }
                       }}
                       className="w-full h-1.5 rounded-lg bg-purple-950 accent-purple-500 cursor-pointer"
                     />
@@ -673,114 +775,191 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
 
           {/* ================= MODE 3: FULL AUDIO STUDIO ================= */}
           {viewMode === 'audio' && (
-            <div className="flex-1 flex flex-col overflow-y-auto max-w-3xl mx-auto w-full space-y-6">
-              <div className="flex flex-col items-center justify-center p-8 bg-gradient-to-b from-purple-950/50 via-slate-900 to-gray-950 rounded-3xl border border-purple-800/40 shadow-2xl text-white">
-                {/* Large Vinyl */}
-                <div className="relative mb-6">
-                  <div className={`w-52 h-52 rounded-3xl overflow-hidden shadow-2xl border-2 border-purple-500/30 transition-all duration-700 ${isPlaying ? 'ring-8 ring-purple-500/20 scale-105' : 'grayscale-[20%]'}`}>
-                    <img
-                      src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=60'}
-                      alt={book.title}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                </div>
-
-                <div className="text-center max-w-md w-full mb-6">
-                  <span className="text-[11px] font-bold text-purple-400 uppercase tracking-widest block mb-1">
-                    {book.title}
-                  </span>
-                  <h2 className="text-lg font-bold text-white truncate">
-                    {activeChapter?.title || 'Selecione um capítulo'}
-                  </h2>
-                </div>
-
-                {/* Scrub bar */}
-                <div className="w-full max-w-md space-y-1 mb-4">
-                  <div className="flex justify-between text-xs text-purple-300 font-mono">
-                    <span>{formatSeconds(currentTime)}</span>
-                    <span>{formatSeconds(duration)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={duration || 100}
-                    value={currentTime}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setCurrentTime(val);
-                      if (audioRef.current) audioRef.current.currentTime = val;
-                    }}
-                    className="w-full h-2 rounded-lg bg-purple-950 accent-purple-500 cursor-pointer"
-                  />
-                </div>
-
-                {/* Big Controls */}
-                <div className="flex items-center gap-4 mb-6">
-                  <button onClick={() => { const prev = getPreviousChapter(); if (prev) onSelectChapter(prev); }} disabled={!getPreviousChapter()} className="p-2 rounded-full text-purple-300 hover:text-white disabled:opacity-30">
-                    <SkipBack className="w-5 h-5" />
-                  </button>
-                  <button onClick={() => handleSkip(-15)} className="p-2.5 rounded-full bg-purple-900/60 text-purple-200">
-                    <RotateCcw className="w-5 h-5" />
-                  </button>
-                  <button onClick={handleTogglePlay} className="w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center shadow-xl shadow-purple-500/40">
-                    {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
-                  </button>
-                  <button onClick={() => handleSkip(30)} className="p-2.5 rounded-full bg-purple-900/60 text-purple-200">
-                    <RotateCw className="w-5 h-5" />
-                  </button>
-                  <button onClick={() => { const next = getNextChapter(); if (next) onSelectChapter(next); }} disabled={!getNextChapter()} className="p-2 rounded-full text-purple-300 hover:text-white disabled:opacity-30">
-                    <SkipForward className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Direct Timestamp Creator Action Bar */}
-                <div className="w-full max-w-md mb-4 p-3 bg-purple-950/60 rounded-2xl border border-purple-800/80">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
-                      <BookmarkPlus className="w-4 h-4 text-amber-400" />
-                      <span>Timestamp no tempo atual ({formatSeconds(currentTime)})</span>
+            <div className={`flex-1 flex flex-col overflow-y-auto w-full transition-all duration-300 ${
+              isChaptersSidebarOpen 
+                ? 'max-w-3xl mx-auto space-y-6' 
+                : 'max-w-5xl mx-auto space-y-6'
+            }`}>
+              {/* Main Audio Studio Card */}
+              <div className={`p-6 sm:p-8 bg-gradient-to-b from-purple-950/50 via-slate-900 to-gray-950 rounded-3xl border border-purple-800/40 shadow-2xl text-white transition-all ${
+                !isChaptersSidebarOpen ? 'grid grid-cols-1 lg:grid-cols-12 gap-8 items-center' : 'flex flex-col items-center justify-center'
+              }`}>
+                {/* Left / Cover Section */}
+                <div className={`flex flex-col items-center justify-center ${!isChaptersSidebarOpen ? 'lg:col-span-5' : ''}`}>
+                  {/* Cover Art */}
+                  <div className="relative mb-5">
+                    <div className={`rounded-3xl overflow-hidden shadow-2xl border-2 border-purple-500/30 transition-all duration-700 ${
+                      !isChaptersSidebarOpen ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-52 h-52'
+                    } ${isPlaying ? 'ring-8 ring-purple-500/20 scale-105 shadow-purple-500/20 shadow-2xl' : 'grayscale-[15%]'}`}>
+                      <img
+                        src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=60'}
+                        alt={book.title}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  {/* Title & Author Info */}
+                  <div className="text-center max-w-sm w-full mb-3">
+                    <span className="text-[11px] font-bold text-purple-400 uppercase tracking-widest block mb-1">
+                      {book.title}
+                    </span>
+                    <h2 className="text-base sm:text-lg font-bold text-white truncate">
+                      {activeChapter?.title || 'Selecione um capítulo'}
+                    </h2>
+                    {book.author && (
+                      <p className="text-xs text-gray-400 mt-0.5 truncate">
+                        {book.author} {book.narrator && `• Voz: ${book.narrator}`}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Speed Controls Pill */}
+                  <div className="flex items-center gap-1.5 bg-purple-900/40 px-3 py-1 rounded-xl border border-purple-700/30 text-xs">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase mr-1">Velocidade:</span>
+                    {[0.75, 1, 1.25, 1.5, 2].map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => handleSpeedChange(s)}
+                        className={`font-bold px-1.5 py-0.5 rounded ${playbackSpeed === s ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}
+                      >
+                        {s}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right / Controls & Scrubber Section */}
+                <div className={`flex flex-col items-center w-full ${!isChaptersSidebarOpen ? 'lg:col-span-7 space-y-5' : 'space-y-4 max-w-md mt-2'}`}>
+                  {/* Scrub bar */}
+                  <div className="w-full space-y-1.5">
+                    <div className="flex justify-between text-xs text-purple-300 font-mono">
+                      <span className="font-semibold">{formatSeconds(currentTime)}</span>
+                      <span className="text-gray-400">{formatSeconds(duration)}</span>
+                    </div>
                     <input
-                      type="text"
-                      value={newBookmarkLabel}
-                      onChange={(e) => setNewBookmarkLabel(e.target.value)}
-                      placeholder="Descrição do trecho ou citação importante..."
-                      className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-gray-900/90 border border-purple-700/60 focus:outline-none focus:ring-2 focus:ring-amber-400 text-white placeholder-gray-400"
+                      type="range"
+                      min={0}
+                      max={duration || 100}
+                      value={currentTime}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        if (onSeekProp) {
+                          onSeekProp(val);
+                        } else {
+                          setLocalCurrentTime(val);
+                          if (audioRef.current) audioRef.current.currentTime = val;
+                        }
+                      }}
+                      className="w-full h-2.5 rounded-lg bg-purple-950/80 accent-purple-500 cursor-pointer transition-all hover:h-3"
                     />
-                    <button
-                      onClick={() => handleAddTimestamp()}
-                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-95 shrink-0"
+                  </div>
+
+                  {/* Big Controls */}
+                  <div className="flex items-center justify-center gap-3 sm:gap-5 w-full">
+                    <button 
+                      onClick={() => { 
+                        if (onPlayPreviousChapterProp) onPlayPreviousChapterProp();
+                        else {
+                          const prev = getPreviousChapter(); 
+                          if (prev) onSelectChapter(prev, true); 
+                        }
+                      }} 
+                      disabled={!getPreviousChapter()} 
+                      className="p-2.5 rounded-full text-purple-300 hover:text-white disabled:opacity-30 transition-all hover:scale-105 active:scale-95"
+                      title="Capítulo Anterior"
                     >
-                      + Salvar
+                      <SkipBack className="w-5 h-5 sm:w-6 sm:h-6" />
                     </button>
+                    <button 
+                      onClick={() => handleSkip(-15)} 
+                      className="p-3 rounded-full bg-purple-900/60 hover:bg-purple-900 text-purple-200 transition-all hover:scale-105 active:scale-95 shadow-md" 
+                      title="Voltar 15s"
+                    >
+                      <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+                    <button 
+                      onClick={handleTogglePlay} 
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center shadow-xl shadow-purple-500/40 transition-all hover:scale-105 active:scale-95" 
+                      title={isPlaying ? 'Pausar' : 'Reproduzir'}
+                    >
+                      {isPlaying ? <Pause className="w-6 h-6 sm:w-7 sm:h-7 fill-current" /> : <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-1" />}
+                    </button>
+                    <button 
+                      onClick={() => handleSkip(30)} 
+                      className="p-3 rounded-full bg-purple-900/60 hover:bg-purple-900 text-purple-200 transition-all hover:scale-105 active:scale-95 shadow-md" 
+                      title="Avançar 30s"
+                    >
+                      <RotateCw className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+                    <button 
+                      onClick={() => { 
+                        if (onPlayNextChapterProp) onPlayNextChapterProp();
+                        else {
+                          const next = getNextChapter(); 
+                          if (next) onSelectChapter(next, true); 
+                        }
+                      }} 
+                      disabled={!getNextChapter()} 
+                      className="p-2.5 rounded-full text-purple-300 hover:text-white disabled:opacity-30 transition-all hover:scale-105 active:scale-95"
+                      title="Próximo Capítulo"
+                    >
+                      <SkipForward className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </button>
+                  </div>
+
+                  {/* Direct Timestamp Creator Action Bar */}
+                  <div className="w-full p-3.5 bg-purple-950/60 rounded-2xl border border-purple-800/80 shadow-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                        <BookmarkPlus className="w-4 h-4 text-amber-400" />
+                        <span>Novo Marcador em {formatSeconds(currentTime)}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newBookmarkLabel}
+                        onChange={(e) => setNewBookmarkLabel(e.target.value)}
+                        placeholder="Descrição do trecho ou citação..."
+                        className="flex-1 px-3 py-2 text-xs rounded-xl bg-gray-900/90 border border-purple-700/60 focus:outline-none focus:ring-2 focus:ring-amber-400 text-white placeholder-gray-400"
+                      />
+                      <button
+                        onClick={() => handleAddTimestamp()}
+                        className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-95 shrink-0"
+                      >
+                        + Salvar
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Bottom Timestamps & Notes list */}
               {activeChapter && (
-                <div className="p-5 rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder space-y-3">
-                  <h4 className="text-xs font-bold text-gray-800 dark:text-gray-200">
-                    Marcadores deste Capítulo ({activeChapter.timestamps?.length || 0})
+                <div className="p-5 rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-sm space-y-3">
+                  <h4 className="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center justify-between">
+                    <span>📌 Marcadores deste Capítulo ({activeChapter.timestamps?.length || 0})</span>
                   </h4>
                   <div className="space-y-1.5">
-                    {activeChapter.timestamps && activeChapter.timestamps.map(ts => (
-                      <div key={ts.id} className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-drive-darkBg">
-                        <button onClick={() => handleSeekTimestamp(ts.seconds)} className="flex items-center gap-2 text-xs font-semibold">
-                          <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-mono font-bold text-[10px]">
-                            ▶ {ts.timeFormatted}
-                          </span>
-                          <span>{ts.label}</span>
-                        </button>
-                        <button onClick={() => handleDeleteTimestamp(ts.id)} className="p-1 text-gray-400 hover:text-rose-500">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                    {activeChapter.timestamps && activeChapter.timestamps.length > 0 ? (
+                      activeChapter.timestamps.map(ts => (
+                        <div key={ts.id} className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-drive-darkBg hover:bg-purple-50/50 dark:hover:bg-purple-950/20 transition-colors">
+                          <button onClick={() => handleSeekTimestamp(ts.seconds)} className="flex items-center gap-2.5 text-xs font-semibold flex-1 text-left">
+                            <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-mono font-bold text-[10px] shrink-0">
+                              ▶ {ts.timeFormatted}
+                            </span>
+                            <span className="truncate">{ts.label}</span>
+                          </button>
+                          <button onClick={() => handleDeleteTimestamp(ts.id)} className="p-1.5 text-gray-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors" title="Excluir marcador">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-400 text-center py-3">Nenhum marcador adicionado neste capítulo.</p>
+                    )}
                   </div>
                 </div>
               )}
@@ -788,58 +967,79 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
           )}
         </div>
 
-        {/* Right Sidebar: Chapters Accordion */}
-        <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface flex flex-col shrink-0">
-          <div className="p-4 border-b border-gray-200 dark:border-drive-darkBorder flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ListOrdered className="w-4 h-4 text-purple-600" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800 dark:text-gray-200">
-                Capítulos ({book.chapters?.length || 0})
-              </h3>
+        {/* Right Sidebar: Chapters Accordion (Collapsible) */}
+        {isChaptersSidebarOpen ? (
+          <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-200">
+            <div className="p-3.5 px-4 border-b border-gray-200 dark:border-drive-darkBorder flex items-center justify-between bg-gray-50/70 dark:bg-drive-darkBg/50">
+              <div className="flex items-center gap-2">
+                <ListOrdered className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800 dark:text-gray-200">
+                  Capítulos ({book.chapters?.length || 0})
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsChaptersSidebarOpen(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
+                title="Colapsar coluna de capítulos"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+              {book.chapters && book.chapters.map((chap) => {
+                const isActive = activeChapter?.id === chap.id;
+                return (
+                  <div
+                    key={chap.id}
+                    onClick={() => onSelectChapter(chap)}
+                    className={`flex items-center justify-between p-3 rounded-2xl text-xs cursor-pointer group transition-all border ${
+                      isActive
+                        ? 'bg-purple-50 dark:bg-purple-950/50 border-purple-400 text-purple-900 dark:text-purple-200 font-bold shadow-sm'
+                        : 'hover:bg-gray-50 dark:hover:bg-drive-darkHover border-gray-100 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 overflow-hidden flex-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleChapterCompletion(chap.id);
+                        }}
+                        className="text-gray-400 hover:text-emerald-500 shrink-0"
+                      >
+                        {chap.isCompleted ? (
+                          <CheckCircle className="w-4 h-4 text-emerald-500 fill-emerald-500/20" />
+                        ) : (
+                          <Circle className="w-4 h-4" />
+                        )}
+                      </button>
+
+                      {chap.isCompleted && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500 shrink-0" title="Capítulo Concluído" />
+                      )}
+
+                      <span className="truncate leading-tight">{chap.title}</span>
+                    </div>
+
+                    <span className="text-[10px] text-gray-400 font-mono ml-2 shrink-0">{chap.duration || '20:00'}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
-
-          <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-            {book.chapters && book.chapters.map((chap) => {
-              const isActive = activeChapter?.id === chap.id;
-              return (
-                <div
-                  key={chap.id}
-                  onClick={() => onSelectChapter(chap)}
-                  className={`flex items-center justify-between p-3 rounded-2xl text-xs cursor-pointer group transition-all border ${
-                    isActive
-                      ? 'bg-purple-50 dark:bg-purple-950/50 border-purple-400 text-purple-900 dark:text-purple-200 font-bold'
-                      : 'hover:bg-gray-50 dark:hover:bg-drive-darkHover border-gray-100 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 overflow-hidden flex-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleChapterCompletion(chap.id);
-                      }}
-                      className="text-gray-400 hover:text-emerald-500 shrink-0"
-                    >
-                      {chap.isCompleted ? (
-                        <CheckCircle className="w-4 h-4 text-emerald-500 fill-emerald-500/20" />
-                      ) : (
-                        <Circle className="w-4 h-4" />
-                      )}
-                    </button>
-
-                    {chap.isCompleted && (
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500 shrink-0" title="Capítulo Concluído" />
-                    )}
-
-                    <span className="truncate leading-tight">{chap.title}</span>
-                  </div>
-
-                  <span className="text-[10px] text-gray-400 font-mono ml-2 shrink-0">{chap.duration || '20:00'}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        ) : (
+          /* Floating expand tab when sidebar is collapsed */
+          <button
+            onClick={() => setIsChaptersSidebarOpen(true)}
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-30 flex items-center gap-1 py-3 px-1.5 rounded-l-2xl bg-purple-600 hover:bg-purple-500 text-white shadow-2xl border-y border-l border-purple-400/60 text-xs font-bold transition-all hover:pr-2.5 group"
+            title="Expandir Coluna de Capítulos"
+          >
+            <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="[writing-mode:vertical-lr] rotate-180 text-[9px] tracking-widest uppercase font-mono font-black">
+              Capítulos ({book.chapters?.length || 0})
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Modal: Change Cover */}

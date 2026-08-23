@@ -13,7 +13,9 @@ import {
   Sliders, 
   Loader2,
   BookOpen,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Search,
+  X
 } from 'lucide-react';
 import { DriveItem } from '../types/index.js';
 
@@ -59,8 +61,68 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showThumbnails, setShowThumbnails] = useState<boolean>(false);
 
+  // Magnifier / Loupe Tool state
+  const [isMagnifierActive, setIsMagnifierActive] = useState<boolean>(false);
+  const [magnifierZoom, setMagnifierZoom] = useState<number>(2.5); // Zoom factor (1.5x to 4x)
+  const [lensSize] = useState<number>(220); // 220px lens diameter
+  const [magnifierPos, setMagnifierPos] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    bgPosX: number;
+    bgPosY: number;
+    bgWidth: number;
+    bgHeight: number;
+    imgSrc: string;
+  } | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Reset magnifier position on page/view mode changes
+  useEffect(() => {
+    setMagnifierPos(null);
+  }, [currentPage, viewMode]);
+
+  // Magnifier mouse move handler
+  const handleImageMouseMove = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+    if (!isMagnifierActive) return;
+    const img = e.currentTarget;
+    const rect = img.getBoundingClientRect();
+
+    const cursorX = e.clientX - rect.left;
+    const cursorY = e.clientY - rect.top;
+
+    if (cursorX < 0 || cursorX > rect.width || cursorY < 0 || cursorY > rect.height) {
+      setMagnifierPos(prev => prev ? { ...prev, visible: false } : null);
+      return;
+    }
+
+    const radius = lensSize / 2;
+    const bgWidth = rect.width * magnifierZoom;
+    const bgHeight = rect.height * magnifierZoom;
+
+    const targetX = cursorX * magnifierZoom;
+    const targetY = cursorY * magnifierZoom;
+
+    const bgPosX = -(targetX - radius);
+    const bgPosY = -(targetY - radius);
+
+    setMagnifierPos({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      bgPosX,
+      bgPosY,
+      bgWidth,
+      bgHeight,
+      imgSrc: img.src
+    });
+  }, [isMagnifierActive, magnifierZoom, lensSize]);
+
+  const handleImageMouseLeave = useCallback(() => {
+    setMagnifierPos(prev => prev ? { ...prev, visible: false } : null);
+  }, []);
 
   // Fetch comic book manifest
   useEffect(() => {
@@ -144,19 +206,31 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
       } else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
         goToPrevPage();
       } else if (e.key === '+' || e.key === '=') {
-        setZoom(z => Math.min(z + 0.2, 3));
+        if (isMagnifierActive) {
+          setMagnifierZoom(z => Math.min(Number((z + 0.5).toFixed(1)), 5));
+        } else {
+          setZoom(z => Math.min(z + 0.2, 3));
+        }
       } else if (e.key === '-' || e.key === '_') {
-        setZoom(z => Math.max(z - 0.2, 0.6));
+        if (isMagnifierActive) {
+          setMagnifierZoom(z => Math.max(Number((z - 0.5).toFixed(1)), 1.5));
+        } else {
+          setZoom(z => Math.max(z - 0.2, 0.6));
+        }
       } else if (e.key === '0') {
         setZoom(1);
       } else if (e.key === 'f' || e.key === 'F') {
         toggleFullscreen();
+      } else if (e.key === 'm' || e.key === 'M') {
+        setIsMagnifierActive(prev => !prev);
+      } else if (e.key === 'Escape' && isMagnifierActive) {
+        setIsMagnifierActive(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPrevPage]);
+  }, [goToNextPage, goToPrevPage, isMagnifierActive]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -286,6 +360,20 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
             </div>
           )}
 
+          {/* Magnifier Tool Toggle Button */}
+          <button
+            onClick={() => setIsMagnifierActive(prev => !prev)}
+            className={`p-1.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              isMagnifierActive
+                ? 'bg-pink-600 border-pink-400 text-white shadow-lg shadow-pink-500/30 ring-2 ring-pink-500/50'
+                : 'bg-gray-900/80 border-gray-700/80 text-gray-400 hover:text-white'
+            }`}
+            title="Ferramenta de Lupa / Ampliação de Detalhes (Atalho: M)"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span className="hidden md:inline text-[11px] font-bold">Lupa</span>
+          </button>
+
           {/* Thumbnails Drawer Toggle */}
           <button
             onClick={() => setShowThumbnails(t => !t)}
@@ -310,6 +398,45 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
         </div>
       </div>
 
+      {/* Magnifier Active Floating Status & Controls Pill */}
+      {isMagnifierActive && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-gray-950/90 backdrop-blur-md border border-pink-500/50 shadow-2xl shadow-pink-500/20 text-white animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center gap-1.5 text-pink-400 text-xs font-bold">
+            <Search className="w-3.5 h-3.5 animate-pulse" />
+            <span className="text-[11px]">Lupa Ativa:</span>
+          </div>
+
+          {/* Quick Zoom Multiplier Buttons */}
+          <div className="flex items-center bg-gray-900 rounded-xl p-0.5 border border-gray-800">
+            {[1.5, 2, 2.5, 3, 4].map((z) => (
+              <button
+                key={z}
+                onClick={() => setMagnifierZoom(z)}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
+                  magnifierZoom === z
+                    ? 'bg-pink-600 text-white shadow'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                {z}x
+              </button>
+            ))}
+          </div>
+
+          <span className="text-[10px] text-gray-400 hidden sm:inline border-l border-gray-800 pl-2">
+            Passe o mouse na página
+          </span>
+
+          <button
+            onClick={() => setIsMagnifierActive(false)}
+            className="p-1 text-gray-400 hover:text-rose-400 transition-colors ml-1"
+            title="Desativar Lupa (Esc ou M)"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Main Comic Pages Display Area */}
       <div 
         ref={scrollContainerRef}
@@ -328,7 +455,11 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
                   loading="lazy"
                   draggable={false}
                   onDragStart={(e) => e.preventDefault()}
-                  className="w-full h-auto object-contain rounded shadow-2xl pointer-events-auto select-none"
+                  onMouseMove={isMagnifierActive ? handleImageMouseMove : undefined}
+                  onMouseLeave={isMagnifierActive ? handleImageMouseLeave : undefined}
+                  className={`w-full h-auto object-contain rounded shadow-2xl select-none ${
+                    isMagnifierActive ? 'cursor-crosshair' : 'pointer-events-auto'
+                  }`}
                 />
                 <span className="text-[10px] text-gray-500 font-mono py-1">
                   Página {idx + 1} de {totalPages}
@@ -349,7 +480,11 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
               alt={`Página ${currentPage + 1}`}
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
-              className="max-h-[82vh] max-w-[92vw] object-contain rounded-lg shadow-2xl select-none pointer-events-auto"
+              onMouseMove={isMagnifierActive ? handleImageMouseMove : undefined}
+              onMouseLeave={isMagnifierActive ? handleImageMouseLeave : undefined}
+              className={`max-h-[82vh] max-w-[92vw] object-contain rounded-lg shadow-2xl select-none ${
+                isMagnifierActive ? 'cursor-crosshair' : 'pointer-events-auto'
+              }`}
             />
           </div>
         )}
@@ -365,7 +500,11 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
               alt={`Página ${currentPage + 1}`}
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
-              className="max-h-[82vh] max-w-[46vw] object-contain rounded-l-lg shadow-2xl select-none pointer-events-auto"
+              onMouseMove={isMagnifierActive ? handleImageMouseMove : undefined}
+              onMouseLeave={isMagnifierActive ? handleImageMouseLeave : undefined}
+              className={`max-h-[82vh] max-w-[46vw] object-contain rounded-l-lg shadow-2xl select-none ${
+                isMagnifierActive ? 'cursor-crosshair' : 'pointer-events-auto'
+              }`}
             />
             {currentPage + 1 < totalPages && (
               <img
@@ -373,7 +512,11 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
                 alt={`Página ${currentPage + 2}`}
                 draggable={false}
                 onDragStart={(e) => e.preventDefault()}
-                className="max-h-[82vh] max-w-[46vw] object-contain rounded-r-lg shadow-2xl select-none pointer-events-auto"
+                onMouseMove={isMagnifierActive ? handleImageMouseMove : undefined}
+                onMouseLeave={isMagnifierActive ? handleImageMouseLeave : undefined}
+                className={`max-h-[82vh] max-w-[46vw] object-contain rounded-r-lg shadow-2xl select-none ${
+                  isMagnifierActive ? 'cursor-crosshair' : 'pointer-events-auto'
+                }`}
               />
             )}
           </div>
@@ -404,6 +547,36 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
           </>
         )}
       </div>
+
+      {/* Floating Magnifier Loupe Lens */}
+      {isMagnifierActive && magnifierPos && magnifierPos.visible && (
+        <div
+          className="fixed pointer-events-none z-50 rounded-full overflow-hidden border-2 border-pink-500 shadow-[0_12px_45px_rgba(0,0,0,0.9),0_0_24px_rgba(236,72,153,0.35)] ring-4 ring-black/80"
+          style={{
+            width: `${lensSize}px`,
+            height: `${lensSize}px`,
+            left: `${magnifierPos.x}px`,
+            top: `${magnifierPos.y}px`,
+            transform: 'translate(-50%, -50%)',
+            backgroundImage: `url(${magnifierPos.imgSrc})`,
+            backgroundSize: `${magnifierPos.bgWidth}px ${magnifierPos.bgHeight}px`,
+            backgroundPosition: `${magnifierPos.bgPosX}px ${magnifierPos.bgPosY}px`,
+            backgroundRepeat: 'no-repeat',
+            backgroundColor: '#050507'
+          }}
+        >
+          {/* Lens Glass Reflection Highlight */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/20 rounded-full pointer-events-none" />
+
+          {/* Lens Crosshair / Reticle Dot */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border border-pink-400/90 bg-pink-500/40 pointer-events-none shadow-sm" />
+
+          {/* Magnifier Zoom Badge */}
+          <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-black/85 backdrop-blur-md border border-pink-500/50 text-[10px] font-mono font-black text-pink-300 shadow-md">
+            {magnifierZoom}x
+          </div>
+        </div>
+      )}
 
       {/* Bottom Floating Scrubber & Page Counter */}
       {viewMode !== 'webtoon' && (
