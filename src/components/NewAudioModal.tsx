@@ -15,11 +15,13 @@ import {
   Radio, 
   Square,
   XCircle,
+  Rss,
   ExternalLink,
   Layers,
-  Globe
+  Globe,
+  Link as LinkIcon
 } from 'lucide-react';
-import { FolderItem } from '../types/index.js';
+import { FolderItem, AudioTrack } from '../types/index.js';
 import { getLibraryEligibleFolders } from '../utils/libraryFolderUtils.js';
 
 interface OnlinePodcastResult {
@@ -30,10 +32,12 @@ interface OnlinePodcastResult {
   coverImage: string;
   genre: string;
   category: string;
+  description?: string;
   feedUrl?: string;
   trackCount: number;
   releaseDate?: string;
   country?: string;
+  episodes?: any[];
 }
 
 interface NewAudioModalProps {
@@ -63,6 +67,7 @@ interface NewAudioModalProps {
     coverImage?: string;
     feedUrl?: string;
     folderId?: string;
+    episodes?: any[];
   }) => Promise<void>;
   onAddCategory?: (category: string) => Promise<void>;
 }
@@ -98,8 +103,8 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
 }) => {
   const { rootFolder, folders: eligibleFolders } = getLibraryEligibleFolders('podcasts', folders);
   
-  // Active Tab: 'search_online' | 'local_folder'
-  const [modalTab, setModalTab] = useState<'search_online' | 'local_folder'>('search_online');
+  // Active Tab: 'search_online' | 'rss_feed' | 'local_folder'
+  const [modalTab, setModalTab] = useState<'search_online' | 'rss_feed' | 'local_folder'>('search_online');
 
   // Tab 1: Local Folder state
   const [title, setTitle] = useState('');
@@ -124,8 +129,15 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
   const [importingPodcastId, setImportingPodcastId] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-  // AbortController ref to cancel / stop ongoing search
+  // Tab 3: RSS Feed state
+  const [rssUrlInput, setRssUrlInput] = useState('');
+  const [isParsingRss, setIsParsingRss] = useState(false);
+  const [rssError, setRssError] = useState<string | null>(null);
+  const [parsedRssPodcast, setParsedRssPodcast] = useState<OnlinePodcastResult | null>(null);
+
+  // AbortController refs to cancel / stop ongoing search or RSS parse
   const searchAbortControllerRef = useRef<AbortController | null>(null);
+  const rssAbortControllerRef = useRef<AbortController | null>(null);
 
   if (!isOpen) return null;
 
@@ -182,9 +194,25 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     setIsSearching(false);
   };
 
+  const handleStopRss = () => {
+    if (rssAbortControllerRef.current) {
+      rssAbortControllerRef.current.abort();
+      rssAbortControllerRef.current = null;
+    }
+    setIsParsingRss(false);
+  };
+
   const handleSearchPodcasts = async (queryToSearch = searchQuery) => {
     const trimmed = queryToSearch.trim();
     if (!trimmed) return;
+
+    // Check if query is an RSS feed URL
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      setRssUrlInput(trimmed);
+      setModalTab('rss_feed');
+      handleParseRss(trimmed);
+      return;
+    }
 
     // Abort previous search if running
     if (searchAbortControllerRef.current) {
@@ -210,7 +238,6 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
       }
     } catch (e: any) {
       if (e.name === 'AbortError') {
-        // Search was cancelled by user
         return;
       }
       setSearchError('Falha ao conectar com o serviço de busca.');
@@ -220,20 +247,67 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     }
   };
 
+  const handleParseRss = async (urlToParse = rssUrlInput) => {
+    const trimmed = urlToParse.trim();
+    if (!trimmed) return;
+
+    if (rssAbortControllerRef.current) {
+      rssAbortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    rssAbortControllerRef.current = controller;
+
+    setIsParsingRss(true);
+    setRssError(null);
+    setParsedRssPodcast(null);
+
+    try {
+      const res = await fetch('/api/podcasts/parse-rss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: trimmed }),
+        signal: controller.signal
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.podcast) {
+          setParsedRssPodcast({
+            ...data.podcast,
+            episodes: data.episodes || []
+          });
+        } else {
+          setRssError('Não foi possível extrair dados válidos deste Feed RSS.');
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setRssError(errData.error || 'Erro ao processar o Feed RSS. Verifique o link.');
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') return;
+      setRssError('Falha ao conectar com o Feed RSS fornecido.');
+    } finally {
+      setIsParsingRss(false);
+      rssAbortControllerRef.current = null;
+    }
+  };
+
   const handleImportPodcast = async (podcast: OnlinePodcastResult) => {
     if (!onImportPodcast) return;
     setImportingPodcastId(podcast.id);
     try {
       await onImportPodcast({
-        podcastId: podcast.id,
+        podcastId: podcast.id.startsWith('rss-') ? undefined : podcast.id,
         title: podcast.title,
         artist: podcast.artist,
         host: podcast.host || podcast.artist,
-        category: 'Podcasts',
+        category: podcast.category || 'Podcasts',
         genre: podcast.genre || 'Podcast',
-        description: `Podcast oficial ${podcast.title} por ${podcast.artist || podcast.host}`,
+        description: podcast.description || `Podcast oficial ${podcast.title} por ${podcast.artist || podcast.host}`,
         coverImage: podcast.coverImage,
-        feedUrl: podcast.feedUrl
+        feedUrl: podcast.feedUrl,
+        episodes: podcast.episodes
       });
       onClose();
     } catch (e) {
@@ -254,12 +328,13 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Adicionar Álbum / Podcast</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Procure podcasts online ou vincule uma pasta local de áudio</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Busque podcasts online, adicione via Feed RSS ou vincule pastas locais</p>
             </div>
           </div>
           <button
             onClick={() => {
               handleStopSearch();
+              handleStopRss();
               onClose();
             }}
             className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -269,10 +344,10 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
         </div>
 
         {/* Tab Navigation Switcher */}
-        <div className="flex items-center px-6 pt-3 pb-1 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-drive-darkBg/30 gap-2 shrink-0">
+        <div className="flex items-center px-6 pt-3 pb-1 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-drive-darkBg/30 gap-2 shrink-0 flex-wrap">
           <button
             onClick={() => setModalTab('search_online')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
               modalTab === 'search_online'
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
                 : 'bg-white dark:bg-drive-darkSurface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-emerald-500'
@@ -285,9 +360,25 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
           <button
             onClick={() => {
               handleStopSearch();
+              setModalTab('rss_feed');
+            }}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+              modalTab === 'rss_feed'
+                ? 'bg-amber-600 text-white border-amber-600 shadow-md shadow-amber-600/20'
+                : 'bg-white dark:bg-drive-darkSurface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-amber-500'
+            }`}
+          >
+            <Rss className="w-3.5 h-3.5" />
+            <span>Adicionar via Feed RSS</span>
+          </button>
+
+          <button
+            onClick={() => {
+              handleStopSearch();
+              handleStopRss();
               setModalTab('local_folder');
             }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
               modalTab === 'local_folder'
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
                 : 'bg-white dark:bg-drive-darkSurface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-emerald-500'
@@ -390,7 +481,7 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
               </div>
             )}
 
-            {/* Search Results List / Loading / Empty */}
+            {/* Search Results List */}
             <div className="space-y-3">
               {isSearching ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center space-y-4 bg-gray-50/70 dark:bg-drive-darkBg/60 rounded-3xl border border-gray-200/60 dark:border-gray-800">
@@ -403,7 +494,6 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
                     <p className="text-[11px] text-gray-400 mt-0.5">Consultando títulos, apresentadores e catálogo de episódios</p>
                   </div>
                   
-                  {/* Prominent Stop Search button during loading */}
                   <button
                     type="button"
                     onClick={handleStopSearch}
@@ -494,14 +584,14 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
                 <div className="flex flex-col items-center justify-center p-12 text-center bg-gray-50 dark:bg-drive-darkBg rounded-3xl border border-dashed border-gray-200 dark:border-gray-800">
                   <Mic className="w-10 h-10 text-gray-400 mb-2" />
                   <h4 className="font-bold text-xs text-gray-700 dark:text-gray-300">Nenhum podcast encontrado</h4>
-                  <p className="text-[11px] text-gray-500 mt-1">Tente pesquisar com outro nome ou utilize uma das sugestões acima.</p>
+                  <p className="text-[11px] text-gray-500 mt-1">Tente pesquisar com outro nome ou adicione diretamente via link de Feed RSS.</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center p-10 text-center bg-gray-50 dark:bg-drive-darkBg rounded-3xl border border-dashed border-gray-200 dark:border-gray-800">
                   <Radio className="w-10 h-10 text-emerald-500 mb-2.5 animate-pulse" />
                   <h4 className="font-bold text-xs text-gray-800 dark:text-gray-200">Encontre milhões de podcasts</h4>
                   <p className="text-[11px] text-gray-500 max-w-sm mt-1">
-                    Digite o nome de qualquer podcast ou tema para adicioná-lo com capas e episódios completos à sua biblioteca do DriveGram.
+                    Digite o nome de qualquer podcast para adicioná-lo com capas e episódios completos à sua biblioteca do DriveGram.
                   </p>
                 </div>
               )}
@@ -509,7 +599,186 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
           </div>
         )}
 
-        {/* ================= TAB 2: VINCULAR PASTA LOCAL ================= */}
+        {/* ================= TAB 2: ADICIONAR VIA FEED RSS ================= */}
+        {modalTab === 'rss_feed' && (
+          <div className="p-6 flex-1 overflow-y-auto space-y-5">
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 space-y-1">
+              <div className="flex items-center gap-2 font-bold text-xs">
+                <Rss className="w-4 h-4 text-amber-500" />
+                <span>Importação Direta de Feed RSS</span>
+              </div>
+              <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                Cole o link XML / RSS de qualquer podcast (Anchor, Spotify, Substack, Podbean, Libsyn, etc.) para carregar e ouvir todos os episódios no DriveGram.
+              </p>
+            </div>
+
+            {/* RSS URL Input Bar */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                URL do Feed RSS do Podcast *
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <LinkIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="url"
+                    value={rssUrlInput}
+                    onChange={(e) => setRssUrlInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !isParsingRss && handleParseRss()}
+                    placeholder="https://feeds.simplecast.com/podcast.rss ou https://anchor.fm/s/.../rss"
+                    className="w-full pl-10 pr-9 py-2.5 bg-gray-50 dark:bg-drive-darkBg rounded-2xl text-xs border border-gray-200 dark:border-drive-darkBorder focus:border-amber-500 focus:outline-none font-mono text-gray-900 dark:text-gray-100"
+                    autoFocus
+                  />
+                  {rssUrlInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRssUrlInput('');
+                        setParsedRssPodcast(null);
+                        handleStopRss();
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                      title="Limpar link"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {isParsingRss ? (
+                  <button
+                    type="button"
+                    onClick={handleStopRss}
+                    className="px-4 py-2.5 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold shadow-md shadow-rose-500/25 transition-all flex items-center gap-1.5 shrink-0 active:scale-95"
+                    title="Cancelar leitura do Feed RSS"
+                  >
+                    <Square className="w-3 h-3 fill-current" />
+                    <span>Parar</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleParseRss()}
+                    disabled={!rssUrlInput.trim()}
+                    className="px-5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all disabled:opacity-50 flex items-center gap-1.5 shrink-0 active:scale-95"
+                  >
+                    <Rss className="w-4 h-4" />
+                    <span>Carregar RSS</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Error state */}
+            {rssError && (
+              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-semibold flex items-center justify-between">
+                <span>{rssError}</span>
+                <button
+                  type="button"
+                  onClick={() => setRssError(null)}
+                  className="text-rose-500 hover:text-rose-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* RSS Loading State */}
+            {isParsingRss && (
+              <div className="flex flex-col items-center justify-center p-12 text-center space-y-4 bg-gray-50/70 dark:bg-drive-darkBg/60 rounded-3xl border border-gray-200/60 dark:border-gray-800">
+                <Loader2 className="w-9 h-9 text-amber-500 animate-spin" />
+                <div>
+                  <p className="text-xs text-gray-800 dark:text-gray-200 font-bold">Processando e baixando Feed RSS...</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Extraindo metadados, capa e episódios de áudio</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStopRss}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition-all active:scale-95"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Cancelar</span>
+                </button>
+              </div>
+            )}
+
+            {/* Parsed RSS Podcast Preview Card */}
+            {parsedRssPodcast && !isParsingRss && (
+              <div className="p-5 rounded-3xl border-2 border-amber-500/40 bg-white dark:bg-drive-darkSurface shadow-xl space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex items-start gap-4">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden shadow-md bg-black shrink-0 border border-gray-200 dark:border-gray-700">
+                    <img
+                      src={parsedRssPodcast.coverImage}
+                      alt={parsedRssPodcast.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+
+                  <div className="overflow-hidden flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 text-[10px] font-mono font-bold">
+                        FEED RSS VÁLIDO
+                      </span>
+                      {parsedRssPodcast.category && (
+                        <span className="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-[10px] font-bold">
+                          {parsedRssPodcast.category}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-gray-100 truncate">
+                      {parsedRssPodcast.title}
+                    </h3>
+                    {parsedRssPodcast.artist && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        Apresentador / Autor: <strong className="text-gray-700 dark:text-gray-200">{parsedRssPodcast.artist}</strong>
+                      </p>
+                    )}
+                    <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+                      🎙️ {parsedRssPodcast.episodes?.length || parsedRssPodcast.trackCount || 0} episódios indexados com áudio direto
+                    </p>
+                  </div>
+                </div>
+
+                {parsedRssPodcast.description && (
+                  <p className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-drive-darkBg p-3 rounded-2xl line-clamp-3">
+                    {parsedRssPodcast.description}
+                  </p>
+                )}
+
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setParsedRssPodcast(null)}
+                    className="px-4 py-2.5 rounded-2xl text-xs font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  >
+                    Descartar
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleImportPodcast(parsedRssPodcast)}
+                    disabled={importingPodcastId === parsedRssPodcast.id}
+                    className="px-6 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2 disabled:opacity-50 active:scale-95"
+                  >
+                    {importingPodcastId === parsedRssPodcast.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Adicionando Podcast à Galeria...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        <span>Adicionar Podcast à Minha Galeria</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= TAB 3: VINCULAR PASTA LOCAL ================= */}
         {modalTab === 'local_folder' && (
           <form onSubmit={handleSubmitLocal} className="p-6 space-y-4 flex-1 overflow-y-auto">
             {/* Format / Type Picker */}

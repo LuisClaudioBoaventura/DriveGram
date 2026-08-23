@@ -1419,13 +1419,152 @@ app.get('/api/podcasts/episodes', async (req, res) => {
   }
 });
 
+function parsePodcastRssXml(xmlText: string) {
+  const getTag = (xml: string, tag: string): string => {
+    const match = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+    if (!match) return '';
+    return match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1').trim();
+  };
+
+  const getAttr = (xml: string, tag: string, attr: string): string => {
+    const match = xml.match(new RegExp(`<${tag}[^>]*\\b${attr}=["']([^"']+)["'][^>]*>`, 'i'));
+    return match ? match[1].trim() : '';
+  };
+
+  const channelMatch = xmlText.match(/<channel[^>]*>([\s\S]*?)<\/channel>/i);
+  const channelXml = channelMatch ? channelMatch[1] : xmlText;
+
+  const title = getTag(channelXml, 'title') || 'Podcast Importado via RSS';
+  const author = getTag(channelXml, 'itunes:author') || getTag(channelXml, 'author') || getTag(channelXml, 'dc:creator') || '';
+  const description = getTag(channelXml, 'description') || getTag(channelXml, 'itunes:summary') || '';
+  
+  let coverImage = getAttr(channelXml, 'itunes:image', 'href');
+  if (!coverImage) {
+    const imageBlock = getTag(channelXml, 'image');
+    if (imageBlock) {
+      coverImage = getTag(imageBlock, 'url');
+    }
+  }
+  if (!coverImage) {
+    coverImage = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60';
+  }
+
+  const category = getAttr(channelXml, 'itunes:category', 'text') || 'Podcasts';
+
+  const itemMatches = [...channelXml.matchAll(/<item[^>]*>([\s\S]*?)<\/item>/gi)];
+  const episodes: any[] = [];
+
+  itemMatches.forEach((match, index) => {
+    const itemXml = match[1];
+    const epTitle = getTag(itemXml, 'title') || `Episódio ${index + 1}`;
+    const epAudio = getAttr(itemXml, 'enclosure', 'url') || getAttr(itemXml, 'media:content', 'url');
+    
+    if (!epAudio) return;
+
+    const epGuid = getTag(itemXml, 'guid') || `ep-rss-${Date.now()}-${index}`;
+    const epDurationRaw = getTag(itemXml, 'itunes:duration');
+    let durationSeconds = 0;
+    let durationStr = '45:00';
+
+    if (epDurationRaw) {
+      if (epDurationRaw.includes(':')) {
+        const parts = epDurationRaw.split(':').map(Number);
+        if (parts.length === 3) {
+          durationSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+          durationStr = `${parts[1].toString().padStart(2, '0')}:${parts[2].toString().padStart(2, '0')}`;
+        } else if (parts.length === 2) {
+          durationSeconds = parts[0] * 60 + parts[1];
+          durationStr = `${parts[0].toString().padStart(2, '0')}:${parts[1].toString().padStart(2, '0')}`;
+        }
+      } else {
+        const parsed = parseInt(epDurationRaw, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          durationSeconds = parsed;
+          const mins = Math.floor(parsed / 60);
+          const secs = parsed % 60;
+          durationStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+      }
+    }
+
+    episodes.push({
+      id: `ep-${epGuid.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || (Date.now() + '-' + index)}`,
+      title: epTitle,
+      artist: author || undefined,
+      duration: durationStr,
+      durationSeconds,
+      audioUrl: epAudio,
+      order: index + 1,
+      trackNumber: index + 1,
+      releaseDate: getTag(itemXml, 'pubDate'),
+      description: getTag(itemXml, 'description') || getTag(itemXml, 'itunes:summary') || ''
+    });
+  });
+
+  return {
+    title,
+    artist: author,
+    host: author,
+    description,
+    coverImage,
+    category,
+    genre: category,
+    trackCount: episodes.length,
+    episodes
+  };
+}
+
+app.post('/api/podcasts/parse-rss', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || !url.trim()) {
+      return res.status(400).json({ error: 'URL do Feed RSS é obrigatória' });
+    }
+
+    const response = await fetch(url.trim(), {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(400).json({ error: `Erro ao baixar Feed RSS (HTTP ${response.status})` });
+    }
+
+    const xmlText = await response.text();
+    const parsed = parsePodcastRssXml(xmlText);
+
+    res.json({
+      podcast: {
+        id: `rss-${Date.now()}`,
+        title: parsed.title,
+        artist: parsed.artist,
+        host: parsed.host,
+        coverImage: parsed.coverImage,
+        genre: parsed.genre,
+        category: parsed.category,
+        description: parsed.description,
+        feedUrl: url.trim(),
+        trackCount: parsed.trackCount
+      },
+      episodes: parsed.episodes
+    });
+  } catch (error: any) {
+    console.error('Error parsing podcast RSS feed:', error);
+    res.status(500).json({ error: error.message || 'Erro ao processar Feed RSS do podcast' });
+  }
+});
+
 app.post('/api/audio-shows/import-podcast', async (req, res) => {
   try {
-    const { podcastId, title, artist, host, category, genre, description, coverImage, feedUrl, folderId } = req.body;
+    const { podcastId, title, artist, host, category, genre, description, coverImage, feedUrl, folderId, episodes: passedEpisodes } = req.body;
     if (!title) return res.status(400).json({ error: 'Título do podcast é obrigatório' });
 
-    let episodes: any[] = [];
-    if (podcastId) {
+    let episodes: any[] = passedEpisodes && Array.isArray(passedEpisodes) && passedEpisodes.length > 0 ? passedEpisodes : [];
+    
+    // If no episodes passed, try iTunes Lookup or RSS feed
+    if (episodes.length === 0 && podcastId) {
       try {
         const lookupUrl = `https://itunes.apple.com/lookup?id=${podcastId}&entity=podcastEpisode&limit=50`;
         const epRes = await fetch(lookupUrl);
@@ -1451,6 +1590,26 @@ app.post('/api/audio-shows/import-podcast', async (req, res) => {
         }
       } catch (e) {
         console.warn('Could not fetch podcast episodes for import:', e);
+      }
+    }
+
+    if (episodes.length === 0 && feedUrl) {
+      try {
+        const feedRes = await fetch(feedUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
+            'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+          }
+        });
+        if (feedRes.ok) {
+          const xmlText = await feedRes.text();
+          const parsed = parsePodcastRssXml(xmlText);
+          if (parsed.episodes && parsed.episodes.length > 0) {
+            episodes = parsed.episodes;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not fetch RSS feed episodes for import:', e);
       }
     }
 
