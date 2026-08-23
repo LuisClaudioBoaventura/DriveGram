@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![DriveGram Banner]()
+
 <img width="1855" height="917" alt="DriveGram - Home" src="https://github.com/user-attachments/assets/02e37ab8-f9ef-4908-9eff-5abc638a7db4" />
 
 
