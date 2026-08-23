@@ -135,7 +135,7 @@ export const NewComicModal: React.FC<NewComicModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold">Nova HQ / Mangá / Coleção</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Importe edições (CBR, CBZ, PDF) a partir de uma pasta do Drive</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Importe edições (CBR, CBZ, PDF, EPUB) a partir de uma pasta do Drive</p>
             </div>
           </div>
           <button

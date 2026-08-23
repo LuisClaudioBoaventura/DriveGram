@@ -112,8 +112,17 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
           </h1>
 
           <p className="text-xs sm:text-sm text-pink-100/90 leading-relaxed">
-            Sua coleção completa de quadrinhos em CBR, CBZ e PDF organizada com leitura imersiva e acompanhamento de progresso.
+            Sua coleção completa de quadrinhos, mangás e e-books em CBR, CBZ, PDF e EPUB com leitura imersiva e acompanhamento de progresso.
           </p>
+
+          {/* Supported File Format Badges */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[11px] font-bold">
+            <span className="text-pink-200/80 text-[10px] uppercase font-semibold mr-1">Arquivos suportados:</span>
+            <span className="px-2.5 py-0.5 rounded-lg bg-black/30 backdrop-blur-sm border border-white/20 text-white font-mono shadow-sm">.CBR</span>
+            <span className="px-2.5 py-0.5 rounded-lg bg-black/30 backdrop-blur-sm border border-white/20 text-white font-mono shadow-sm">.CBZ</span>
+            <span className="px-2.5 py-0.5 rounded-lg bg-black/30 backdrop-blur-sm border border-white/20 text-white font-mono shadow-sm">.PDF</span>
+            <span className="px-2.5 py-0.5 rounded-lg bg-black/30 backdrop-blur-sm border border-white/20 text-pink-200 font-mono shadow-sm">.EPUB</span>
+          </div>
 
           <div className="pt-2 flex flex-wrap items-center gap-3">
             <button
@@ -351,7 +360,7 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
           <p className="text-xs text-gray-500 max-w-sm mt-1 mb-6">
             {hasActiveFilters 
               ? 'Nenhum resultado corresponde aos filtros selecionados.' 
-              : 'Crie sua primeira biblioteca de quadrinhos vinculando uma pasta do Drive com arquivos CBR, CBZ ou PDF.'}
+              : 'Crie sua primeira biblioteca de quadrinhos vinculando uma pasta do Drive com arquivos CBR, CBZ, PDF ou EPUB.'}
           </p>
           {hasActiveFilters ? (
             <button
