@@ -226,6 +226,30 @@ Para que o DriveGram busque automaticamente sinopses, pôsteres e notas do IMDb 
 
 ---
 
+## 🖥️ Passo 7: Criar um Atalho na Área de Trabalho (Iniciar com 1 Clique)
+
+Para não precisar abrir o terminal toda vez que quiser usar o DriveGram, você pode criar um atalho prático na sua Área de Trabalho:
+
+### ⚡ Método A: Criador Automático de Atalho (Windows)
+1. Abra a pasta do projeto no seu computador.
+2. Dê **dois cliques** no arquivo **`Criar_Atalho_Desktop.bat`**.
+3. Um atalho com o nome **DriveGram** será criado instantaneamente na sua Área de Trabalho!
+4. **Como usar**: Basta dar 2 cliques no atalho `DriveGram` no seu Desktop. Ele iniciará automaticamente os servidores e abrirá a aplicação no seu navegador!
+
+### 🖱️ Método B: Criar Atalho Manual (Windows)
+1. Dentro da pasta do projeto, clique com o **botão direito** no arquivo **`iniciar.bat`**.
+2. Selecione **`Enviar para`** ➔ **`Área de trabalho (criar atalho)`**.
+3. Pronto! Renomeie o atalho para **DriveGram** e execute quando quiser.
+
+### 🌐 Método C: Instalar como Aplicativo Nativo (Chrome / Edge / Brave)
+Você também pode transformar o DriveGram em um aplicativo de janela independente (sem barras de navegação):
+1. Com o DriveGram aberto no navegador (`http://localhost:3000`), clique no menu de **3 pontinhos** no canto superior direito do navegador.
+2. Vá em **"Salvar e Compartilhar"** (ou "Mais Ferramentas") ➔ **"Instalar DriveGram"** ou **"Criar Atalho..."**.
+3. Marque a opção **"Abrir como janela"** e clique em **Criar / Instalar**.
+4. O DriveGram agora aparecerá como um aplicativo nativo na sua barra de tarefas e no menu Iniciar!
+
+---
+
 ## ❓ Perguntas Frequentes (FAQ & Dicas)
 
 <details>
