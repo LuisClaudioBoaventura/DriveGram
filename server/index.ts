@@ -1514,44 +1514,58 @@ function parsePodcastRssXml(xmlText: string) {
   };
 }
 
+const handleParseRssRequest = async (url: string, res: any) => {
+  if (!url || !url.trim()) {
+    return res.status(400).json({ error: 'URL do Feed RSS é obrigatória' });
+  }
+
+  const response = await fetch(url.trim(), {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
+      'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+    }
+  });
+
+  if (!response.ok) {
+    return res.status(400).json({ error: `Erro ao baixar Feed RSS (HTTP ${response.status})` });
+  }
+
+  const xmlText = await response.text();
+  const parsed = parsePodcastRssXml(xmlText);
+
+  res.json({
+    podcast: {
+      id: `rss-${Date.now()}`,
+      title: parsed.title,
+      artist: parsed.artist,
+      host: parsed.host,
+      coverImage: parsed.coverImage,
+      genre: parsed.genre,
+      category: parsed.category,
+      description: parsed.description,
+      feedUrl: url.trim(),
+      trackCount: parsed.trackCount
+    },
+    episodes: parsed.episodes
+  });
+};
+
+app.get('/api/podcasts/parse-rss', async (req, res) => {
+  try {
+    const url = req.query.url as string;
+    await handleParseRssRequest(url, res);
+  } catch (error: any) {
+    console.error('Error parsing podcast RSS feed (GET):', error);
+    res.status(500).json({ error: error.message || 'Erro ao processar Feed RSS do podcast' });
+  }
+});
+
 app.post('/api/podcasts/parse-rss', async (req, res) => {
   try {
-    const { url } = req.body;
-    if (!url || !url.trim()) {
-      return res.status(400).json({ error: 'URL do Feed RSS é obrigatória' });
-    }
-
-    const response = await fetch(url.trim(), {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
-        'Accept': 'application/rss+xml, application/xml, text/xml, */*'
-      }
-    });
-
-    if (!response.ok) {
-      return res.status(400).json({ error: `Erro ao baixar Feed RSS (HTTP ${response.status})` });
-    }
-
-    const xmlText = await response.text();
-    const parsed = parsePodcastRssXml(xmlText);
-
-    res.json({
-      podcast: {
-        id: `rss-${Date.now()}`,
-        title: parsed.title,
-        artist: parsed.artist,
-        host: parsed.host,
-        coverImage: parsed.coverImage,
-        genre: parsed.genre,
-        category: parsed.category,
-        description: parsed.description,
-        feedUrl: url.trim(),
-        trackCount: parsed.trackCount
-      },
-      episodes: parsed.episodes
-    });
+    const url = (req.body?.url || req.query?.url) as string;
+    await handleParseRssRequest(url, res);
   } catch (error: any) {
-    console.error('Error parsing podcast RSS feed:', error);
+    console.error('Error parsing podcast RSS feed (POST):', error);
     res.status(500).json({ error: error.message || 'Erro ao processar Feed RSS do podcast' });
   }
 });

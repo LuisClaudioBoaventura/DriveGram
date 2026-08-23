@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { FolderItem, AudioTrack } from '../types/index.js';
 import { getLibraryEligibleFolders } from '../utils/libraryFolderUtils.js';
+import { fetchAndParsePodcastRss } from '../utils/podcastRssParser.js';
 
 interface OnlinePodcastResult {
   id: string;
@@ -263,30 +264,18 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     setParsedRssPodcast(null);
 
     try {
-      const res = await fetch('/api/podcasts/parse-rss', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: trimmed }),
-        signal: controller.signal
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.podcast) {
-          setParsedRssPodcast({
-            ...data.podcast,
-            episodes: data.episodes || []
-          });
-        } else {
-          setRssError('Não foi possível extrair dados válidos deste Feed RSS.');
-        }
+      const data = await fetchAndParsePodcastRss(trimmed, controller.signal);
+      if (data && data.podcast) {
+        setParsedRssPodcast({
+          ...data.podcast,
+          episodes: data.episodes || []
+        });
       } else {
-        const errData = await res.json().catch(() => ({}));
-        setRssError(errData.error || 'Erro ao processar o Feed RSS. Verifique o link.');
+        setRssError('Não foi possível extrair dados válidos deste Feed RSS.');
       }
     } catch (e: any) {
       if (e.name === 'AbortError') return;
-      setRssError('Falha ao conectar com o Feed RSS fornecido.');
+      setRssError(e.message || 'Falha ao conectar com o Feed RSS fornecido. Verifique o link.');
     } finally {
       setIsParsingRss(false);
       rssAbortControllerRef.current = null;
