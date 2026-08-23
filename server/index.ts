@@ -1740,6 +1740,253 @@ app.post('/api/telegram/download-all', async (_req, res) => {
   });
 });
 
+// ---------------- RETRY PENDING TELEGRAM UPLOADS ----------------
+app.get('/api/telegram/pending-uploads', (_req, res) => {
+  const allFiles = db.getAllFiles().filter(f => !f.isTrash);
+  const pendingFiles = allFiles.filter(file => {
+    const isUploaded = file.telegramMeta?.isUploadedToTelegram && file.telegramMeta?.messageId;
+    if (isUploaded) return false;
+    const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
+    const filePath = path.join(UPLOADS_DIR, diskFileName);
+    const altFilePath = path.join(UPLOADS_DIR, file.name);
+    return fs.existsSync(filePath) || fs.existsSync(altFilePath);
+  });
+
+  const totalBytes = pendingFiles.reduce((acc, f) => acc + (f.size || 0), 0);
+
+  res.json({
+    totalPending: pendingFiles.length,
+    totalBytes,
+    totalBytesFormatted: (totalBytes / (1024 * 1024)).toFixed(2) + ' MB',
+    files: pendingFiles
+  });
+});
+
+app.post('/api/telegram/sync-pending', async (_req, res) => {
+  const allFiles = db.getAllFiles().filter(f => !f.isTrash);
+  const pendingFiles = allFiles.filter(file => {
+    const isUploaded = file.telegramMeta?.isUploadedToTelegram && file.telegramMeta?.messageId;
+    if (isUploaded) return false;
+    const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
+    const filePath = path.join(UPLOADS_DIR, diskFileName);
+    const altFilePath = path.join(UPLOADS_DIR, file.name);
+    return fs.existsSync(filePath) || fs.existsSync(altFilePath);
+  });
+
+  if (pendingFiles.length === 0) {
+    return res.json({
+      success: true,
+      uploadedCount: 0,
+      failedCount: 0,
+      totalPending: 0,
+      message: 'Nenhum arquivo pendente encontrado para envio remoto.'
+    });
+  }
+
+  let uploadedCount = 0;
+  let failedCount = 0;
+
+  for (const file of pendingFiles) {
+    const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
+    let filePath = path.join(UPLOADS_DIR, diskFileName);
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(UPLOADS_DIR, file.name);
+    }
+    if (!fs.existsSync(filePath)) {
+      failedCount++;
+      continue;
+    }
+
+    const uploadId = `retry-${file.id}-${Date.now()}`;
+    const caption = `📁 DriveGram File\n📄 Nome: ${file.name}\n📦 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB\n🏷️ Pasta: ${file.parentId || 'Raiz'}`;
+    const startTime = Date.now();
+
+    activeUploadsMap.set(uploadId, {
+      uploadId,
+      fileName: file.name,
+      size: file.size,
+      transferred: 0,
+      progress: 0,
+      speed: '0 MB/s',
+      stage: 'cloud',
+      stageLabel: 'Enviando para o Telegram Cloud...',
+      updatedAt: Date.now()
+    });
+
+    try {
+      const telegramResult = await telegramService.uploadToSavedMessages(
+        filePath,
+        file.name,
+        caption,
+        (percent) => {
+          const transferred = Math.round((percent / 100) * file.size);
+          const elapsedSec = (Date.now() - startTime) / 1000;
+          const speedMBs = elapsedSec > 0 ? ((transferred / (1024 * 1024)) / elapsedSec).toFixed(1) : '1.0';
+          activeUploadsMap.set(uploadId, {
+            uploadId,
+            fileName: file.name,
+            size: file.size,
+            transferred,
+            progress: percent,
+            speed: `${speedMBs} MB/s`,
+            stage: percent >= 100 ? 'completed' : 'cloud',
+            stageLabel: percent >= 100 ? 'Salvo no Telegram' : 'Enviando para o Telegram Cloud...',
+            updatedAt: Date.now()
+          });
+        }
+      );
+
+      if (telegramResult.success && telegramResult.messageId) {
+        db.updateFile(file.id, {
+          telegramMeta: {
+            ...file.telegramMeta,
+            messageId: telegramResult.messageId,
+            chatId: 'me',
+            fileSize: file.size,
+            mimeType: file.mimeType,
+            telegramFileName: path.basename(filePath),
+            uploadDate: new Date().toISOString(),
+            isUploadedToTelegram: true
+          }
+        });
+        uploadedCount++;
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: file.name,
+          size: file.size,
+          transferred: file.size,
+          progress: 100,
+          speed: 'Concluído',
+          stage: 'completed',
+          stageLabel: 'Salvo com sucesso no Telegram',
+          updatedAt: Date.now()
+        });
+        setTimeout(() => activeUploadsMap.delete(uploadId), 10000);
+      } else {
+        failedCount++;
+        activeUploadsMap.delete(uploadId);
+      }
+    } catch (err) {
+      console.error(`Error uploading pending file ${file.name}:`, err);
+      failedCount++;
+      activeUploadsMap.delete(uploadId);
+    }
+  }
+
+  // Backup metadata manifest on Telegram if anything was uploaded
+  if (uploadedCount > 0) {
+    telegramService.syncMetadataToTelegram().catch(() => {});
+  }
+
+  res.json({
+    success: true,
+    uploadedCount,
+    failedCount,
+    totalPending: pendingFiles.length,
+    message: `${uploadedCount} arquivo(s) enviados com sucesso para as Mensagens Salvas do Telegram!${failedCount > 0 ? ` (${failedCount} falharam)` : ''}`
+  });
+});
+
+app.post('/api/telegram/retry-file/:id', async (req, res) => {
+  const file = db.getAllFiles().find(f => f.id === req.params.id && !f.isTrash);
+  if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
+
+  const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
+  let filePath = path.join(UPLOADS_DIR, diskFileName);
+  if (!fs.existsSync(filePath)) {
+    filePath = path.join(UPLOADS_DIR, file.name);
+  }
+  if (!fs.existsSync(filePath)) {
+    return res.status(400).json({ error: 'Arquivo físico não encontrado no cache local para envio.' });
+  }
+
+  const uploadId = `retry-${file.id}-${Date.now()}`;
+  const caption = `📁 DriveGram File\n📄 Nome: ${file.name}\n📦 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB\n🏷️ Pasta: ${file.parentId || 'Raiz'}`;
+  const startTime = Date.now();
+
+  activeUploadsMap.set(uploadId, {
+    uploadId,
+    fileName: file.name,
+    size: file.size,
+    transferred: 0,
+    progress: 0,
+    speed: '0 MB/s',
+    stage: 'cloud',
+    stageLabel: 'Enviando para o Telegram Cloud...',
+    updatedAt: Date.now()
+  });
+
+  try {
+    const telegramResult = await telegramService.uploadToSavedMessages(
+      filePath,
+      file.name,
+      caption,
+      (percent) => {
+        const transferred = Math.round((percent / 100) * file.size);
+        const elapsedSec = (Date.now() - startTime) / 1000;
+        const speedMBs = elapsedSec > 0 ? ((transferred / (1024 * 1024)) / elapsedSec).toFixed(1) : '1.0';
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: file.name,
+          size: file.size,
+          transferred,
+          progress: percent,
+          speed: `${speedMBs} MB/s`,
+          stage: percent >= 100 ? 'completed' : 'cloud',
+          stageLabel: percent >= 100 ? 'Salvo no Telegram' : 'Enviando para o Telegram Cloud...',
+          updatedAt: Date.now()
+        });
+      }
+    );
+
+    if (telegramResult.success && telegramResult.messageId) {
+      const updated = db.updateFile(file.id, {
+        telegramMeta: {
+          ...file.telegramMeta,
+          messageId: telegramResult.messageId,
+          chatId: 'me',
+          fileSize: file.size,
+          mimeType: file.mimeType,
+          telegramFileName: path.basename(filePath),
+          uploadDate: new Date().toISOString(),
+          isUploadedToTelegram: true
+        }
+      });
+
+      activeUploadsMap.set(uploadId, {
+        uploadId,
+        fileName: file.name,
+        size: file.size,
+        transferred: file.size,
+        progress: 100,
+        speed: 'Concluído',
+        stage: 'completed',
+        stageLabel: 'Salvo com sucesso no Telegram',
+        updatedAt: Date.now()
+      });
+
+      setTimeout(() => activeUploadsMap.delete(uploadId), 10000);
+
+      telegramService.syncMetadataToTelegram().catch(() => {});
+
+      return res.json({
+        success: true,
+        file: updated,
+        message: `"${file.name}" enviado e salvo com sucesso no Telegram!`
+      });
+    } else {
+      activeUploadsMap.delete(uploadId);
+      return res.status(500).json({
+        success: false,
+        error: telegramResult.error || 'Erro ao enviar para o Telegram'
+      });
+    }
+  } catch (err: any) {
+    activeUploadsMap.delete(uploadId);
+    return res.status(500).json({ success: false, error: err.message || 'Erro no envio' });
+  }
+});
+
 // ---------------- EXPORT / IMPORT BACKUP ----------------
 app.get('/api/manifest/export', (_req, res) => {
   const manifest = db.exportManifest();

@@ -20,7 +20,8 @@ import {
   RotateCcw,
   Clock,
   ArrowDownToLine,
-  BookOpen
+  BookOpen,
+  CloudUpload
 } from 'lucide-react';
 import { DriveItem, FolderItem, FileType } from '../types/index.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
@@ -43,6 +44,7 @@ interface FileGridProps {
   onEmptyTrash?: () => void;
   onMoveItem?: (id: string, isFolder: boolean, targetParentId: string | null) => Promise<boolean>;
   onUploadToFolder?: (files: FileList | File[] | { file: File; relativePath?: string }[], targetFolderId: string) => Promise<void>;
+  onRetryUploadTelegram?: (fileId: string) => Promise<any> | void;
 }
 
 export const FileGrid: React.FC<FileGridProps> = ({
@@ -56,11 +58,12 @@ export const FileGrid: React.FC<FileGridProps> = ({
   onDeleteItem,
   onEditItem,
   onAddToCourse,
-  isTrashView,
+  isTrashView = false,
   onRestoreItem,
   onEmptyTrash,
   onMoveItem,
-  onUploadToFolder
+  onUploadToFolder,
+  onRetryUploadTelegram
 }) => {
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -399,6 +402,22 @@ export const FileGrid: React.FC<FileGridProps> = ({
                         <Send className="w-2.5 h-2.5" />
                         <span>Telegram</span>
                       </div>
+                    )}
+
+                    {/* Pending Upload Indicator & Retry Action */}
+                    {!isTrashView && !file.telegramMeta?.isUploadedToTelegram && (
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRetryUploadTelegram?.(file.id);
+                        }}
+                        title="Salvo apenas localmente. Clique para enviar para as Mensagens Salvas do Telegram agora"
+                        className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-bold backdrop-blur-sm border border-amber-500/40 transition-transform active:scale-95 cursor-pointer shadow-xs"
+                      >
+                        <CloudUpload className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400 animate-pulse" />
+                        <span>Pendente</span>
+                      </button>
                     )}
 
                     {/* Trash countdown indicator */}

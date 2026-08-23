@@ -485,6 +485,32 @@ export function useFileSystem() {
         : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
+  const pendingFilesList = allFiles.filter(f => !f.isTrash && (!f.telegramMeta?.isUploadedToTelegram || !f.telegramMeta?.messageId));
+  const pendingUploadsCount = pendingFilesList.length;
+  const pendingUploadsBytes = pendingFilesList.reduce((acc, f) => acc + (f.size || 0), 0);
+
+  const retryUploadToTelegram = async (fileId: string) => {
+    try {
+      const res = await fetch(`/api/telegram/retry-file/${fileId}`, { method: 'POST' });
+      const data = await res.json();
+      await fetchItems();
+      return data;
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Erro ao reenviar arquivo para o Telegram' };
+    }
+  };
+
+  const syncAllPendingToTelegram = async () => {
+    try {
+      const res = await fetch('/api/telegram/sync-pending', { method: 'POST' });
+      const data = await res.json();
+      await fetchItems();
+      return data;
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Erro ao sincronizar arquivos pendentes' };
+    }
+  };
+
   return {
     currentFolderId,
     setCurrentFolderId,
@@ -492,6 +518,8 @@ export function useFileSystem() {
     files: displayedFiles,
     allFolders,
     allFiles,
+    pendingUploadsCount,
+    pendingUploadsBytes,
     searchQuery,
     setSearchQuery,
     filterType,
@@ -513,6 +541,8 @@ export function useFileSystem() {
     getBreadcrumbPath,
     createFolder,
     uploadFiles,
+    retryUploadToTelegram,
+    syncAllPendingToTelegram,
     deleteItem,
     restoreItem,
     emptyTrash,

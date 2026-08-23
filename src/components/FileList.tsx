@@ -17,7 +17,8 @@ import {
   Clock,
   ArrowDownToLine,
   BookOpen,
-  LockKeyhole
+  LockKeyhole,
+  CloudUpload
 } from 'lucide-react';
 import { DriveItem, FolderItem, FileType } from '../types/index.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
@@ -38,6 +39,7 @@ interface FileListProps {
   onEmptyTrash?: () => void;
   onMoveItem?: (id: string, isFolder: boolean, targetParentId: string | null) => Promise<boolean>;
   onUploadToFolder?: (files: FileList | File[] | { file: File; relativePath?: string }[], targetFolderId: string) => Promise<void>;
+  onRetryUploadTelegram?: (fileId: string) => Promise<any> | void;
 }
 
 export const FileList: React.FC<FileListProps> = ({
@@ -50,11 +52,12 @@ export const FileList: React.FC<FileListProps> = ({
   onToggleFavorite,
   onDeleteItem,
   onEditItem,
-  isTrashView,
+  isTrashView = false,
   onRestoreItem,
   onEmptyTrash,
   onMoveItem,
-  onUploadToFolder
+  onUploadToFolder,
+  onRetryUploadTelegram
 }) => {
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -421,7 +424,18 @@ export const FileList: React.FC<FileListProps> = ({
                         <span>Salvas</span>
                       </span>
                     ) : (
-                      <span className="text-gray-400">Pendente</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRetryUploadTelegram?.(file.id);
+                        }}
+                        title="Salvo apenas no cache local. Clique para enviar para as Mensagens Salvas do Telegram agora"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-950/60 hover:bg-amber-200 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-700/50 px-2 py-0.5 rounded-full transition-all active:scale-95 cursor-pointer shadow-xs"
+                      >
+                        <CloudUpload className="w-3 h-3 text-amber-600 dark:text-amber-400 animate-pulse" />
+                        <span>Pendente (Enviar)</span>
+                      </button>
                     )}
                   </td>
                   <td className="py-2.5 px-4 text-right">

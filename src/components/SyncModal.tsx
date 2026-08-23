@@ -16,7 +16,8 @@ import {
   Clock,
   Trash2,
   Sliders,
-  Sparkles
+  Sparkles,
+  CloudUpload
 } from 'lucide-react';
 import { TelegramAuthState, StreamingMode, CacheDurationConfig } from '../types/index.js';
 
@@ -49,7 +50,25 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [importingSaved, setImportingSaved] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
+  const [syncingPending, setSyncingPending] = useState(false);
+  const [pendingInfo, setPendingInfo] = useState<{ totalPending: number; totalBytesFormatted: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchPendingInfo = async () => {
+    try {
+      const res = await fetch('/api/telegram/pending-uploads');
+      if (res.ok) {
+        const data = await res.json();
+        setPendingInfo({ totalPending: data.totalPending, totalBytesFormatted: data.totalBytesFormatted });
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchPendingInfo();
+    }
+  }, [isOpen]);
 
   // Custom cache duration states
   const currentDuration = telegramState.cacheDuration || { value: 24, unit: 'hours', totalMinutes: 1440 };
@@ -104,6 +123,26 @@ export const SyncModal: React.FC<SyncModalProps> = ({
       setFeedback({ type: 'error', message: e.message || 'Erro de conexão.' });
     } finally {
       setImportingSaved(false);
+    }
+  };
+
+  const handleSyncPending = async () => {
+    setSyncingPending(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/telegram/sync-pending', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setFeedback({ type: 'success', message: data.message });
+        await fetchPendingInfo();
+        onRefreshItems();
+      } else {
+        setFeedback({ type: 'error', message: data.error || 'Erro ao sincronizar arquivos pendentes.' });
+      }
+    } catch (e: any) {
+      setFeedback({ type: 'error', message: e.message || 'Falha na conexão com o servidor.' });
+    } finally {
+      setSyncingPending(false);
     }
   };
 
@@ -440,7 +479,42 @@ export const SyncModal: React.FC<SyncModalProps> = ({
             </div>
           </div>
 
-          {/* 2. Sincronização Automática com Telegram (Mensagens Salvas) */}
+          {/* 2. Sincronização de Arquivos Pendentes */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50/60 to-orange-50/60 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-900/40">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2 font-bold text-xs text-amber-800 dark:text-amber-300">
+                <CloudUpload className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span>Arquivos Pendentes de Envio ao Telegram</span>
+              </div>
+              {pendingInfo && (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  pendingInfo.totalPending > 0 
+                    ? 'bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200' 
+                    : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                }`}>
+                  {pendingInfo.totalPending > 0 ? `${pendingInfo.totalPending} pendente(s)` : 'Tudo salvo na nuvem'}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
+              {pendingInfo && pendingInfo.totalPending > 0
+                ? `Você possui ${pendingInfo.totalPending} arquivo(s) (${pendingInfo.totalBytesFormatted}) salvos apenas no cache local. Envie-os agora para salvar de forma permanente e ilimitada no Telegram.`
+                : 'Todos os seus arquivos locais estão devidamente salvos e sincronizados com as Mensagens Salvas do Telegram.'}
+            </p>
+
+            {pendingInfo && pendingInfo.totalPending > 0 && (
+              <button
+                onClick={handleSyncPending}
+                disabled={syncingPending || !telegramState.isConnected}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-40"
+              >
+                <CloudUpload className={`w-4 h-4 ${syncingPending ? 'animate-bounce' : ''}`} />
+                <span>{syncingPending ? 'Enviando Arquivos Pendentes para o Telegram...' : `📤 Enviar ${pendingInfo.totalPending} Arquivo(s) Pendente(s) Agora`}</span>
+              </button>
+            )}
+          </div>
+
+          {/* 3. Sincronização Automática com Telegram (Mensagens Salvas) */}
           <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-drive-darkBg dark:to-drive-darkBg border border-blue-100 dark:border-drive-darkBorder">
             <div className="flex items-center gap-2 font-bold text-xs text-blue-700 dark:text-blue-400 mb-1">
               <Send className="w-3.5 h-3.5" />

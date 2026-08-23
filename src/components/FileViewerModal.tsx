@@ -22,7 +22,8 @@ import {
   Subtitles,
   Plus,
   Trash2,
-  Upload
+  Upload,
+  CloudUpload
 } from 'lucide-react';
 import { DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { ComicReader } from './ComicReader.js';
@@ -73,13 +74,15 @@ interface FileViewerModalProps {
   folderFiles: DriveItem[];
   onClose: () => void;
   onSelectFile: (file: DriveItem) => void;
+  onRetryUploadTelegram?: (fileId: string) => Promise<any> | void;
 }
 
 export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   file,
   folderFiles,
   onClose,
-  onSelectFile
+  onSelectFile,
+  onRetryUploadTelegram
 }) => {
   const [isAutoPlaySequence, setIsAutoPlaySequence] = useState(true);
   const [showInfo, setShowInfo] = useState(false);
@@ -265,11 +268,21 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-gray-800 bg-gray-900/60 shrink-0">
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="flex items-center gap-2 truncate">
-              {file.telegramMeta?.isUploadedToTelegram && (
+              {file.telegramMeta?.isUploadedToTelegram ? (
                 <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-400 text-[10px] font-bold">
                   <Send className="w-2.5 h-2.5" />
                   TG #{file.telegramMeta.messageId || 'Salvas'}
                 </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onRetryUploadTelegram?.(file.id)}
+                  title="Arquivo salvo apenas no cache local. Clique para enviar para as Mensagens Salvas do Telegram agora"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-bold border border-amber-500/40 transition-transform active:scale-95 cursor-pointer shadow-xs"
+                >
+                  <CloudUpload className="w-3 h-3 text-amber-400 animate-pulse" />
+                  <span>Salvar no Telegram</span>
+                </button>
               )}
               <h2 className="text-sm font-bold text-white truncate max-w-md" title={file.name}>
                 {file.name}
