@@ -1648,7 +1648,7 @@ app.post('/api/youtube/import', async (req, res) => {
 
     // 2. IMPORT AS PODCAST / AUDIO SHOW
     if (targetType === 'podcast' || targetType === 'audio') {
-      const podcastFolder = db.getOrCreatePodcastFolder({ title: title.trim(), showType: 'podcast' } as any);
+      const podcastFolder = db.getOrCreatePodcastFolder({ title: title.trim(), showType: 'podcast' } as any, folderId || undefined);
       const finalFolderId = podcastFolder.id;
 
       const newShow = db.saveAudioShow({

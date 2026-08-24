@@ -602,6 +602,9 @@ class Database {
               id: existingLesson?.id || 'lesson-' + sub.id + '-' + video.id,
               title: video.name.replace(/\.[^/.]+$/, ""),
               duration: existingLesson?.duration || '15:00',
+              durationSeconds: existingLesson?.durationSeconds || 900,
+              videoUrl: existingLesson?.videoUrl,
+              embedUrl: existingLesson?.embedUrl,
               fileId: video.id,
               order: vIdx + 1,
               isCompleted: existingLesson?.isCompleted || false,
@@ -613,7 +616,7 @@ class Database {
             };
           });
 
-          // Also include any placeholder/manual lessons added to this module that don't have fileId yet
+          // Also preserve any placeholder / YouTube lessons added to this module that don't have fileId yet
           for (const l of existingLessons) {
             if (!l.fileId && !lessons.some(x => x.id === l.id)) {
               lessons.push(l);
@@ -631,46 +634,66 @@ class Database {
         course.modules = updatedModules;
       } else {
         const rootVideos = files.filter(f => f.parentId === course.folderId && f.type === 'video');
-        const existingMod = existingModules[0];
 
-        const lessons: Lesson[] = rootVideos.map((video, vIdx) => {
-          const existingLesson = existingMod?.lessons?.find(l => l.fileId === video.id || l.title === video.name.replace(/\.[^/.]+$/, ""));
-          const mergedSubtitles = video.subtitles && video.subtitles.length > 0 
-            ? video.subtitles 
-            : (existingLesson?.subtitles || []);
+        if (existingModules.length > 0) {
+          const updatedModules = existingModules.map((mod, mIdx) => {
+            const existingLessons = mod.lessons || [];
+            const lessons = [...existingLessons];
 
-          return {
-            id: existingLesson?.id || 'lesson-' + course.folderId + '-' + video.id,
+            if (mIdx === 0 && rootVideos.length > 0) {
+              for (const video of rootVideos) {
+                const existingLesson = lessons.find(l => l.fileId === video.id || l.title === video.name.replace(/\.[^/.]+$/, ""));
+                if (existingLesson) {
+                  existingLesson.fileId = video.id;
+                  if (video.subtitles) existingLesson.subtitles = video.subtitles;
+                  if (video.timestamps) existingLesson.timestamps = video.timestamps;
+                } else {
+                  lessons.push({
+                    id: 'lesson-' + course.folderId + '-' + video.id,
+                    title: video.name.replace(/\.[^/.]+$/, ""),
+                    duration: '15:00',
+                    durationSeconds: 900,
+                    fileId: video.id,
+                    order: lessons.length + 1,
+                    isCompleted: false,
+                    lastPositionSeconds: 0,
+                    timestamps: video.timestamps || [],
+                    subtitles: video.subtitles || []
+                  });
+                }
+              }
+            }
+
+            return {
+              ...mod,
+              lessons
+            };
+          });
+
+          course.modules = updatedModules;
+        } else {
+          const lessons: Lesson[] = rootVideos.map((video, vIdx) => ({
+            id: 'lesson-' + course.folderId + '-' + video.id,
             title: video.name.replace(/\.[^/.]+$/, ""),
-            duration: existingLesson?.duration || '15:00',
+            duration: '15:00',
+            durationSeconds: 900,
             fileId: video.id,
             order: vIdx + 1,
-            isCompleted: existingLesson?.isCompleted || false,
-            lastPositionSeconds: existingLesson?.lastPositionSeconds || 0,
-            timestamps: existingLesson?.timestamps || video.timestamps || [],
-            subtitles: mergedSubtitles,
-            notes: existingLesson?.notes,
-            materials: existingLesson?.materials
-          };
-        });
+            isCompleted: false,
+            lastPositionSeconds: 0,
+            timestamps: video.timestamps || [],
+            subtitles: video.subtitles || []
+          }));
 
-        // Also preserve any placeholder lessons without files
-        if (existingMod?.lessons) {
-          for (const l of existingMod.lessons) {
-            if (!l.fileId && !lessons.some(x => x.id === l.id)) {
-              lessons.push(l);
+          course.modules = [
+            {
+              id: 'mod-' + course.folderId,
+              title: rootFolder.name,
+              order: 1,
+              lessons
             }
-          }
+          ];
         }
-
-        course.modules = [
-          {
-            id: existingMod?.id || 'mod-' + course.folderId,
-            title: rootFolder.name,
-            order: 1,
-            lessons
-          }
-        ];
       }
 
       course.updatedAt = new Date().toISOString();
@@ -831,6 +854,9 @@ class Database {
               episodeNumber: existingEp?.episodeNumber || (eIdx + 1),
               seasonNumber: sIdx + 1,
               duration: existingEp?.duration || '24:00',
+              durationSeconds: existingEp?.durationSeconds || 1440,
+              videoUrl: existingEp?.videoUrl,
+              embedUrl: existingEp?.embedUrl,
               fileId: file.id,
               isCompleted: existingEp?.isCompleted || false,
               lastPositionSeconds: existingEp?.lastPositionSeconds || 0,
@@ -839,6 +865,13 @@ class Database {
               subtitles: existingEp?.subtitles || file.subtitles || []
             };
           });
+
+          // Preserve remote / YouTube episodes that do not have fileId yet
+          for (const ep of existingEpisodes) {
+            if (!ep.fileId && !episodes.some(x => x.id === ep.id)) {
+              episodes.push(ep);
+            }
+          }
 
           return {
             id: existingSeason?.id || sub.id,
@@ -863,6 +896,9 @@ class Database {
             episodeNumber: existingEp?.episodeNumber || (eIdx + 1),
             seasonNumber: 1,
             duration: existingEp?.duration || '24:00',
+            durationSeconds: existingEp?.durationSeconds || 1440,
+            videoUrl: existingEp?.videoUrl,
+            embedUrl: existingEp?.embedUrl,
             fileId: file.id,
             isCompleted: existingEp?.isCompleted || false,
             lastPositionSeconds: existingEp?.lastPositionSeconds || 0,
@@ -871,6 +907,13 @@ class Database {
             subtitles: existingEp?.subtitles || file.subtitles || []
           };
         });
+
+        // Preserve remote / YouTube episodes that do not have fileId yet
+        for (const ep of existingEpisodes) {
+          if (!ep.fileId && !episodes.some(x => x.id === ep.id)) {
+            episodes.push(ep);
+          }
+        }
 
         series.seasons = [
           {
@@ -907,70 +950,45 @@ class Database {
       audioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
       const existingTracks = show.tracks || [];
+      const updatedTracks = [...existingTracks];
 
-      // If show is a Podcast or contains remote stream/RSS tracks
-      if (show.showType === 'podcast' || existingTracks.some(t => t.audioUrl || !t.fileId)) {
-        const updatedTracks = [...existingTracks];
-
-        // Match every downloaded audio file to existing tracks or add new ones
-        for (const file of audioFiles) {
-          const cleanFileName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().trim();
-          
-          let track = updatedTracks.find(t => t.fileId === file.id);
-          if (!track) {
-            track = updatedTracks.find(t => {
-              const cleanTrackTitle = (t.title || '').toLowerCase().trim();
-              return cleanTrackTitle === cleanFileName || cleanTrackTitle.includes(cleanFileName) || cleanFileName.includes(cleanTrackTitle);
-            });
-          }
-
-          if (track) {
-            track.fileId = file.id;
-            if ((!track.timestamps || track.timestamps.length === 0) && file.timestamps && file.timestamps.length > 0) {
-              track.timestamps = file.timestamps;
-            }
-          } else {
-            // New local file in folder not matching an existing track
-            updatedTracks.push({
-              id: 'track-' + show.id + '-' + file.id,
-              title: file.name.replace(/\.[^/.]+$/, ''),
-              artist: show.artist || show.host || 'Artista',
-              album: show.title,
-              duration: '03:45',
-              fileId: file.id,
-              order: updatedTracks.length + 1,
-              trackNumber: updatedTracks.length + 1,
-              isCompleted: false,
-              lastPositionSeconds: 0,
-              timestamps: file.timestamps || []
-            });
-          }
+      // Match every downloaded audio file to existing tracks or add new ones
+      for (const file of audioFiles) {
+        const cleanFileName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().trim();
+        
+        let track = updatedTracks.find(t => t.fileId === file.id);
+        if (!track) {
+          track = updatedTracks.find(t => {
+            const cleanTrackTitle = (t.title || '').toLowerCase().trim();
+            return cleanTrackTitle === cleanFileName || cleanTrackTitle.includes(cleanFileName) || cleanFileName.includes(cleanTrackTitle);
+          });
         }
 
-        show.tracks = updatedTracks;
-      } else {
-        // Pure local music albums
-        if (audioFiles.length > 0) {
-          show.tracks = audioFiles.map((file, idx) => {
-            const existing = existingTracks.find(t => t.fileId === file.id || t.title === file.name.replace(/\.[^/.]+$/, ""));
-            return {
-              id: existing?.id || 'track-' + show.id + '-' + file.id,
-              title: existing?.title || file.name.replace(/\.[^/.]+$/, ""),
-              artist: existing?.artist || show.artist || show.host || 'Artista',
-              album: existing?.album || show.title,
-              duration: existing?.duration || '03:45',
-              fileId: file.id,
-              order: idx + 1,
-              trackNumber: existing?.trackNumber || (idx + 1),
-              isCompleted: existing?.isCompleted || false,
-              lastPositionSeconds: existing?.lastPositionSeconds || 0,
-              timestamps: existing?.timestamps || file.timestamps || [],
-              notes: existing?.notes
-            };
+        if (track) {
+          track.fileId = file.id;
+          if ((!track.timestamps || track.timestamps.length === 0) && file.timestamps && file.timestamps.length > 0) {
+            track.timestamps = file.timestamps;
+          }
+        } else {
+          // New local file in folder not matching an existing track
+          updatedTracks.push({
+            id: 'track-' + show.id + '-' + file.id,
+            title: file.name.replace(/\.[^/.]+$/, ''),
+            artist: show.artist || show.host || 'Artista',
+            album: show.title,
+            duration: '03:45',
+            durationSeconds: 225,
+            fileId: file.id,
+            order: updatedTracks.length + 1,
+            trackNumber: updatedTracks.length + 1,
+            isCompleted: false,
+            lastPositionSeconds: 0,
+            timestamps: file.timestamps || []
           });
         }
       }
 
+      show.tracks = updatedTracks;
       show.updatedAt = new Date().toISOString();
     }
   }
@@ -2005,7 +2023,7 @@ class Database {
     return false;
   }
 
-  public getOrCreatePodcastFolder(showIdOrShow: string | AudioShow): FolderItem {
+  public getOrCreatePodcastFolder(showIdOrShow: string | AudioShow, parentFolderId?: string): FolderItem {
     const show = typeof showIdOrShow === 'string' ? this.getAudioShowById(showIdOrShow) : showIdOrShow;
     const allFolders = this.data.folders.filter(f => !f.isTrash);
     
@@ -2015,24 +2033,28 @@ class Database {
       if (existing) return existing;
     }
 
-    // 2. Find or create root library folder "Musicas e Podcasts" / "Podcasts" in "Meu Drive"
-    const rootAliases = ['musicas e podcasts', 'músicas e podcasts', 'musicas & podcasts', 'músicas & podcasts', 'podcasts', 'músicas', 'musicas'];
-    let podcastsRoot = allFolders.find(f => {
-      if (f.parentId) return false;
-      const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
-      return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
-    });
+    // 2. Find target parent folder or default root "🎙️ Músicas & Podcasts"
+    let targetParentId = parentFolderId;
+    if (!targetParentId) {
+      const rootAliases = ['musicas e podcasts', 'músicas e podcasts', 'musicas & podcasts', 'músicas & podcasts', 'podcasts', 'músicas', 'musicas'];
+      let podcastsRoot = allFolders.find(f => {
+        if (f.parentId) return false;
+        const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+        return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
+      });
 
-    if (!podcastsRoot) {
-      podcastsRoot = this.createFolder('🎙️ Músicas & Podcasts', null, '#10b981', 'Biblioteca de Músicas e Podcasts');
+      if (!podcastsRoot) {
+        podcastsRoot = this.createFolder('🎙️ Músicas & Podcasts', null, '#10b981', 'Biblioteca de Músicas e Podcasts');
+      }
+      targetParentId = podcastsRoot.id;
     }
 
     const showTitle = show?.title?.trim() || 'Podcast';
     const folderName = `🎙️ ${showTitle}`;
 
-    // 3. Find if a subfolder for this podcast already exists under podcastsRoot or in root
+    // 3. Find if a subfolder for this podcast already exists under targetParentId or in root
     let podcastFolder = allFolders.find(f => 
-      f.parentId === podcastsRoot.id && 
+      f.parentId === targetParentId && 
       (f.name.toLowerCase().trim() === folderName.toLowerCase().trim() || f.name.toLowerCase().trim() === showTitle.toLowerCase().trim())
     );
 
@@ -2044,7 +2066,7 @@ class Database {
     }
 
     if (!podcastFolder) {
-      podcastFolder = this.createFolder(folderName, podcastsRoot.id, '#10b981', `Episódios salvos do podcast ${showTitle}`);
+      podcastFolder = this.createFolder(folderName, targetParentId, '#10b981', `Episódios salvos do podcast ${showTitle}`);
     }
 
     // 4. Link folderId to the show in database

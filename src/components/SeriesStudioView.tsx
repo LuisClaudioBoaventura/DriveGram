@@ -269,10 +269,10 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                       </div>
                     </div>
 
-                    {epFile ? (
+                    {(epFile || ep.videoUrl || ep.embedUrl) ? (
                       <button
                         onClick={() => handleStartPlaying(ep)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md transition-all shrink-0"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md transition-all shrink-0 active:scale-95"
                         title="Assistir Episódio"
                       >
                         <Play className="w-3.5 h-3.5 fill-current" />
@@ -290,7 +290,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
               <Tv className="w-12 h-12 text-gray-400 mb-3" />
               <h3 className="font-bold text-sm">Nenhum episódio encontrado nesta temporada</h3>
               <p className="text-xs text-gray-500 max-w-sm mt-1">
-                Adicione arquivos de vídeo na pasta da série para que sejam reconhecidos automaticamente.
+                Adicione arquivos de vídeo na pasta da série ou importe uma playlist/canal para que sejam listados automaticamente.
               </p>
             </div>
           )}
@@ -298,7 +298,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
       </div>
 
       {/* Floating Video Player Modal */}
-      {playingEpisode && playingFile && (
+      {playingEpisode && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-150"
           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -354,17 +354,35 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
 
             {/* Video Player */}
             <div className="flex-1 w-full h-full overflow-hidden flex items-center justify-center bg-black">
-              <video
-                ref={videoRef}
-                key={playingFile.id}
-                src={`/api/stream/${playingFile.id}`}
-                controls
-                autoPlay
-                playsInline
-                crossOrigin="anonymous"
-                onEnded={handleEpisodeEnded}
-                className="max-h-full max-w-full object-contain"
-              />
+              {playingFile ? (
+                <video
+                  ref={videoRef}
+                  key={playingFile.id}
+                  src={`/api/stream/${playingFile.id}`}
+                  controls
+                  autoPlay
+                  playsInline
+                  crossOrigin="anonymous"
+                  onEnded={handleEpisodeEnded}
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : playingEpisode.embedUrl || (playingEpisode.videoUrl && (playingEpisode.videoUrl.includes('youtube.com') || playingEpisode.videoUrl.includes('youtu.be'))) ? (
+                <iframe
+                  src={
+                    playingEpisode.embedUrl || 
+                    `https://www.youtube.com/embed/${playingEpisode.videoUrl?.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/i)?.[1] || ''}?autoplay=1&enablejsapi=1`
+                  }
+                  title={playingEpisode.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center p-8 text-gray-400">
+                  <Tv className="w-12 h-12 mb-3 text-purple-400" />
+                  <p className="text-sm font-semibold">Fonte de vídeo não disponível</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

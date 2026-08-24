@@ -351,12 +351,25 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               ))}
             </video>
           </div>
+        ) : (video.embedUrl || (video.videoUrl && (video.videoUrl.includes('youtube.com') || video.videoUrl.includes('youtu.be')))) ? (
+          <div className={isPiPHidden ? 'w-px h-px' : 'relative w-full min-h-[50vh] max-h-[75vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center'}>
+            <iframe
+              src={
+                video.embedUrl || 
+                `https://www.youtube.com/embed/${video.videoUrl?.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/i)?.[1] || ''}?autoplay=1&enablejsapi=1`
+              }
+              title={video.title}
+              className="w-full h-full min-h-[50vh] border-0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
         ) : !isPiPHidden ? (
           <div className="flex flex-col items-center justify-center p-16 text-center bg-gray-900/50 rounded-3xl border border-gray-800 max-w-md w-full">
             <Film className="w-12 h-12 text-red-500 mb-3" />
             <h3 className="text-sm font-bold">Arquivo de vídeo não encontrado</h3>
             <p className="text-xs text-gray-400 mt-1">
-              Certifique-se de que a pasta vinculada contém um arquivo de vídeo .mp4 ou .mkv válido.
+              Certifique-se de que a pasta vinculada contém um arquivo de vídeo .mp4 ou .mkv válido ou link de streaming do YouTube.
             </p>
           </div>
         ) : null}
