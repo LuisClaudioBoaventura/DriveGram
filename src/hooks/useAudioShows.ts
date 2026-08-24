@@ -55,17 +55,11 @@ export function useAudioShows() {
       if (res.ok) {
         const data = await res.json();
         setAudioShows(data);
-        if (data.length > 0 && !activeShow) {
-          setActiveShow(data[0]);
-          if (data[0].tracks?.[0]) {
-            setActiveTrack(data[0].tracks[0]);
-          }
-        }
       }
     } catch (e) {
       console.warn('Backend unavailable for audio shows');
     }
-  }, [activeShow]);
+  }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -522,7 +516,10 @@ export function useAudioShows() {
 
   const togglePlay = useCallback(() => {
     if (!audioRef.current) {
-      setIsPlaying(prev => !prev);
+      setIsPlaying(prev => {
+        if (!prev) setIsFloatingOpen(true);
+        return !prev;
+      });
       return;
     }
     if (isPlaying) {
@@ -530,6 +527,7 @@ export function useAudioShows() {
       setIsPlaying(false);
       savePlaybackPosition();
     } else {
+      setIsFloatingOpen(true);
       audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   }, [isPlaying, savePlaybackPosition]);

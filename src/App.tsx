@@ -626,7 +626,10 @@ export function App() {
               onUpdateTrackProgress={audioShows.updateTrackProgress}
               onOpenEditModal={() => setEditingAudioShow(selectedAudioForView)}
               onRefreshSinglePodcast={audioShows.refreshSinglePodcast}
-              onMinimizeToFloating={() => setSelectedAudioForView(null)}
+              onMinimizeToFloating={() => {
+                audioShows.setIsFloatingOpen(true);
+                setSelectedAudioForView(null);
+              }}
               // Global Player bindings
               isPlaying={audioShows.isPlaying}
               currentTime={audioShows.currentTime}
@@ -1497,7 +1500,7 @@ export function App() {
       )}
 
       {/* Persistent Global Floating Podcast / Music Player with Vinyl Disc */}
-      {audioShows.activeAudioShow && (
+      {audioShows.activeAudioShow && audioShows.isFloatingOpen && (
         <FloatingPodcastPlayer
           show={audioShows.activeAudioShow}
           activeTrack={audioShows.activeTrack}
