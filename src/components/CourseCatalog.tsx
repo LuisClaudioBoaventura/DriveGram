@@ -51,9 +51,9 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
   });
 
   return (
-    <div className="w-full flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-4 sm:p-6 space-y-6">
+    <div className="w-full max-w-full overflow-x-hidden flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-3 sm:p-6 space-y-6">
       {/* Standardized Hero Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 p-6 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-blue-600/30 shrink-0">
+      <div className="rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 p-5 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-blue-600/30 shrink-0">
         <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
           <GraduationCap className="w-72 h-72" />
@@ -96,19 +96,19 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
 
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 w-full md:w-auto z-10">
-          <div className="p-3.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[100px]">
+          <div className="p-3.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <GraduationCap className="w-4 h-4 text-blue-300 mb-1" />
             <span className="text-lg font-black">{totalCourses}</span>
             <span className="text-[10px] text-blue-200 uppercase font-semibold">Cursos</span>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[100px]">
+          <div className="p-3.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <BookOpen className="w-4 h-4 text-indigo-300 mb-1" />
             <span className="text-lg font-black">{totalLessons}</span>
             <span className="text-[10px] text-indigo-200 uppercase font-semibold">Aulas</span>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[100px] col-span-2 sm:col-span-1">
+          <div className="p-3.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0 col-span-2 sm:col-span-1">
             <CheckCircle2 className="w-4 h-4 text-emerald-300 mb-1" />
             <span className="text-lg font-black">{overallProgress}%</span>
             <span className="text-[10px] text-emerald-200 uppercase font-semibold">Progresso</span>

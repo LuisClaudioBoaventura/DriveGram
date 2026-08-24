@@ -134,9 +134,9 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
   };
 
   return (
-    <div className="w-full flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-4 sm:p-6 space-y-6 select-none">
+    <div className="w-full max-w-full overflow-x-hidden flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-3 sm:p-6 space-y-6 select-none">
       {/* Standardized Hero Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-rose-900 via-red-950 to-slate-900 p-6 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-rose-800/40 shrink-0">
+      <div className="rounded-3xl bg-gradient-to-r from-rose-900 via-red-950 to-slate-900 p-5 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-rose-800/40 shrink-0">
         <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
           <LockKeyhole className="w-80 h-80" />
@@ -212,19 +212,19 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
 
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 w-full md:w-auto z-10">
-            <div className="p-3 rounded-2xl bg-black/30 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[95px]">
+            <div className="p-3 rounded-2xl bg-black/30 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
               <Film className="w-4 h-4 text-rose-300 mb-1" />
               <span className="text-base font-black">{videos.length}</span>
               <span className="text-[10px] text-rose-200 uppercase font-semibold">Vídeos</span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-black/30 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[95px]">
+            <div className="p-3 rounded-2xl bg-black/30 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
               <Users className="w-4 h-4 text-indigo-300 mb-1" />
               <span className="text-base font-black">{performers.length}</span>
               <span className="text-[10px] text-rose-200 uppercase font-semibold">Atores</span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-black/30 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[95px] col-span-2 sm:col-span-1">
+            <div className="p-3 rounded-2xl bg-black/30 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0 col-span-2 sm:col-span-1">
               <Star className="w-4 h-4 text-amber-300 mb-1 fill-amber-300" />
               <span className="text-base font-black">{favoriteVideos.length}</span>
               <span className="text-[10px] text-amber-200 uppercase font-semibold">Favoritos</span>
@@ -510,7 +510,7 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
                         className={`absolute top-2 right-2 p-1.5 rounded-xl backdrop-blur-md transition-all shadow-md z-20 ${
                           video.isFavorite
                             ? 'bg-amber-500 text-black scale-105'
-                            : 'bg-black/60 text-white/70 hover:text-amber-400 hover:bg-black/90 opacity-0 group-hover:opacity-100'
+                            : 'bg-black/60 text-white/70 hover:text-amber-400 hover:bg-black/90 opacity-100 sm:opacity-0 group-hover:opacity-100'
                         }`}
                         title={video.isFavorite ? 'Remover dos Favoritos' : 'Adicionar à Playlist de Favoritos'}
                       >
@@ -525,7 +525,7 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
                       </div>
 
                       {/* Edit/Delete Overlay Actions (Bottom on hover) */}
-                      <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                      <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
                         {onEditVideo && (
                           <button
                             onClick={(e) => {
@@ -736,7 +736,7 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
                           className={`absolute top-3 right-3 p-1.5 rounded-xl transition-all z-10 ${
                             performer.isFavorite
                               ? 'bg-amber-500 text-black shadow-md'
-                              : 'bg-black/40 text-gray-300 opacity-0 group-hover:opacity-100 hover:text-amber-400 hover:bg-black/60'
+                              : 'bg-black/40 text-gray-300 opacity-100 sm:opacity-0 group-hover:opacity-100 hover:text-amber-400 hover:bg-black/60'
                           }`}
                           title={performer.isFavorite ? 'Remover dos Favoritos' : 'Favoritar Performer'}
                         >

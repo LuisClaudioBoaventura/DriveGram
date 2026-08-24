@@ -302,9 +302,9 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   });
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 animate-in fade-in duration-200">
+    <div className="w-full max-w-full overflow-x-hidden flex-1 p-3 sm:p-6 lg:p-8 space-y-6 animate-in fade-in duration-200">
       {/* Standardized Hero Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-emerald-800 via-teal-900 to-slate-900 p-6 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-emerald-700/40 shrink-0">
+      <div className="rounded-3xl bg-gradient-to-r from-emerald-800 via-teal-900 to-slate-900 p-5 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-emerald-700/40 shrink-0">
         <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
           <Headphones className="w-80 h-80" />
@@ -359,25 +359,25 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
 
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full md:w-auto z-10">
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <Disc className="w-4 h-4 text-emerald-300 mb-1" />
             <span className="text-base font-black">{totalShows}</span>
             <span className="text-[10px] text-emerald-200 uppercase font-semibold">Coleções</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <Music2 className="w-4 h-4 text-teal-300 mb-1" />
             <span className="text-base font-black">{totalTracks}</span>
             <span className="text-[10px] text-emerald-200 uppercase font-semibold">Faixas</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <Disc className="w-4 h-4 text-sky-300 mb-1" />
             <span className="text-base font-black">{totalAlbums}</span>
             <span className="text-[10px] text-emerald-200 uppercase font-semibold">Álbuns</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <Mic className="w-4 h-4 text-purple-300 mb-1" />
             <span className="text-base font-black">{totalPodcasts}</span>
             <span className="text-[10px] text-emerald-200 uppercase font-semibold">Podcasts</span>
@@ -639,7 +639,7 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
                   </div>
 
                   {/* Edit/Delete Overlay Actions */}
-                  <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                  <div className="absolute top-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
                     {onEditShow && (
                       <button
                         onClick={(e) => {

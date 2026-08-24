@@ -903,9 +903,9 @@ export const CourseView: React.FC<CourseViewProps> = ({
       </div>
 
       {/* Main Studio Layout */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden overflow-y-auto min-h-0">
         {/* Left: Video Player, Subtitles, Timestamps & Materials Area */}
-        <div className="flex-1 flex flex-col overflow-y-auto p-4 lg:p-6 min-w-0">
+        <div className="flex-1 flex flex-col lg:overflow-y-auto p-3 sm:p-4 lg:p-6 min-w-0 shrink-0 lg:shrink">
           {/* Video Container with Track Subtitles */}
           <div className="relative w-full aspect-video shrink-0 rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800 flex items-center justify-center">
             {activeLesson ? (
@@ -1477,7 +1477,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
             </div>
 
             {/* Modules and Lessons Accordion with Bolinha Verde Indicator */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            <div className="lg:flex-1 lg:overflow-y-auto p-3 space-y-3 max-h-[500px] lg:max-h-none">
               {course.modules.map((module) => {
                 const isOpen = openModules[module.id] ?? true;
                 const modCompleted = module.lessons.filter(l => l.isCompleted).length;

@@ -379,9 +379,9 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
       </div>
 
       {/* Main Studio Workspace (2-Column Player + Sidebar) */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden overflow-y-auto relative">
         {/* ================= LEFT / MAIN VIDEO PLAYER WORKSPACE ================= */}
-        <div className="flex-1 flex flex-col h-full overflow-y-auto bg-black text-white p-3 sm:p-5 space-y-4">
+        <div className="flex-1 flex flex-col lg:h-full lg:overflow-y-auto bg-black text-white p-3 sm:p-5 space-y-4 shrink-0 lg:shrink">
           {/* Cinema Video Player Container */}
           <div className="relative w-full aspect-video max-h-[70vh] bg-black rounded-2xl sm:rounded-3xl overflow-hidden border border-gray-800 shadow-2xl flex items-center justify-center group shrink-0">
             {playingEpisode ? (
@@ -559,7 +559,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
 
         {/* ================= RIGHT / BARRA LATERAL DE VÍDEOS (PLAYLIST SIDEBAR) ================= */}
         {isSidebarOpen && (
-          <div className="w-full lg:w-96 xl:w-[420px] flex flex-col h-full bg-gray-950 border-l border-gray-800 shrink-0 z-20 transition-all">
+          <div className="w-full lg:w-96 xl:w-[420px] flex flex-col lg:h-full bg-gray-950 border-t lg:border-t-0 lg:border-l border-gray-800 shrink-0 z-10 transition-all">
             {/* Sidebar Controls Header */}
             <div className="p-3.5 bg-gray-900/90 border-b border-gray-800 space-y-3 shrink-0">
               {/* Header Title & Mode Switches */}
@@ -653,7 +653,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
             </div>
 
             {/* Sidebar Episode List / Grid Content */}
-            <div className="flex-1 overflow-y-auto p-2 sm:p-3 scrollbar-thin scrollbar-thumb-gray-800">
+            <div className="lg:flex-1 lg:overflow-y-auto p-2 sm:p-3 scrollbar-thin scrollbar-thumb-gray-800 max-h-[500px] lg:max-h-none">
               {filteredEpisodes.length > 0 ? (
                 viewMode === 'list' ? (
                   // ================= LIST VIEW =================

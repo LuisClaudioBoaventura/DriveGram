@@ -46,7 +46,7 @@ export const UploadManager: React.FC<UploadManagerProps> = ({ uploads, onClear }
   const overallProgress = totalSizeAll > 0 ? Math.min(100, Math.round((totalTransferredAll / totalSizeAll) * 100)) : 0;
 
   return (
-    <div className="fixed bottom-4 right-6 z-50 w-96 rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200 text-xs select-none">
+    <div className="fixed bottom-20 md:bottom-4 right-3 sm:right-6 z-40 w-[calc(100vw-1.5rem)] sm:w-96 rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200 text-xs select-none">
       {/* Header */}
       <div 
         className="flex items-center justify-between px-4 py-3 bg-gray-950 text-white cursor-pointer select-none border-b border-gray-800" 

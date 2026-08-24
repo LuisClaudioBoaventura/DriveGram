@@ -97,9 +97,9 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
     videos[0];
 
   return (
-    <div className="w-full flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-4 sm:p-6 space-y-6 overflow-y-auto">
+    <div className="w-full max-w-full overflow-x-hidden flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-3 sm:p-6 space-y-6">
       {/* Standardized Hero Spotlight Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-amber-800 via-orange-900 to-slate-900 p-6 sm:p-8 text-white shadow-2xl relative overflow-hidden border border-amber-700/40 shrink-0">
+      <div className="rounded-3xl bg-gradient-to-r from-amber-800 via-orange-900 to-slate-900 p-5 sm:p-8 text-white shadow-2xl relative overflow-hidden border border-amber-700/40 shrink-0">
         <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
           <Video className="w-80 h-80" />
@@ -215,25 +215,25 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
 
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full lg:w-auto z-10">
-            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
               <Video className="w-4 h-4 text-amber-300 mb-1" />
               <span className="text-base font-black">{totalVideos}</span>
               <span className="text-[10px] text-amber-200 uppercase font-semibold">Momentos</span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
               <Heart className="w-4 h-4 text-rose-300 mb-1 fill-current" />
               <span className="text-base font-black">{favoritesCount}</span>
               <span className="text-[10px] text-amber-200 uppercase font-semibold">Favoritos</span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
               <Clock className="w-4 h-4 text-amber-400 mb-1" />
               <span className="text-base font-black">{inProgressCount}</span>
               <span className="text-[10px] text-amber-200 uppercase font-semibold">Assistindo</span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
               <CheckCircle2 className="w-4 h-4 text-emerald-300 mb-1" />
               <span className="text-base font-black">{completedCount}</span>
               <span className="text-[10px] text-amber-200 uppercase font-semibold">Assistidos</span>
@@ -374,10 +374,10 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
                           e.stopPropagation();
                           onToggleFavorite(video.id);
                         }}
-                        className={`absolute top-2 right-2 p-1.5 rounded-lg z-20 transition-all ${
+                        className={`absolute top-2 right-2 p-1.5 rounded-full backdrop-blur-md transition-all ${
                           video.isFavorite
-                            ? 'bg-rose-600 text-white shadow-md'
-                            : 'bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-rose-600'
+                            ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                            : 'bg-black/60 text-white opacity-100 sm:opacity-0 group-hover:opacity-100 hover:bg-rose-600'
                         }`}
                         title={video.isFavorite ? 'Remover dos favoritos' : 'Favoritar'}
                       >
@@ -393,7 +393,7 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
                     </div>
 
                     {/* Edit/Delete Overlay Actions */}
-                    <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                    <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
                       {onEditVideo && (
                         <button
                           onClick={(e) => {

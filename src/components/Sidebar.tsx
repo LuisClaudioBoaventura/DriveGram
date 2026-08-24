@@ -21,7 +21,8 @@ import {
   PanelLeftOpen,
   ChevronRight,
   ChevronLeft,
-  Youtube
+  Youtube,
+  X
 } from 'lucide-react';
 import { TelegramAuthState } from '../types/index.js';
 import { YouTubeTargetType } from './YouTubeImportModal.js';
@@ -50,6 +51,8 @@ interface SidebarProps {
   onMoveItem?: (id: string, isFolder: boolean, targetParentId: string | null) => Promise<boolean>;
   onDeleteItem?: (id: string, isFolder: boolean, permanent?: boolean, itemName?: string, itemType?: string) => void;
   onToggleFavorite?: (id: string, isFolder: boolean) => void;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -72,7 +75,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSync,
   onMoveItem,
   onDeleteItem,
-  onToggleFavorite
+  onToggleFavorite,
+  isMobileOpen = false,
+  onCloseMobile
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -176,30 +181,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside 
-      className={`flex flex-col h-full border-r border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkBg select-none shrink-0 overflow-x-hidden transition-all duration-300 ease-in-out ${
-        isCollapsed ? 'w-[72px] p-2.5' : 'w-64 p-3.5'
-      }`}
-    >
-      {/* Sidebar Header with Expand/Collapse Toggle */}
-      <div className={`flex items-center mb-3 ${isCollapsed ? 'justify-center' : 'justify-between px-1'}`}>
-        {!isCollapsed && (
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            Navegação
-          </span>
-        )}
-        <button
-          onClick={toggleCollapsed}
-          className="p-1.5 rounded-xl text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors"
-          title={isCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
-        >
-          {isCollapsed ? (
-            <PanelLeftOpen className="w-4 h-4 text-blue-500" />
-          ) : (
-            <PanelLeftClose className="w-4 h-4" />
-          )}
-        </button>
-      </div>
+    <>
+      {/* Mobile Drawer Backdrop */}
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm md:hidden animate-in fade-in duration-200"
+          onClick={onCloseMobile}
+        />
+      )}
+
+      <aside 
+        className={`
+          flex flex-col h-full border-r border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkBg select-none shrink-0 overflow-x-hidden transition-all duration-300 ease-in-out
+          ${isMobileOpen 
+            ? 'fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] p-4 shadow-2xl animate-in slide-in-from-left duration-250 flex' 
+            : 'hidden md:flex'
+          }
+          ${isCollapsed ? 'md:w-[72px] md:p-2.5' : 'md:w-64 md:p-3.5'}
+        `}
+      >
+        {/* Sidebar Header with Expand/Collapse Toggle (or Close button on Mobile) */}
+        <div className={`flex items-center mb-3 ${isCollapsed ? 'justify-center' : 'justify-between px-1'}`}>
+          <div className="flex items-center gap-2">
+            {!isCollapsed && (
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                Navegação
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1">
+            {/* Mobile Close Button */}
+            {isMobileOpen && (
+              <button
+                onClick={onCloseMobile}
+                className="md:hidden p-1.5 rounded-xl text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors"
+                title="Fechar Menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Desktop Expand/Collapse Button */}
+            <button
+              onClick={toggleCollapsed}
+              className="hidden md:inline-flex p-1.5 rounded-xl text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors"
+              title={isCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
+            >
+              {isCollapsed ? (
+                <PanelLeftOpen className="w-4 h-4 text-blue-500" />
+              ) : (
+                <PanelLeftClose className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+        </div>
 
       {/* Scrollable Navigation Area with Discreet Scrollbar */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden sidebar-scrollbar flex flex-col gap-3">
@@ -431,7 +467,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  onCloseMobile?.();
+                }}
                 onDragOver={(e) => handleDragOver(e, item.id)}
                 onDragLeave={(e) => handleDragLeave(e, item.id)}
                 onDrop={(e) => handleDrop(e, item.id)}
@@ -551,5 +590,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
     </aside>
+  </>
   );
 };

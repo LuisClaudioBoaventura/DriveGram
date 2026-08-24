@@ -93,9 +93,9 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
   });
 
   return (
-    <div className="w-full flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-4 sm:p-6 space-y-6">
+    <div className="w-full max-w-full overflow-x-hidden flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-3 sm:p-6 space-y-6">
       {/* Standardized Hero Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-pink-700 via-rose-700 to-purple-800 p-6 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-pink-600/40 shrink-0">
+      <div className="rounded-3xl bg-gradient-to-r from-pink-700 via-rose-700 to-purple-800 p-5 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-pink-600/40 shrink-0">
         <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
           <Sparkles className="w-80 h-80" />
@@ -137,25 +137,25 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
 
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full md:w-auto z-10">
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <BookOpen className="w-4 h-4 text-pink-300 mb-1" />
             <span className="text-base font-black">{totalComics}</span>
             <span className="text-[10px] text-pink-200 uppercase font-semibold">HQs / Obras</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <Layers className="w-4 h-4 text-rose-300 mb-1" />
             <span className="text-base font-black">{totalIssues}</span>
             <span className="text-[10px] text-pink-200 uppercase font-semibold">Edições</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <Flame className="w-4 h-4 text-amber-300 mb-1" />
             <span className="text-base font-black">{readingCount}</span>
             <span className="text-[10px] text-pink-200 uppercase font-semibold">Lendo Agora</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <CheckCircle2 className="w-4 h-4 text-emerald-300 mb-1" />
             <span className="text-base font-black">{completedCount}</span>
             <span className="text-[10px] text-pink-200 uppercase font-semibold">Concluídas</span>
@@ -166,7 +166,7 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
       {/* Control Bar: Search, Filters & CTA */}
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 bg-white dark:bg-drive-darkSurface p-4 rounded-2xl border border-gray-200 dark:border-drive-darkBorder shadow-sm">
         {/* Search Bar */}
-        <div className="relative flex-1 min-w-[240px]">
+        <div className="relative flex-1 min-w-0 sm:min-w-[240px]">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
             type="text"
@@ -288,7 +288,7 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
                   )}
 
                   {/* Actions Hover Buttons */}
-                  <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                     {onEditComic && (
                       <button
                         onClick={(e) => {

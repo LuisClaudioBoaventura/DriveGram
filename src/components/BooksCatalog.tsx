@@ -130,9 +130,9 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
   const completedBooksCount = books.filter(isBookCompleted).length;
 
   return (
-    <div className="w-full flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-4 sm:p-6 space-y-6">
+    <div className="w-full max-w-full overflow-x-hidden flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-3 sm:p-6 space-y-6">
       {/* Standardized Hero Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-purple-800 via-indigo-900 to-slate-900 p-6 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-purple-800/40 shrink-0">
+      <div className="rounded-3xl bg-gradient-to-r from-purple-800 via-indigo-900 to-slate-900 p-5 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-purple-800/40 shrink-0">
         <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
           <BookOpen className="w-80 h-80" />
@@ -175,25 +175,25 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
 
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full md:w-auto z-10">
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <BookOpen className="w-4 h-4 text-purple-300 mb-1" />
             <span className="text-base font-black">{totalBooks}</span>
             <span className="text-[10px] text-purple-200 uppercase font-semibold">Títulos</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <Headphones className="w-4 h-4 text-indigo-300 mb-1" />
             <span className="text-base font-black">{audiobooksCount}</span>
             <span className="text-[10px] text-purple-200 uppercase font-semibold">Audiolivros</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <FileText className="w-4 h-4 text-sky-300 mb-1" />
             <span className="text-base font-black">{ebooksCount}</span>
             <span className="text-[10px] text-purple-200 uppercase font-semibold">E-books</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-[90px]">
+          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
             <CheckCircle className="w-4 h-4 text-emerald-300 mb-1" />
             <span className="text-base font-black">{completedBooksCount}</span>
             <span className="text-[10px] text-purple-200 uppercase font-semibold">Concluídos</span>

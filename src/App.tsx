@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navbar } from './components/Navbar.js';
 import { Sidebar } from './components/Sidebar.js';
+import { BottomNav } from './components/BottomNav.js';
 import { Breadcrumbs } from './components/Breadcrumbs.js';
 import { FileGrid } from './components/FileGrid.js';
 import { FileList } from './components/FileList.js';
@@ -113,6 +114,7 @@ export function App() {
   };
 
   // Modals & Active View states
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLoginPromptOpen, setIsLoginPromptOpen] = useState(false);
   const [loginPromptReason, setLoginPromptReason] = useState<{ title?: string; description?: string }>({});
@@ -356,11 +358,38 @@ export function App() {
     selectedAdultVideoForView
   ]);
 
+  const handleSelectTab = (tab: any) => {
+    fs.setActiveTab(tab);
+    if (tab !== 'courses') {
+      setSelectedCourseForView(null);
+    } else if (activePipCourse) {
+      setSelectedCourseForView(activePipCourse);
+    }
+    if (tab !== 'books') setSelectedBookForView(null);
+    if (tab !== 'comics') setSelectedComicForView(null);
+    if (tab !== 'videos') {
+      setSelectedVideoForView(null);
+    } else if (activePipVideo && !activePipVideo.isPersonal) {
+      setSelectedVideoForView(activePipVideo.video);
+    }
+    if (tab !== 'personal-videos') {
+      setSelectedPersonalVideoForView(null);
+    } else if (activePipVideo && activePipVideo.isPersonal) {
+      setSelectedPersonalVideoForView(activePipVideo.video as any);
+    }
+    if (tab !== 'series') setSelectedSeriesForView(null);
+    if (tab !== 'podcasts') setSelectedAudioForView(null);
+    if (tab !== 'adult') setSelectedAdultVideoForView(null);
+    if (tab === 'adult' && !adultVault.isUnlocked) {
+      setIsAdultLockModalOpen(true);
+    }
+  };
+
   const currentFolder = fs.allFolders.find(f => f.id === fs.currentFolderId);
 
   return (
     <div 
-      className="flex flex-col h-screen overflow-hidden bg-drive-lightBg dark:bg-drive-darkBg transition-colors"
+      className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-drive-lightBg dark:bg-drive-darkBg transition-colors select-none"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -402,39 +431,17 @@ export function App() {
           refreshAllLibraries();
         }}
         isSyncing={tg.syncing}
+        onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
       />
 
       {/* Main Workspace */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Sidebar */}
+      <div className="flex flex-1 w-full max-w-full overflow-hidden relative">
+        {/* Left Sidebar / Mobile Drawer */}
         <Sidebar
           activeTab={fs.activeTab}
-          setActiveTab={(tab) => {
-            fs.setActiveTab(tab);
-            if (tab !== 'courses') {
-              setSelectedCourseForView(null);
-            } else if (activePipCourse) {
-              setSelectedCourseForView(activePipCourse);
-            }
-            if (tab !== 'books') setSelectedBookForView(null);
-            if (tab !== 'comics') setSelectedComicForView(null);
-            if (tab !== 'videos') {
-              setSelectedVideoForView(null);
-            } else if (activePipVideo && !activePipVideo.isPersonal) {
-              setSelectedVideoForView(activePipVideo.video);
-            }
-            if (tab !== 'personal-videos') {
-              setSelectedPersonalVideoForView(null);
-            } else if (activePipVideo && activePipVideo.isPersonal) {
-              setSelectedPersonalVideoForView(activePipVideo.video as any);
-            }
-            if (tab !== 'series') setSelectedSeriesForView(null);
-            if (tab !== 'podcasts') setSelectedAudioForView(null);
-            if (tab !== 'adult') setSelectedAdultVideoForView(null);
-            if (tab === 'adult' && !adultVault.isUnlocked) {
-              setIsAdultLockModalOpen(true);
-            }
-          }}
+          setActiveTab={handleSelectTab}
+          isMobileOpen={isMobileMenuOpen}
+          onCloseMobile={() => setIsMobileMenuOpen(false)}
           onNewFolder={() => setIsFolderModalOpen(true)}
           onNewCourse={() => setIsCourseModalOpen(true)}
           onNewBook={() => setIsBookModalOpen(true)}
@@ -479,7 +486,7 @@ export function App() {
         />
 
         {/* Content Area */}
-        <main ref={mainContentRef} className="flex-1 flex flex-col overflow-y-auto relative">
+        <main ref={mainContentRef} className="flex-1 flex flex-col w-full max-w-full overflow-y-auto overflow-x-hidden relative pb-20 md:pb-0">
           {/* Single Persistent Video Player */}
           {activePlayingMovie && (
             <VideoPlayerView
@@ -1590,21 +1597,48 @@ export function App() {
 
       {/* Modern Floating Toast Notification */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl bg-gray-950/95 text-white shadow-2xl backdrop-blur-md border border-gray-700/80 text-xs font-semibold animate-in fade-in slide-in-from-bottom-4 duration-200 pointer-events-auto select-none max-w-md">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl bg-gray-950/95 text-white shadow-2xl backdrop-blur-md border border-gray-700/80 text-xs font-semibold animate-in fade-in slide-in-from-bottom-4 duration-200 pointer-events-auto select-none max-w-md w-[calc(100vw-2rem)] sm:w-auto">
           <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
             toast.type === 'error' ? 'bg-rose-500 shadow-rose-500/50 shadow-md' :
             toast.type === 'info' ? 'bg-sky-400 shadow-sky-400/50 shadow-md' :
             'bg-emerald-400 shadow-emerald-400/50 shadow-md animate-pulse'
           }`} />
-          <span className="truncate leading-relaxed">{toast.message}</span>
+          <span className="truncate leading-relaxed flex-1">{toast.message}</span>
           <button
             onClick={() => setToast(null)}
-            className="ml-2 text-gray-400 hover:text-white transition-colors"
+            className="ml-2 p-1 text-gray-400 hover:text-white transition-colors"
           >
             ✕
           </button>
         </div>
       )}
+
+      {/* Mobile Bottom Navigation Bar */}
+      <BottomNav
+        activeTab={fs.activeTab}
+        setActiveTab={handleSelectTab}
+        onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+        onNewFolder={() => setIsFolderModalOpen(true)}
+        onNewCourse={() => setIsCourseModalOpen(true)}
+        onNewBook={() => setIsBookModalOpen(true)}
+        onNewComic={() => setIsComicModalOpen(true)}
+        onNewVideo={() => setIsVideoModalOpen(true)}
+        onNewPersonalVideo={() => setIsPersonalVideoModalOpen(true)}
+        onNewSeries={() => setIsSeriesModalOpen(true)}
+        onNewAudio={() => setIsAudioModalOpen(true)}
+        onNewAdultVideo={() => {
+          if (!adultVault.isUnlocked) {
+            setIsAdultLockModalOpen(true);
+          } else {
+            setIsNewAdultVideoModalOpen(true);
+          }
+        }}
+        onOpenYouTubeModal={(type) => handleOpenYouTubeModal(type || 'course')}
+        onUploadFiles={async (files) => {
+          await handleSafeUpload(files);
+        }}
+        isAdultVaultUnlocked={adultVault.isUnlocked}
+      />
     </div>
   );
 }

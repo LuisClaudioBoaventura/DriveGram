@@ -739,9 +739,9 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
       )}
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden overflow-y-auto">
         {/* Main Content / Studio Player */}
-        <div className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 space-y-6">
+        <div className="flex-1 flex flex-col lg:overflow-y-auto p-4 sm:p-6 space-y-6 shrink-0 lg:shrink">
           <div className={`w-full transition-all duration-300 ${
             isTracksSidebarOpen ? 'max-w-3xl mx-auto space-y-6' : 'max-w-5xl mx-auto space-y-6'
           }`}>
@@ -1166,7 +1166,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+            <div className="lg:flex-1 lg:overflow-y-auto p-3 space-y-1.5 max-h-[500px] lg:max-h-none">
               {tracks.map((track, idx) => {
                 const isCurrent = currentTrackIndex === idx;
                 const isBackingUpThis = backingUpTrackIds.includes(track.id);

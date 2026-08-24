@@ -50,9 +50,9 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
   const featuredVideo = videos.find(v => (v.lastPositionSeconds || 0) > 0 && !v.isCompleted) || videos[0];
 
   return (
-    <div className="w-full flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-4 sm:p-6 space-y-6">
+    <div className="w-full max-w-full overflow-x-hidden flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-3 sm:p-6 space-y-6">
       {/* Standardized Hero Spotlight Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-red-800 via-rose-900 to-slate-900 p-6 sm:p-8 text-white shadow-2xl relative overflow-hidden border border-red-700/40 shrink-0">
+      <div className="rounded-3xl bg-gradient-to-r from-red-800 via-rose-900 to-slate-900 p-5 sm:p-8 text-white shadow-2xl relative overflow-hidden border border-red-700/40 shrink-0">
         <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
           <Film className="w-80 h-80" />
@@ -293,7 +293,7 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                     </div>
 
                     {/* Edit/Delete Overlay Actions */}
-                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
                       {onEditVideo && (
                         <button
                           onClick={(e) => {

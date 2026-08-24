@@ -43,6 +43,7 @@ import {
 import { Book, BookChapter, DriveItem, VideoTimestamp } from '../types/index.js';
 import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
+import { PdfReader } from './PdfReader.js';
 
 interface BookReaderViewProps {
   book: Book;
@@ -342,10 +343,10 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
   ).sort((a, b) => a.seconds - b.seconds);
 
   return (
-    <div className="flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg overflow-hidden">
+    <div className="flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg overflow-hidden w-full max-w-full">
       {/* Top Header Navigation */}
-      <div className="flex items-center justify-between px-4 sm:px-6 py-2 border-b border-gray-200/80 dark:border-gray-800/80 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md shrink-0 h-13">
-        <div className="flex items-center gap-2 overflow-hidden">
+      <div className="flex items-center justify-between px-3 sm:px-6 py-2 border-b border-gray-200/80 dark:border-gray-800/80 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md shrink-0 w-full max-w-full overflow-hidden min-h-[52px]">
+        <div className="flex items-center gap-2 overflow-hidden min-w-0 flex-1 mr-2">
           {/* Back to Library (Minimalist) */}
           <button
             onClick={onBackToLibrary}
@@ -532,14 +533,14 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
       )}
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden overflow-y-auto w-full max-w-full">
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col overflow-hidden p-4">
+        <div className="flex-1 flex flex-col lg:overflow-hidden p-2 sm:p-4 shrink-0 lg:shrink w-full max-w-full">
           {/* ================= MODE 1: SPLIT VIEW (OUVIR & LER) ================= */}
           {viewMode === 'split' && (
-            <div className="flex-1 flex flex-col xl:flex-row gap-4 h-full overflow-hidden">
+            <div className="flex-1 flex flex-col xl:flex-row gap-4 xl:h-full overflow-y-auto xl:overflow-hidden w-full max-w-full">
               {/* Left Column: Compact Audiobook Player & Timestamps (Fixed Width) */}
-              <div className="w-full xl:w-96 flex flex-col gap-3 overflow-y-auto shrink-0 pr-1">
+              <div className="w-full xl:w-96 flex flex-col gap-3 shrink-0 pr-0 xl:pr-1">
                 {/* Compact Player Card */}
                 <div className="p-5 rounded-3xl bg-gradient-to-b from-purple-950/50 via-slate-900 to-gray-950 border border-purple-800/40 shadow-xl text-white flex flex-col items-center">
                   <div className="flex items-center gap-4 w-full mb-3">
@@ -550,7 +551,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                         className="w-full h-full object-cover"
                       />
                     </div>
-                    <div className="overflow-hidden flex-1">
+                    <div className="overflow-hidden flex-1 min-w-0">
                       <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block truncate">
                         {book.title}
                       </span>
@@ -585,16 +586,16 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
 
                   {/* Controls */}
                   <div className="flex items-center justify-center gap-3 w-full mb-2">
-                    <button onClick={() => handleSkip(-15)} className="p-2 rounded-full bg-purple-900/60 hover:bg-purple-800 text-purple-200">
+                    <button onClick={() => handleSkip(-15)} className="p-2 rounded-full bg-purple-900/60 hover:bg-purple-800 text-purple-200 active:scale-95 transition-all">
                       <RotateCcw className="w-4 h-4" />
                     </button>
                     <button
                       onClick={handleTogglePlay}
-                      className="w-11 h-11 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center shadow-lg shadow-purple-500/40"
+                      className="w-11 h-11 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center shadow-lg shadow-purple-500/40 active:scale-95 transition-all"
                     >
                       {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
                     </button>
-                    <button onClick={() => handleSkip(30)} className="p-2 rounded-full bg-purple-900/60 hover:bg-purple-800 text-purple-200">
+                    <button onClick={() => handleSkip(30)} className="p-2 rounded-full bg-purple-900/60 hover:bg-purple-800 text-purple-200 active:scale-95 transition-all">
                       <RotateCw className="w-4 h-4" />
                     </button>
                   </div>
@@ -649,11 +650,11 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
               </div>
 
               {/* Right Column: Full Expanded PDF E-Book Reader */}
-              <div className="flex-1 flex flex-col bg-white dark:bg-drive-darkSurface rounded-3xl border border-gray-200 dark:border-drive-darkBorder overflow-hidden shadow-2xl min-h-[500px] h-full">
-                <div className="flex items-center justify-between px-5 py-3 bg-gray-50 dark:bg-drive-darkBg border-b border-gray-200 dark:border-drive-darkBorder text-xs shrink-0">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4 text-purple-600" />
-                    <span className="font-bold text-gray-800 dark:text-gray-200 truncate max-w-md">
+              <div className="flex-1 flex flex-col bg-white dark:bg-drive-darkSurface rounded-3xl border border-gray-200 dark:border-drive-darkBorder overflow-hidden shadow-2xl min-h-[450px] sm:min-h-[500px] xl:h-full w-full max-w-full">
+                <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 sm:py-3 bg-gray-50 dark:bg-drive-darkBg border-b border-gray-200 dark:border-drive-darkBorder text-xs shrink-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                    <BookOpen className="w-4 h-4 text-purple-600 shrink-0" />
+                    <span className="font-bold text-gray-800 dark:text-gray-200 truncate">
                       {ebookFile?.name || 'Leitura Acompanhada'}
                     </span>
                   </div>
@@ -661,28 +662,24 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                     <a
                       href={`/api/stream/${ebookFile.id}`}
                       download={ebookFile.name}
-                      className="flex items-center gap-1 px-3 py-1 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow transition-all"
+                      className="flex items-center gap-1 px-3 py-1 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow transition-all shrink-0 active:scale-95"
                     >
                       <Download className="w-3.5 h-3.5" /> <span>Baixar PDF</span>
                     </a>
                   )}
                 </div>
 
-                <div className="flex-1 bg-gray-200 dark:bg-gray-900 w-full h-full relative overflow-hidden">
+                <div className="flex-1 bg-gray-200 dark:bg-gray-900 w-full h-full min-h-[400px] sm:min-h-[500px] relative overflow-hidden">
                   {ebookFile ? (
                     ebookFile.extension === 'epub' || /\.epub$/i.test(ebookFile.name) ? (
                       <EpubReader file={ebookFile} />
                     ) : ['cbr', 'cbz'].includes(ebookFile.extension) || /\.(cbr|cbz)$/i.test(ebookFile.name) ? (
                       <ComicReader file={ebookFile} />
                     ) : (
-                      <iframe
-                        src={`/api/stream/${ebookFile.id}#toolbar=1&navpanes=0`}
-                        className="w-full h-full border-none bg-white"
-                        title={book.title}
-                      />
+                      <PdfReader file={ebookFile} />
                     )
                   ) : (
-                    <div className="flex flex-col items-center justify-center p-12 text-center h-full">
+                    <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center h-full">
                       <FileText className="w-16 h-16 text-gray-400 mb-3" />
                       <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300">Nenhum livro digital anexado</h4>
                       <p className="text-xs text-gray-500 mb-4">Anexe um arquivo PDF, EPUB ou HQ (CBR/CBZ) para ler e ouvir ao mesmo tempo.</p>
@@ -701,10 +698,10 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
 
           {/* ================= MODE 2: E-BOOK FULL VIEW ================= */}
           {viewMode === 'ebook' && (
-            <div className="flex-1 flex flex-col bg-white dark:bg-drive-darkSurface rounded-3xl border border-gray-200 dark:border-drive-darkBorder overflow-hidden shadow-2xl h-full relative">
-              <div className="flex items-center justify-between px-5 py-3 bg-gray-50 dark:bg-drive-darkBg border-b border-gray-200 dark:border-drive-darkBorder text-xs shrink-0">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-purple-600" />
+            <div className="flex-1 flex flex-col bg-white dark:bg-drive-darkSurface rounded-3xl border border-gray-200 dark:border-drive-darkBorder overflow-hidden shadow-2xl min-h-[calc(100dvh-180px)] sm:min-h-[550px] h-full relative w-full max-w-full">
+              <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 sm:py-3 bg-gray-50 dark:bg-drive-darkBg border-b border-gray-200 dark:border-drive-darkBorder text-xs shrink-0">
+                <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                  <BookOpen className="w-4 h-4 text-purple-600 shrink-0" />
                   <span className="font-bold text-gray-800 dark:text-gray-200 truncate">
                     {ebookFile?.name || book.title}
                   </span>
@@ -713,28 +710,24 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                   <a
                     href={`/api/stream/${ebookFile.id}`}
                     download={ebookFile.name}
-                    className="flex items-center gap-1 px-3 py-1 rounded-xl bg-purple-600 text-white font-bold text-xs"
+                    className="flex items-center gap-1 px-3 py-1 rounded-xl bg-purple-600 text-white font-bold text-xs shrink-0 active:scale-95"
                   >
                     <Download className="w-3.5 h-3.5" /> Baixar {ebookFile.extension?.toUpperCase() || 'Arquivo'}
                   </a>
                 )}
               </div>
 
-              <div className="flex-1 bg-gray-200 dark:bg-gray-900 w-full h-full overflow-hidden">
+              <div className="flex-1 bg-gray-200 dark:bg-gray-900 w-full h-full min-h-[calc(100dvh-230px)] sm:min-h-[500px] overflow-hidden">
                 {ebookFile ? (
                   ebookFile.extension === 'epub' || /\.epub$/i.test(ebookFile.name) ? (
                     <EpubReader file={ebookFile} />
                   ) : ['cbr', 'cbz'].includes(ebookFile.extension) || /\.(cbr|cbz)$/i.test(ebookFile.name) ? (
                     <ComicReader file={ebookFile} />
                   ) : (
-                    <iframe
-                      src={`/api/stream/${ebookFile.id}#toolbar=1`}
-                      className="w-full h-full border-none bg-white"
-                      title={book.title}
-                    />
+                    <PdfReader file={ebookFile} />
                   )
                 ) : (
-                  <div className="flex flex-col items-center justify-center p-16 text-center h-full">
+                  <div className="flex flex-col items-center justify-center p-8 sm:p-16 text-center h-full">
                     <FileText className="w-16 h-16 text-gray-400 mb-3" />
                     <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300">Nenhum livro digital (PDF/EPUB/CBR) encontrado</h4>
                     <button
@@ -749,22 +742,30 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
 
               {/* Floating Bottom Audio Strip if audio is playing */}
               {activeChapter && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-950/90 backdrop-blur-md text-white border border-purple-700/60 shadow-2xl px-5 py-2.5 rounded-2xl flex items-center gap-4 z-40">
-                  <div className="flex items-center gap-2">
-                    <Headphones className="w-4 h-4 text-purple-400" />
-                    <span className="text-xs font-bold truncate max-w-xs">{activeChapter.title}</span>
+                <div className="fixed sm:absolute bottom-20 sm:bottom-4 left-1/2 -translate-x-1/2 bg-gray-950/95 backdrop-blur-md text-white border border-purple-700/60 shadow-2xl px-3 sm:px-4 py-2 rounded-2xl flex items-center justify-between gap-2.5 z-40 w-[calc(100vw-2rem)] max-w-md">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <Headphones className="w-4 h-4 text-purple-400 shrink-0" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] text-purple-300 uppercase font-bold tracking-wider truncate">
+                        {book.title}
+                      </span>
+                      <span className="text-xs font-bold truncate text-white">
+                        {activeChapter.title}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => handleSkip(-15)} className="p-1 text-purple-300 hover:text-white">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button onClick={() => handleSkip(-15)} className="p-1.5 rounded-lg text-purple-300 hover:text-white hover:bg-purple-900/40 transition-colors" title="Voltar 15s">
                       <RotateCcw className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={handleTogglePlay}
-                      className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center shadow"
+                      className="w-8 h-8 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center shadow-md shadow-purple-500/40 active:scale-95 transition-all"
+                      title={isPlaying ? 'Pausar' : 'Reproduzir'}
                     >
                       {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
                     </button>
-                    <button onClick={() => handleSkip(30)} className="p-1 text-purple-300 hover:text-white">
+                    <button onClick={() => handleSkip(30)} className="p-1.5 rounded-lg text-purple-300 hover:text-white hover:bg-purple-900/40 transition-colors" title="Avançar 30s">
                       <RotateCw className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -986,7 +987,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+            <div className="lg:flex-1 lg:overflow-y-auto p-3 space-y-1.5 max-h-[500px] lg:max-h-none">
               {book.chapters && book.chapters.map((chap) => {
                 const isActive = activeChapter?.id === chap.id;
                 return (

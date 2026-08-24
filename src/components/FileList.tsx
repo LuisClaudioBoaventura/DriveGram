@@ -178,10 +178,10 @@ export const FileList: React.FC<FileListProps> = ({
   };
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6 w-full max-w-full overflow-x-hidden">
       {/* Trash Header Banner */}
       {isTrashView && (
-        <div className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 shrink-0">
               <Trash2 className="w-5 h-5" />
@@ -202,7 +202,7 @@ export const FileList: React.FC<FileListProps> = ({
           {files.length > 0 || folders.length > 0 ? (
             <button
               onClick={onEmptyTrash}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-500/20 transition-all shrink-0"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-500/20 transition-all shrink-0 active:scale-95"
             >
               <Trash2 className="w-4 h-4" />
               <span>Esvaziar Lixeira Agora</span>
@@ -217,14 +217,14 @@ export const FileList: React.FC<FileListProps> = ({
         <table className="w-full text-left text-xs">
           <thead className="bg-gray-50 dark:bg-drive-darkBg border-b border-gray-200 dark:border-drive-darkBorder text-gray-500 dark:text-gray-400 font-semibold select-none">
             <tr>
-              <th className="py-3 px-4 w-12 text-center">Tipo</th>
-              <th className="py-3 px-4">Nome</th>
-              <th className="py-3 px-4 w-44 hidden md:table-cell">
+              <th className="py-2.5 sm:py-3 px-2 sm:px-4 w-10 sm:w-12 text-center">Tipo</th>
+              <th className="py-2.5 sm:py-3 px-2 sm:px-4">Nome</th>
+              <th className="py-2.5 sm:py-3 px-2 sm:px-4 w-44 hidden md:table-cell">
                 {isTrashView ? 'Tempo Restante' : 'Modificado'}
               </th>
-              <th className="py-3 px-4 w-28">Tamanho</th>
-              <th className="py-3 px-4 w-36 hidden sm:table-cell">Telegram</th>
-              <th className="py-3 px-4 w-32 text-right">Ações</th>
+              <th className="py-2.5 sm:py-3 px-2 sm:px-4 w-20 sm:w-28">Tamanho</th>
+              <th className="py-2.5 sm:py-3 px-2 sm:px-4 w-36 hidden sm:table-cell">Telegram</th>
+              <th className="py-2.5 sm:py-3 px-2 sm:px-4 w-28 sm:w-32 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-drive-darkBorder">

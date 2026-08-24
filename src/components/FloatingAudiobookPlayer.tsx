@@ -109,10 +109,10 @@ export const FloatingAudiobookPlayer: React.FC<FloatingAudiobookPlayerProps> = (
       {/* Floating MiniPlayer Card / Vinyl Bubble */}
       {isCardVisible && (
         <div 
-          className={`fixed bottom-4 right-4 z-50 transition-all duration-300 select-none animate-in slide-in-from-bottom-4 fade-in ${
+          className={`fixed bottom-20 md:bottom-4 right-3 sm:right-4 z-40 transition-all duration-300 select-none animate-in slide-in-from-bottom-4 fade-in ${
             isCollapsed 
               ? 'w-auto' 
-              : 'w-[calc(100vw-2rem)] sm:w-[460px]'
+              : 'w-[calc(100vw-1.5rem)] sm:w-[460px]'
           }`}
         >
           {/* ================= COMPACT / COLLAPSED ROUND VINYL BUBBLE MODE ================= */}

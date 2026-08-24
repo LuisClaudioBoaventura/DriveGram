@@ -29,6 +29,7 @@ import {
 import { DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
+import { PdfReader } from './PdfReader.js';
 
 interface SubtitleCue {
   start: number;
@@ -425,11 +426,9 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
 
             {/* PDF Viewer */}
             {file.type === 'pdf' && (
-              <iframe
-                src={`/api/stream/${file.id}`}
-                className="w-full h-full rounded-xl border border-gray-800 bg-white"
-                title={file.name}
-              />
+              <div className="w-full h-full rounded-xl overflow-hidden">
+                <PdfReader file={file} />
+              </div>
             )}
 
             {/* Other / Document Preview */}

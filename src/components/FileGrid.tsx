@@ -172,10 +172,10 @@ export const FileGrid: React.FC<FileGridProps> = ({
   };
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6 w-full max-w-full overflow-x-hidden">
       {/* Trash Header Banner */}
       {isTrashView && (
-        <div className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 shrink-0">
               <Trash2 className="w-5 h-5" />
@@ -196,7 +196,7 @@ export const FileGrid: React.FC<FileGridProps> = ({
           {files.length > 0 || folders.length > 0 ? (
             <button
               onClick={onEmptyTrash}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-500/20 transition-all shrink-0"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-500/20 transition-all shrink-0 active:scale-95"
             >
               <Trash2 className="w-4 h-4" />
               <span>Esvaziar Lixeira Agora</span>
@@ -209,14 +209,14 @@ export const FileGrid: React.FC<FileGridProps> = ({
 
       {/* Folders Section */}
       {folders.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+        <div className="mb-6 sm:mb-8">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2.5 sm:mb-3 flex items-center gap-2">
             <span>Pastas ({folders.length})</span>
-            <span className="text-[10px] lowercase text-gray-400 font-normal">
+            <span className="hidden sm:inline text-[10px] lowercase text-gray-400 font-normal">
               (arraste itens sobre as pastas para movê-los)
             </span>
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3.5">
             {folders.map((folder) => {
               const daysLeft = getDaysRemaining(folder.deletedAt);
               const isDragTarget = dragOverFolderId === folder.id;
@@ -376,7 +376,7 @@ export const FileGrid: React.FC<FileGridProps> = ({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-4">
             {files.map((file) => {
               const daysLeft = getDaysRemaining(file.deletedAt);
               const isBeingDragged = draggedItemId === file.id;
@@ -389,11 +389,11 @@ export const FileGrid: React.FC<FileGridProps> = ({
                   onDragEnd={handleDragEnd}
                   onClick={() => !isTrashView && onOpenFile(file)}
                   className={`group relative flex flex-col rounded-2xl bg-white dark:bg-drive-darkSurface border transition-all cursor-grab active:cursor-grabbing overflow-hidden ${
-                    isBeingDragged ? 'opacity-40 scale-95 border-dashed border-blue-500 shadow-none' : 'border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-lg'
+                    isBeingDragged ? 'opacity-40 scale-95 border-dashed border-blue-500 shadow-none' : 'border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-lg active:scale-[0.98]'
                   }`}
                 >
                   {/* File Thumbnail / Type Preview Banner */}
-                  <div className="h-32 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-drive-darkBg dark:to-drive-darkSurface flex items-center justify-center relative border-b border-gray-100 dark:border-drive-darkBorder">
+                  <div className="h-24 sm:h-32 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-drive-darkBg dark:to-drive-darkSurface flex items-center justify-center relative border-b border-gray-100 dark:border-drive-darkBorder">
                     {getFileIcon(file.type)}
 
                     {/* Telegram Sync Indicator */}
