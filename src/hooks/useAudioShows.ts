@@ -592,6 +592,7 @@ export function useAudioShows() {
     savePlaybackPosition();
     setIsPlaying(false);
     setIsFloatingOpen(false);
+    setActiveShow(null);
   }, [savePlaybackPosition]);
 
   const getNextTrack = useCallback((): AudioTrack | null => {
@@ -688,6 +689,8 @@ export function useAudioShows() {
     isMuted,
     playbackSpeed,
     isFloatingOpen,
+    setIsPlaying,
+    setIsFloatingOpen,
     setActiveShow,
     setActiveTrack,
     setActiveTrackIndex,

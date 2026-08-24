@@ -53,6 +53,23 @@ interface AudioStudioViewProps {
   initialTrackIndex?: number;
   onRefreshSinglePodcast?: (showId: string) => Promise<{ success: boolean; newEpisodesCount: number; show?: any }>;
   onMinimizeToFloating?: () => void;
+  // Global Audio Playback bindings
+  isPlaying?: boolean;
+  currentTime?: number;
+  duration?: number;
+  playbackRate?: number;
+  volume?: number;
+  isMuted?: boolean;
+  activeTrackIndex?: number;
+  onTogglePlay?: () => void;
+  onSeek?: (seconds: number) => void;
+  onSkip?: (seconds: number) => void;
+  onSpeedChange?: (speed: number) => void;
+  onVolumeChange?: (volume: number) => void;
+  onToggleMute?: () => void;
+  onPlayNextTrack?: () => void;
+  onPlayPreviousTrack?: () => void;
+  onSelectTrackIndex?: (index: number) => void;
 }
 
 export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
@@ -66,18 +83,42 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   onOpenEditModal,
   initialTrackIndex,
   onRefreshSinglePodcast,
-  onMinimizeToFloating
+  onMinimizeToFloating,
+  isPlaying: isPlayingProp,
+  currentTime: currentTimeProp,
+  duration: durationProp,
+  playbackRate: playbackRateProp,
+  volume: volumeProp,
+  isMuted: isMutedProp,
+  activeTrackIndex: activeTrackIndexProp,
+  onTogglePlay: onTogglePlayProp,
+  onSeek: onSeekProp,
+  onSkip: onSkipProp,
+  onSpeedChange: onSpeedChangeProp,
+  onVolumeChange: onVolumeChangeProp,
+  onToggleMute: onToggleMuteProp,
+  onPlayNextTrack: onPlayNextTrackProp,
+  onPlayPreviousTrack: onPlayPreviousTrackProp,
+  onSelectTrackIndex: onSelectTrackIndexProp
 }) => {
-  const [currentTrackIndex, setCurrentTrackIndex] = useState(initialTrackIndex !== undefined ? initialTrackIndex : 0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [localTrackIndex, setLocalTrackIndex] = useState(initialTrackIndex !== undefined ? initialTrackIndex : 0);
+  const [localIsPlaying, setLocalIsPlaying] = useState(false);
+  const [localCurrentTime, setLocalCurrentTime] = useState(0);
+  const [localDuration, setLocalDuration] = useState(0);
   const [isShuffle, setIsShuffle] = useState(false);
   const [isRepeat, setIsRepeat] = useState(false);
   const [isAutoPlayNext, setIsAutoPlayNext] = useState(true);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
+  const [localPlaybackRate, setLocalPlaybackRate] = useState(1);
+  const [localVolume, setLocalVolume] = useState(1);
+  const [localIsMuted, setLocalIsMuted] = useState(false);
+
+  const isPlaying = isPlayingProp !== undefined ? isPlayingProp : localIsPlaying;
+  const currentTime = currentTimeProp !== undefined ? currentTimeProp : localCurrentTime;
+  const duration = durationProp !== undefined ? durationProp : localDuration;
+  const playbackRate = playbackRateProp !== undefined ? playbackRateProp : localPlaybackRate;
+  const volume = volumeProp !== undefined ? volumeProp : localVolume;
+  const isMuted = isMutedProp !== undefined ? isMutedProp : localIsMuted;
+  const currentTrackIndex = activeTrackIndexProp !== undefined ? activeTrackIndexProp : localTrackIndex;
 
   // Backup Telegram States
   const [backingUpTrackIds, setBackingUpTrackIds] = useState<string[]>([]);
@@ -122,9 +163,13 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     if (activeTrack) {
       setTrackNotes(activeTrack.notes || '');
       if (activeTrack.lastPositionSeconds && activeTrack.lastPositionSeconds > 0 && currentTime === 0) {
-        setCurrentTime(activeTrack.lastPositionSeconds);
-        if (audioRef.current) {
-          audioRef.current.currentTime = activeTrack.lastPositionSeconds;
+        if (onSeekProp) {
+          onSeekProp(activeTrack.lastPositionSeconds);
+        } else {
+          setLocalCurrentTime(activeTrack.lastPositionSeconds);
+          if (audioRef.current) {
+            audioRef.current.currentTime = activeTrack.lastPositionSeconds;
+          }
         }
       }
     }
@@ -137,9 +182,11 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
       interval = setInterval(() => {
         setSleepTimerRemainingSeconds(prev => {
           if (prev && prev <= 1) {
-            if (audioRef.current) {
+            if (onTogglePlayProp && isPlaying) {
+              onTogglePlayProp();
+            } else if (audioRef.current) {
               audioRef.current.pause();
-              setIsPlaying(false);
+              setLocalIsPlaying(false);
             }
             return null;
           }
@@ -148,7 +195,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [sleepTimerRemainingSeconds]);
+  }, [sleepTimerRemainingSeconds, isPlaying, onTogglePlayProp]);
 
   const handleSetSleepTimer = (minutes: number) => {
     if (minutes === 0) {
@@ -163,25 +210,33 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
   // Handle Play/Pause
   const togglePlay = () => {
+    if (onTogglePlayProp) {
+      onTogglePlayProp();
+      return;
+    }
     if (!audioRef.current) return;
-    if (isPlaying) {
+    if (localIsPlaying) {
       audioRef.current.pause();
-      setIsPlaying(false);
+      setLocalIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      audioRef.current.play().then(() => setLocalIsPlaying(true)).catch(() => {});
     }
   };
 
   const playTrackByIndex = (index: number) => {
     if (index >= 0 && index < tracks.length) {
-      setCurrentTrackIndex(index);
-      setIsPlaying(true);
+      if (onSelectTrackIndexProp) {
+        onSelectTrackIndexProp(index);
+        return;
+      }
+      setLocalTrackIndex(index);
+      setLocalIsPlaying(true);
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
         setTimeout(() => {
           if (audioRef.current) {
             audioRef.current.playbackRate = playbackRate;
-            audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+            audioRef.current.play().then(() => setLocalIsPlaying(true)).catch(() => {});
           }
         }, 100);
       }
@@ -189,6 +244,10 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   };
 
   const handleNextTrack = () => {
+    if (onPlayNextTrackProp) {
+      onPlayNextTrackProp();
+      return;
+    }
     if (tracks.length === 0) return;
     if (isShuffle) {
       const randomIdx = Math.floor(Math.random() * tracks.length);
@@ -201,6 +260,10 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   };
 
   const handlePrevTrack = () => {
+    if (onPlayPreviousTrackProp) {
+      onPlayPreviousTrackProp();
+      return;
+    }
     if (audioRef.current && audioRef.current.currentTime > 3) {
       audioRef.current.currentTime = 0;
       return;
@@ -211,6 +274,10 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   };
 
   const handleSkip = (seconds: number) => {
+    if (onSkipProp) {
+      onSkipProp(seconds);
+      return;
+    }
     if (audioRef.current) {
       audioRef.current.currentTime = Math.max(0, Math.min(duration || 1000, audioRef.current.currentTime + seconds));
     }
@@ -219,9 +286,9 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const handleTimeUpdate = () => {
     if (!audioRef.current) return;
     const curr = audioRef.current.currentTime;
-    setCurrentTime(curr);
+    setLocalCurrentTime(curr);
     if (audioRef.current.duration) {
-      setDuration(audioRef.current.duration);
+      setLocalDuration(audioRef.current.duration);
     }
     if (activeTrack && Math.floor(curr) % 5 === 0 && curr > 0) {
       onUpdateTrackProgress(activeTrack.id, Math.floor(curr), false);
@@ -235,20 +302,28 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     if (isAutoPlayNext) {
       handleNextTrack();
     } else {
-      setIsPlaying(false);
+      setLocalIsPlaying(false);
     }
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
-    setCurrentTime(val);
+    if (onSeekProp) {
+      onSeekProp(val);
+      return;
+    }
+    setLocalCurrentTime(val);
     if (audioRef.current) {
       audioRef.current.currentTime = val;
     }
   };
 
   const handleSpeedChange = (speed: number) => {
-    setPlaybackRate(speed);
+    if (onSpeedChangeProp) {
+      onSpeedChangeProp(speed);
+      return;
+    }
+    setLocalPlaybackRate(speed);
     if (audioRef.current) {
       audioRef.current.playbackRate = speed;
     }
@@ -256,20 +331,29 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
-    setVolume(val);
+    if (onVolumeChangeProp) {
+      onVolumeChangeProp(val);
+      return;
+    }
+    setLocalVolume(val);
+    setLocalIsMuted(val === 0);
     if (audioRef.current) {
       audioRef.current.volume = val;
       if (val > 0 && isMuted) {
-        setIsMuted(false);
+        setLocalIsMuted(false);
         audioRef.current.muted = false;
       }
     }
   };
 
   const handleToggleMute = () => {
+    if (onToggleMuteProp) {
+      onToggleMuteProp();
+      return;
+    }
     if (!audioRef.current) return;
     const nextMuted = !isMuted;
-    setIsMuted(nextMuted);
+    setLocalIsMuted(nextMuted);
     audioRef.current.muted = nextMuted;
   };
 
@@ -403,19 +487,26 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     if (trackIndex !== undefined && trackIndex !== currentTrackIndex) {
       playTrackByIndex(trackIndex);
       setTimeout(() => {
-        if (audioRef.current) {
+        if (onSeekProp) {
+          onSeekProp(sec);
+        } else if (audioRef.current) {
           audioRef.current.currentTime = sec;
           audioRef.current.play().catch(() => {});
-          setIsPlaying(true);
+          setLocalIsPlaying(true);
         }
       }, 150);
       return;
     }
 
-    if (audioRef.current) {
+    if (onSeekProp) {
+      onSeekProp(sec);
+      if (!isPlaying && onTogglePlayProp) {
+        onTogglePlayProp();
+      }
+    } else if (audioRef.current) {
       audioRef.current.currentTime = sec;
       audioRef.current.play().catch(() => {});
-      setIsPlaying(true);
+      setLocalIsPlaying(true);
     }
   };
 
@@ -457,17 +548,17 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-drive-lightBg dark:bg-drive-darkBg overflow-hidden text-gray-900 dark:text-gray-100 select-none">
-      {/* Hidden Audio Player */}
-      {(activeTrack?.audioUrl || activeFile) && (
+      {/* Hidden Audio Player (fallback only if global audio player is not provided) */}
+      {!onTogglePlayProp && (activeTrack?.audioUrl || activeFile) && (
         <audio
           ref={audioRef}
           key={activeTrack ? `track-audio-${activeTrack.id}-${currentTrackIndex}` : (activeFile ? activeFile.id : 'audio-player')}
           src={activeTrack?.audioUrl || (activeFile ? `/api/stream/${activeFile.id}` : undefined)}
           onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration || 0)}
+          onLoadedMetadata={(e) => setLocalDuration((e.target as HTMLAudioElement).duration || 0)}
           onEnded={handleTrackEnded}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+          onPlay={() => setLocalIsPlaying(true)}
+          onPause={() => setLocalIsPlaying(false)}
         />
       )}
 

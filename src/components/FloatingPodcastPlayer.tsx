@@ -46,6 +46,8 @@ interface FloatingPodcastPlayerProps {
   onAudioEnded: () => void;
   onTimeUpdate: (currentTime: number) => void;
   onLoadedMetadata: (duration: number) => void;
+  onPlay?: () => void;
+  onPause?: () => void;
   hasNextTrack?: boolean;
   hasPreviousTrack?: boolean;
   isCardVisible?: boolean;
@@ -77,6 +79,8 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
   onAudioEnded,
   onTimeUpdate,
   onLoadedMetadata,
+  onPlay,
+  onPause,
   hasNextTrack = true,
   hasPreviousTrack = true,
   isCardVisible = true,
@@ -127,6 +131,8 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
         onLoadedMetadata={(e) => {
           onLoadedMetadata((e.target as HTMLAudioElement).duration);
         }}
+        onPlay={onPlay}
+        onPause={onPause}
         onEnded={onAudioEnded}
       />
 

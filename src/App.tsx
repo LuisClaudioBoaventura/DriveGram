@@ -627,6 +627,23 @@ export function App() {
               onOpenEditModal={() => setEditingAudioShow(selectedAudioForView)}
               onRefreshSinglePodcast={audioShows.refreshSinglePodcast}
               onMinimizeToFloating={() => setSelectedAudioForView(null)}
+              // Global Player bindings
+              isPlaying={audioShows.isPlaying}
+              currentTime={audioShows.currentTime}
+              duration={audioShows.duration}
+              playbackRate={audioShows.playbackSpeed}
+              volume={audioShows.volume}
+              isMuted={audioShows.isMuted}
+              activeTrackIndex={audioShows.activeTrackIndex}
+              onTogglePlay={audioShows.togglePlay}
+              onSeek={audioShows.seekTo}
+              onSkip={audioShows.skip}
+              onSpeedChange={audioShows.setPlaybackSpeed}
+              onVolumeChange={audioShows.setVolume}
+              onToggleMute={audioShows.toggleMute}
+              onPlayNextTrack={audioShows.playNextTrack}
+              onPlayPreviousTrack={audioShows.playPreviousTrack}
+              onSelectTrackIndex={(idx) => audioShows.selectTrack(idx, true)}
             />
           ) : selectedAdultVideoForView ? (
             /* Active Adult Cinema Video Player */
@@ -1480,7 +1497,7 @@ export function App() {
       )}
 
       {/* Persistent Global Floating Podcast / Music Player with Vinyl Disc */}
-      {audioShows.activeAudioShow && audioShows.isFloatingOpen && (
+      {audioShows.activeAudioShow && (
         <FloatingPodcastPlayer
           show={audioShows.activeAudioShow}
           activeTrack={audioShows.activeTrack}
@@ -1510,6 +1527,8 @@ export function App() {
           onAudioEnded={audioShows.handleAudioEnded}
           onTimeUpdate={audioShows.setCurrentTime}
           onLoadedMetadata={audioShows.setDuration}
+          onPlay={() => audioShows.setIsPlaying(true)}
+          onPause={() => audioShows.setIsPlaying(false)}
           hasNextTrack={!!audioShows.getNextTrack()}
           hasPreviousTrack={!!audioShows.getPreviousTrack()}
           isCardVisible={selectedAudioForView === null}
