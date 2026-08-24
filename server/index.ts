@@ -9,6 +9,7 @@ import { db } from './database.js';
 import { telegramService } from './telegram.js';
 import { castService } from './cast.js';
 import { comicService } from './comicService.js';
+import { parseYouTubeUrl } from './youtube-parser.js';
 import { FileType } from '../src/types/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1569,6 +1570,186 @@ app.post('/api/podcasts/parse-rss', async (req, res) => {
   } catch (error: any) {
     console.error('Error parsing podcast RSS feed (POST):', error);
     res.status(500).json({ error: error.message || 'Erro ao processar Feed RSS do podcast' });
+  }
+});
+
+// ==========================================
+// YOUTUBE PARSER & IMPORTER ENDPOINTS
+// ==========================================
+app.post('/api/youtube/parse', async (req, res) => {
+  try {
+    const url = (req.body?.url || req.query?.url) as string;
+    if (!url) {
+      return res.status(400).json({ error: 'URL do YouTube é obrigatória' });
+    }
+    const result = await parseYouTubeUrl(url);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error parsing YouTube URL:', error);
+    res.status(500).json({ error: error.message || 'Falha ao processar link do YouTube' });
+  }
+});
+
+app.post('/api/youtube/import', async (req, res) => {
+  try {
+    const {
+      url,
+      targetType, // 'course' | 'podcast' | 'series' | 'video'
+      title,
+      author,
+      description,
+      coverImage,
+      folderId,
+      category,
+      selectedVideos
+    } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ error: 'Título é obrigatório' });
+    }
+    const videos = Array.isArray(selectedVideos) && selectedVideos.length > 0 ? selectedVideos : [];
+    if (videos.length === 0) {
+      return res.status(400).json({ error: 'Selecione ao menos um vídeo para importar' });
+    }
+
+    // 1. IMPORT AS COURSE
+    if (targetType === 'course') {
+      let finalFolderId = folderId;
+      if (!finalFolderId) {
+        const courseFolder = db.getOrCreateCourseFolder(title);
+        finalFolderId = courseFolder.id;
+      }
+
+      const newCourse = db.saveCourse({
+        title: title.trim(),
+        instructor: author || 'YouTube',
+        category: category || 'Tecnologia & Programação',
+        description: description || '',
+        coverImage: coverImage || videos[0]?.thumbnail || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60',
+        folderId: finalFolderId,
+        modules: [
+          {
+            id: `mod-${Date.now()}-1`,
+            title: 'Aulas do Conteúdo',
+            order: 1,
+            lessons: videos.map((v: any, idx: number) => ({
+              id: `les-${Date.now()}-${idx}`,
+              title: v.title,
+              duration: v.duration || '15:00',
+              durationSeconds: v.durationSeconds || 900,
+              videoUrl: v.url,
+              embedUrl: v.embedUrl,
+              order: idx + 1,
+              isCompleted: false
+            }))
+          }
+        ]
+      });
+
+      return res.json({ success: true, targetType: 'course', item: newCourse });
+    }
+
+    // 2. IMPORT AS PODCAST / AUDIO SHOW
+    if (targetType === 'podcast' || targetType === 'audio') {
+      let finalFolderId = folderId;
+      if (!finalFolderId) {
+        const podcastFolder = db.getOrCreatePodcastFolder({ title: title.trim(), showType: 'podcast' } as any);
+        finalFolderId = podcastFolder.id;
+      }
+
+      const newShow = db.saveAudioShow({
+        title: title.trim(),
+        artist: author || 'YouTube',
+        host: author || 'YouTube',
+        showType: 'podcast',
+        category: category || 'Podcasts',
+        genre: 'YouTube Podcast',
+        description: description || '',
+        coverImage: coverImage || videos[0]?.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
+        folderId: finalFolderId,
+        tracks: videos.map((v: any, idx: number) => ({
+          id: `track-${Date.now()}-${idx}`,
+          title: v.title,
+          artist: author || 'YouTube',
+          duration: v.duration || '15:00',
+          durationSeconds: v.durationSeconds || 900,
+          audioUrl: v.url,
+          embedUrl: v.embedUrl,
+          order: idx + 1,
+          trackNumber: idx + 1,
+          releaseDate: v.publishedAt || new Date().toISOString()
+        }))
+      });
+
+      return res.json({ success: true, targetType: 'podcast', item: newShow });
+    }
+
+    // 3. IMPORT AS SERIES / TV SHOW
+    if (targetType === 'series') {
+      let finalFolderId = folderId;
+      if (!finalFolderId) {
+        const seriesFolder = db.getOrCreateSeriesFolder(title);
+        finalFolderId = seriesFolder.id;
+      }
+
+      const newSeries = db.saveSeries({
+        title: title.trim(),
+        network: author || 'YouTube',
+        genre: 'Web Série',
+        category: category || 'Séries',
+        description: description || '',
+        coverImage: coverImage || videos[0]?.thumbnail || 'https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=800&auto=format&fit=crop&q=60',
+        folderId: finalFolderId,
+        seasons: [
+          {
+            id: `season-${Date.now()}-1`,
+            seasonNumber: 1,
+            title: 'Temporada 1',
+            episodes: videos.map((v: any, idx: number) => ({
+              id: `ep-${Date.now()}-${idx}`,
+              seasonNumber: 1,
+              episodeNumber: idx + 1,
+              title: v.title,
+              duration: v.duration || '15:00',
+              durationSeconds: v.durationSeconds || 900,
+              videoUrl: v.url,
+              embedUrl: v.embedUrl
+            }))
+          }
+        ]
+      });
+
+      return res.json({ success: true, targetType: 'series', item: newSeries });
+    }
+
+    // 4. IMPORT AS MOVIE VIDEOS
+    let finalFolderId = folderId;
+    if (!finalFolderId) {
+      const videoFolder = db.getOrCreateVideoFolder();
+      finalFolderId = videoFolder.id;
+    }
+
+    const savedVideos = [];
+    for (const v of videos) {
+      const newVid = db.saveVideo({
+        title: v.title,
+        director: author || 'YouTube',
+        category: category || 'Vídeos',
+        genre: 'YouTube',
+        description: v.description || description || '',
+        coverImage: v.thumbnail || coverImage || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=60',
+        folderId: finalFolderId,
+        videoUrl: v.url,
+        embedUrl: v.embedUrl,
+        duration: v.duration
+      });
+      savedVideos.push(newVid);
+    }
+
+    return res.json({ success: true, targetType: 'video', items: savedVideos });
+  } catch (error: any) {
+    console.error('Error importing YouTube content:', error);
+    res.status(500).json({ error: error.message || 'Falha ao importar conteúdo do YouTube' });
   }
 });
 

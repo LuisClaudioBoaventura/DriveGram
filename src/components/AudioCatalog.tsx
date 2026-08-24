@@ -21,7 +21,8 @@ import {
   ExternalLink,
   RefreshCw,
   CloudUpload,
-  Loader2
+  Loader2,
+  Youtube
 } from 'lucide-react';
 import { AudioShow, AudioTrack, FolderItem } from '../types/index.js';
 import { fetchAndParsePodcastRss } from '../utils/podcastRssParser.js';
@@ -35,6 +36,7 @@ interface AudioCatalogProps {
   onEditShow?: (show: AudioShow) => void;
   onDeleteShow?: (id: string) => void;
   onRefreshPodcasts?: () => Promise<{ success: boolean; totalNewEpisodes: number; refreshedCount: number }>;
+  onOpenYouTubeModal?: () => void;
 }
 
 interface RecentEpisodeItem {
@@ -134,7 +136,8 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   onOpenNewModal,
   onEditShow,
   onDeleteShow,
-  onRefreshPodcasts
+  onRefreshPodcasts,
+  onOpenYouTubeModal
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'music_album' | 'podcast' | 'playlist'>('all');
@@ -329,6 +332,16 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
               <Plus className="w-4 h-4 text-emerald-600" />
               <span>Adicionar Álbum / Podcast</span>
             </button>
+
+            {onOpenYouTubeModal && (
+              <button
+                onClick={onOpenYouTubeModal}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-900/30 transition-all hover:scale-105 active:scale-95"
+              >
+                <Youtube className="w-4 h-4" />
+                <span>Importar do YouTube</span>
+              </button>
+            )}
 
             {totalPodcasts > 0 && onRefreshPodcasts && (
               <button

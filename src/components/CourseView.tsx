@@ -896,41 +896,52 @@ export const CourseView: React.FC<CourseViewProps> = ({
           <div className="relative w-full aspect-video shrink-0 rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800 flex items-center justify-center">
             {activeLesson ? (
               <>
-                <video
-                  ref={videoRef}
-                  key={activeLesson.id}
-                  className="w-full h-full object-contain"
-                  controls
-                  crossOrigin="anonymous"
-                  playsInline
-                  src={activeMediaFile ? `/api/stream/${activeMediaFile.id}` : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
-                  onLoadedMetadata={() => {
-                    if (videoRef.current && (activeLesson.lastPositionSeconds || 0) > 0) {
-                      videoRef.current.currentTime = activeLesson.lastPositionSeconds || 0;
-                    }
-                  }}
-                  onEnded={handleVideoEnded}
-                  onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
-                  onPlay={() => setIsPlaying(true)}
-                  onPause={() => {
-                    setIsPlaying(false);
-                    if (videoRef.current && activeLesson) {
-                      onUpdateLessonProgress?.(activeLesson.id, videoRef.current.currentTime, false);
-                    }
-                  }}
-                >
-                  {/* Embedded WebVTT Subtitle Tracks */}
-                  {activeLesson.subtitles?.map((sub) => (
-                    <track
-                      key={sub.id}
-                      kind="subtitles"
-                      src={sub.url}
-                      srcLang={sub.srclang || 'pt'}
-                      label={sub.label || 'Português'}
-                      default={sub.id === selectedSubtitleId}
-                    />
-                  ))}
-                </video>
+                {!activeMediaFile && (activeLesson.embedUrl || (activeLesson.videoUrl && (activeLesson.videoUrl.includes('youtube.com') || activeLesson.videoUrl.includes('youtu.be')))) ? (
+                  <iframe
+                    key={activeLesson.id}
+                    src={activeLesson.embedUrl || (activeLesson.videoUrl ? `https://www.youtube.com/embed/${activeLesson.videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/i)?.[1] || ''}?autoplay=1&enablejsapi=1` : '')}
+                    title={activeLesson.title}
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video
+                    ref={videoRef}
+                    key={activeLesson.id}
+                    className="w-full h-full object-contain"
+                    controls
+                    crossOrigin="anonymous"
+                    playsInline
+                    src={activeMediaFile ? `/api/stream/${activeMediaFile.id}` : (activeLesson.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4')}
+                    onLoadedMetadata={() => {
+                      if (videoRef.current && (activeLesson.lastPositionSeconds || 0) > 0) {
+                        videoRef.current.currentTime = activeLesson.lastPositionSeconds || 0;
+                      }
+                    }}
+                    onEnded={handleVideoEnded}
+                    onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => {
+                      setIsPlaying(false);
+                      if (videoRef.current && activeLesson) {
+                        onUpdateLessonProgress?.(activeLesson.id, videoRef.current.currentTime, false);
+                      }
+                    }}
+                  >
+                    {/* Embedded WebVTT Subtitle Tracks */}
+                    {activeLesson.subtitles?.map((sub) => (
+                      <track
+                        key={sub.id}
+                        kind="subtitles"
+                        src={sub.url}
+                        srcLang={sub.srclang || 'pt'}
+                        label={sub.label || 'Português'}
+                        default={sub.id === selectedSubtitleId}
+                      />
+                    ))}
+                  </video>
+                )}
               </>
             ) : (
               <div className="text-center text-gray-400 p-8">

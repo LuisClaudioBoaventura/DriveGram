@@ -49,6 +49,7 @@ import { CategoryManagerModal } from './components/CategoryManagerModal.js';
 import { EditItemModal } from './components/EditItemModal.js';
 import { DuplicateFilesModal } from './components/DuplicateFilesModal.js';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
+import { YouTubeImportModal, YouTubeTargetType } from './components/YouTubeImportModal.js';
 import { useFileSystem } from './hooks/useFileSystem.js';
 import { useTelegram } from './hooks/useTelegram.js';
 import { useCourses } from './hooks/useCourses.js';
@@ -127,6 +128,8 @@ export function App() {
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
   const [isAdultLockModalOpen, setIsAdultLockModalOpen] = useState(false);
   const [isNewAdultVideoModalOpen, setIsNewAdultVideoModalOpen] = useState(false);
+  const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
+  const [youtubeInitialType, setYoutubeInitialType] = useState<YouTubeTargetType>('course');
   const [isDuplicatesModalOpen, setIsDuplicatesModalOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
@@ -248,6 +251,39 @@ export function App() {
     }
   };
 
+  const handleOpenYouTubeModal = (type: YouTubeTargetType = 'course') => {
+    setYoutubeInitialType(type);
+    setIsYouTubeModalOpen(true);
+  };
+
+  const handleYouTubeImportSuccess = (result: { targetType: YouTubeTargetType; item: any }) => {
+    fs.refresh();
+    refreshAllLibraries();
+    if (result.targetType === 'course') {
+      courses.refreshCourses();
+      fs.setActiveTab('courses');
+      if (result.item) setSelectedCourseForView(result.item);
+      showToast('🎉 Curso importado do YouTube com sucesso!', 'success');
+    } else if (result.targetType === 'podcast') {
+      audioShows.fetchAudioShows();
+      fs.setActiveTab('podcasts');
+      if (result.item) {
+        setSelectedAudioForView(result.item);
+        setSelectedAudioTrackIndex(0);
+      }
+      showToast('🎉 Podcast importado do YouTube com sucesso!', 'success');
+    } else if (result.targetType === 'series') {
+      series.fetchSeries();
+      fs.setActiveTab('series');
+      if (result.item) setSelectedSeriesForView(result.item);
+      showToast('🎉 Série importada do YouTube com sucesso!', 'success');
+    } else if (result.targetType === 'video') {
+      videos.fetchVideos();
+      fs.setActiveTab('videos');
+      showToast('🎉 Vídeos importados do YouTube com sucesso!', 'success');
+    }
+  };
+
   const handleSafeUpload = async (
     files: FileList | File[] | { file: File; relativePath?: string }[],
     targetFolderId = fs.currentFolderId
@@ -351,6 +387,7 @@ export function App() {
           }
         }}
         onOpenOmdbKeyModal={() => setIsOmdbKeyModalOpen(true)}
+        onOpenYouTubeModal={() => handleOpenYouTubeModal()}
         onSyncNow={async () => {
           if (!tg.authState.isConnected) {
             setLoginPromptReason({
@@ -413,6 +450,7 @@ export function App() {
               setIsNewAdultVideoModalOpen(true);
             }
           }}
+          onOpenYouTubeModal={(type) => handleOpenYouTubeModal(type || 'course')}
           isAdultVaultUnlocked={adultVault.isUnlocked}
           onUploadFiles={async (files) => {
             await handleSafeUpload(files);
@@ -705,6 +743,7 @@ export function App() {
                 setSelectedCourseForView(c);
               }}
               onNewCourse={() => setIsCourseModalOpen(true)}
+              onOpenYouTubeModal={() => handleOpenYouTubeModal('course')}
               onDeleteCourse={(id) => {
                 courses.deleteCourse(id);
                 fs.refresh();
@@ -809,6 +848,7 @@ export function App() {
                 setSelectedAudioTrackIndex(trackIndex !== undefined ? trackIndex : 0);
               }}
               onOpenNewModal={() => setIsAudioModalOpen(true)}
+              onOpenYouTubeModal={() => handleOpenYouTubeModal('podcast')}
               onEditShow={(a) => setEditingAudioShow(a)}
               onDeleteShow={(id) => {
                 audioShows.deleteAudioShow(id);
@@ -1424,6 +1464,15 @@ export function App() {
           fs.refresh();
           refreshAllLibraries();
         }}
+      />
+
+      {/* Global YouTube Importer Modal */}
+      <YouTubeImportModal
+        isOpen={isYouTubeModalOpen}
+        onClose={() => setIsYouTubeModalOpen(false)}
+        initialType={youtubeInitialType}
+        allFolders={fs.allFolders}
+        onImportSuccess={handleYouTubeImportSuccess}
       />
 
       {/* Edit/Rename File & Folder Modal */}

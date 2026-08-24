@@ -1391,20 +1391,34 @@ class Database {
     return this.data.courses.find(c => c.id === id) || null;
   }
 
-  public saveCourse(course: Course): Course {
+  public saveCourse(courseData: Partial<Course> & { title: string }): Course {
+    const id = courseData.id || 'course-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+    const existingIdx = this.data.courses.findIndex(c => c.id === id);
+
     // Ensure all lessons' timestamps are sorted sequentially
-    const sanitizedModules = (course.modules || []).map(mod => ({
+    const sanitizedModules = (courseData.modules || []).map(mod => ({
       ...mod,
       lessons: (mod.lessons || []).map(l => ({
         ...l,
         timestamps: (l.timestamps || []).sort((a: any, b: any) => (a.seconds || 0) - (b.seconds || 0))
       }))
     }));
-    course.modules = sanitizedModules;
 
-    const idx = this.data.courses.findIndex(c => c.id === course.id);
-    if (idx >= 0) {
-      const oldCourse = this.data.courses[idx];
+    const course: Course = {
+      id,
+      title: courseData.title,
+      description: courseData.description || '',
+      instructor: courseData.instructor,
+      folderId: courseData.folderId,
+      coverImage: courseData.coverImage,
+      category: courseData.category || 'Geral',
+      modules: sanitizedModules,
+      createdAt: courseData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (existingIdx >= 0) {
+      const oldCourse = this.data.courses[existingIdx];
       // Check for removed modules
       if (oldCourse.modules && course.modules && course.folderId) {
         const newModIds = new Set(course.modules.map(m => m.id));
@@ -1416,16 +1430,9 @@ class Database {
         }
       }
 
-      this.data.courses[idx] = {
-        ...course,
-        updatedAt: new Date().toISOString()
-      };
+      this.data.courses[existingIdx] = course;
     } else {
-      this.data.courses.push({
-        ...course,
-        createdAt: course.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+      this.data.courses.push(course);
     }
     this.syncCoursesWithFolderStructure();
     this.save(this.data);
@@ -2047,6 +2054,78 @@ class Database {
     }
 
     return podcastFolder;
+  }
+
+  public getOrCreateCourseFolder(courseTitle: string): FolderItem {
+    const allFolders = this.data.folders.filter(f => !f.isTrash);
+    const rootAliases = ['cursos & treinamentos', 'cursos e treinamentos', 'cursos', 'treinamentos', 'aulas'];
+    let coursesRoot = allFolders.find(f => {
+      if (f.parentId) return false;
+      const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+      return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
+    });
+
+    if (!coursesRoot) {
+      coursesRoot = this.createFolder('🎓 Cursos & Treinamentos', null, '#3b82f6', 'Biblioteca de Cursos e Treinamentos');
+    }
+
+    const title = courseTitle?.trim() || 'Curso';
+    const folderName = `🎓 ${title}`;
+
+    let courseFolder = allFolders.find(f => 
+      f.parentId === coursesRoot!.id && 
+      (f.name.toLowerCase().trim() === folderName.toLowerCase().trim() || f.name.toLowerCase().trim() === title.toLowerCase().trim())
+    );
+
+    if (!courseFolder) {
+      courseFolder = this.createFolder(folderName, coursesRoot.id, '#3b82f6', `Aulas do curso ${title}`);
+    }
+
+    return courseFolder;
+  }
+
+  public getOrCreateSeriesFolder(seriesTitle: string): FolderItem {
+    const allFolders = this.data.folders.filter(f => !f.isTrash);
+    const rootAliases = ['séries & tv shows', 'series & tv shows', 'séries e tv shows', 'series e tv shows', 'séries', 'series'];
+    let seriesRoot = allFolders.find(f => {
+      if (f.parentId) return false;
+      const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+      return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
+    });
+
+    if (!seriesRoot) {
+      seriesRoot = this.createFolder('🎬 Séries & TV Shows', null, '#8b5cf6', 'Biblioteca de Séries e TV Shows');
+    }
+
+    const title = seriesTitle?.trim() || 'Série';
+    const folderName = `🎬 ${title}`;
+
+    let seriesFolder = allFolders.find(f => 
+      f.parentId === seriesRoot!.id && 
+      (f.name.toLowerCase().trim() === folderName.toLowerCase().trim() || f.name.toLowerCase().trim() === title.toLowerCase().trim())
+    );
+
+    if (!seriesFolder) {
+      seriesFolder = this.createFolder(folderName, seriesRoot.id, '#8b5cf6', `Episódios da série ${title}`);
+    }
+
+    return seriesFolder;
+  }
+
+  public getOrCreateVideoFolder(): FolderItem {
+    const allFolders = this.data.folders.filter(f => !f.isTrash);
+    const rootAliases = ['filmes & vídeos', 'filmes e vídeos', 'filmes & videos', 'filmes e videos', 'filmes', 'vídeos', 'videos'];
+    let videoRoot = allFolders.find(f => {
+      if (f.parentId) return false;
+      const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+      return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
+    });
+
+    if (!videoRoot) {
+      videoRoot = this.createFolder('🎥 Filmes & Vídeos', null, '#f59e0b', 'Biblioteca de Filmes e Vídeos');
+    }
+
+    return videoRoot;
   }
 
   public getAudioCategories(): string[] {

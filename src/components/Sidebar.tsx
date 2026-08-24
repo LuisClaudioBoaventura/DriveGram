@@ -20,9 +20,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Youtube
 } from 'lucide-react';
 import { TelegramAuthState } from '../types/index.js';
+import { YouTubeTargetType } from './YouTubeImportModal.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
 
 export type SidebarTab = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
@@ -39,6 +41,7 @@ interface SidebarProps {
   onNewSeries?: () => void;
   onNewAudio?: () => void;
   onNewAdultVideo?: () => void;
+  onOpenYouTubeModal?: (type?: YouTubeTargetType) => void;
   isAdultVaultUnlocked?: boolean;
   onUploadFiles: (files: FileList | File[] | { file: File; relativePath?: string }[]) => void;
   telegramState: TelegramAuthState;
@@ -61,6 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewSeries,
   onNewAudio,
   onNewAdultVideo,
+  onOpenYouTubeModal,
   isAdultVaultUnlocked,
   onUploadFiles,
   telegramState,
@@ -361,6 +365,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <LockKeyhole className="w-4 h-4 text-rose-500" />
                   <span>Novo Item Red Locker (+18)</span>
                 </button>
+              )}
+
+              {onOpenYouTubeModal && (
+                <>
+                  <div className="my-1 border-t border-gray-100 dark:border-drive-darkBorder" />
+                  <button
+                    onClick={() => {
+                      setShowNewMenu(false);
+                      onOpenYouTubeModal();
+                    }}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                  >
+                    <Youtube className="w-4 h-4 text-red-600 dark:text-red-400" />
+                    <span>Importar do YouTube</span>
+                  </button>
+                </>
               )}
             </div>
           </>

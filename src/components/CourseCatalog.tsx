@@ -11,7 +11,8 @@ import {
   Sparkles, 
   Search,
   Filter,
-  Film
+  Film,
+  Youtube
 } from 'lucide-react';
 import { Course } from '../types/index.js';
 
@@ -20,13 +21,15 @@ interface CourseCatalogProps {
   onSelectCourse: (course: Course) => void;
   onNewCourse: () => void;
   onDeleteCourse: (id: string) => void;
+  onOpenYouTubeModal?: () => void;
 }
 
 export const CourseCatalog: React.FC<CourseCatalogProps> = ({
   courses,
   onSelectCourse,
   onNewCourse,
-  onDeleteCourse
+  onDeleteCourse,
+  onOpenYouTubeModal
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -78,6 +81,16 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
               <Plus className="w-4 h-4" />
               <span>Criar Novo Curso</span>
             </button>
+
+            {onOpenYouTubeModal && (
+              <button
+                onClick={onOpenYouTubeModal}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-900/30 transition-all hover:scale-105 active:scale-95"
+              >
+                <Youtube className="w-4 h-4" />
+                <span>Importar do YouTube</span>
+              </button>
+            )}
           </div>
         </div>
 

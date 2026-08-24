@@ -70,6 +70,9 @@ export interface Lesson {
   title: string;
   description?: string;
   duration?: string; // e.g. "12:45"
+  durationSeconds?: number;
+  videoUrl?: string;
+  embedUrl?: string;
   fileId?: string; // Associated drive video file ID
   telegramMessageId?: number;
   order: number;
@@ -137,6 +140,7 @@ export interface Course {
   id: string;
   title: string;
   description: string;
+  instructor?: string;
   folderId?: string;
   coverImage?: string;
   createdAt: string;
@@ -230,6 +234,8 @@ export interface MovieVideo {
   director?: string;
   coverImage?: string;
   fileId?: string; // driveItem id
+  videoUrl?: string;
+  embedUrl?: string;
   folderId?: string; // drive folder
   timestamps?: VideoTimestamp[];
   subtitles?: VideoSubtitle[];
@@ -315,7 +321,10 @@ export interface SeriesEpisode {
   episodeNumber: number;
   seasonNumber: number;
   duration?: string;
+  durationSeconds?: number;
   fileId?: string; // driveItem id
+  videoUrl?: string;
+  embedUrl?: string;
   isCompleted?: boolean;
   lastPositionSeconds?: number;
   description?: string;

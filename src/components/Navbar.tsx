@@ -16,9 +16,11 @@ import {
   BookOpen,
   Archive,
   FileCode,
-  Key
+  Key,
+  Youtube
 } from 'lucide-react';
 import { TelegramAuthState, FileType } from '../types/index.js';
+import { YouTubeTargetType } from './YouTubeImportModal.js';
 
 interface NavbarProps {
   searchQuery: string;
@@ -31,6 +33,7 @@ interface NavbarProps {
   onOpenAuth: () => void;
   onOpenSync: () => void;
   onOpenOmdbKeyModal?: () => void;
+  onOpenYouTubeModal?: (type?: YouTubeTargetType) => void;
   onSyncNow: () => void;
   isSyncing: boolean;
 }
@@ -46,6 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuth,
   onOpenSync,
   onOpenOmdbKeyModal,
+  onOpenYouTubeModal,
   onSyncNow,
   isSyncing
 }) => {
@@ -137,6 +141,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all"
             >
               <Key className="w-4 h-4 text-amber-500" />
+            </button>
+          )}
+
+          {/* YouTube Global Importer Trigger */}
+          {onOpenYouTubeModal && (
+            <button
+              onClick={() => onOpenYouTubeModal()}
+              title="Importar Canais ou Playlists do YouTube"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 transition-all shadow-sm active:scale-95"
+            >
+              <Youtube className="w-4 h-4 text-red-600 dark:text-red-400" />
+              <span className="hidden sm:inline">YouTube</span>
             </button>
           )}
 
