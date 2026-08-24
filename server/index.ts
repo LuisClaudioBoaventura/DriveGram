@@ -1487,8 +1487,10 @@ function parsePodcastRssXml(xmlText: string) {
       }
     }
 
+    const uniqueId = `ep-${index + 1}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+
     episodes.push({
-      id: `ep-${epGuid.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || (Date.now() + '-' + index)}`,
+      id: uniqueId,
       title: epTitle,
       artist: author || undefined,
       duration: durationStr,

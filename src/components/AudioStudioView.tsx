@@ -432,7 +432,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
       {(activeTrack?.audioUrl || activeFile) && (
         <audio
           ref={audioRef}
-          key={activeTrack?.id || activeFile?.id}
+          key={activeTrack ? `track-audio-${activeTrack.id}-${currentTrackIndex}` : (activeFile ? activeFile.id : 'audio-player')}
           src={activeTrack?.audioUrl || (activeFile ? `/api/stream/${activeFile.id}` : undefined)}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration || 0)}
@@ -1018,7 +1018,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
                 return (
                   <div
-                    key={track.id}
+                    key={`track-row-${track.id || 'idx'}-${idx}`}
                     onClick={() => playTrackByIndex(idx)}
                     className={`flex items-center justify-between p-3 rounded-2xl text-xs cursor-pointer group transition-all border ${
                       isCurrent

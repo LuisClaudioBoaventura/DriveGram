@@ -118,100 +118,6 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   const [selectedType, setSelectedType] = useState<'all' | 'music_album' | 'podcast' | 'playlist'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const recentScrollRef = useRef<HTMLDivElement>(null);
-  const [isAutoSyncingDates, setIsAutoSyncingDates] = useState(false);
-
-  // ---------------- AUTO-HEAL DATES FOR PODCASTS WITHOUT RELEASE DATES ----------------
-  useEffect(() => {
-    const healPodcastsWithoutDates = async () => {
-      if (!onEditShow) return;
-
-      for (const show of audioShows) {
-        if (show.showType !== 'podcast' || !show.tracks || show.tracks.length === 0) continue;
-
-        // Check if any tracks lack releaseDate
-        const tracksWithoutDates = show.tracks.filter(t => !t.releaseDate);
-        if (tracksWithoutDates.length > 0 && show.tracks.length > 0) {
-          try {
-            // Strategy 1: Try iTunes lookup if numeric ID or show title
-            let updatedEpisodes: any[] = [];
-
-            // If show id is numeric iTunes ID or we can query by show title
-            const isItunesId = /^\d+$/.test(show.id.replace(/^itunes-/, ''));
-            if (isItunesId) {
-              const cleanId = show.id.replace(/^itunes-/, '');
-              const res = await fetch(`https://itunes.apple.com/lookup?id=${cleanId}&entity=podcastEpisode&limit=60`);
-              if (res.ok) {
-                const data = await res.json();
-                if (data.results && data.results.length > 1) {
-                  const itunesEpisodes = data.results.slice(1);
-                  const updatedTracks = show.tracks.map(t => {
-                    if (t.releaseDate) return t;
-                    const match = itunesEpisodes.find((ep: any) => 
-                      ep.trackName === t.title || 
-                      ep.episodeUrl === t.audioUrl ||
-                      ep.previewUrl === t.audioUrl
-                    );
-                    if (match && match.releaseDate) {
-                      return { ...t, releaseDate: match.releaseDate };
-                    }
-                    return t;
-                  });
-
-                  if (updatedTracks.some(t => t.releaseDate)) {
-                    await onEditShow({ ...show, tracks: updatedTracks });
-                    continue;
-                  }
-                }
-              }
-            }
-
-            // Strategy 2: If show description or genre or RSS available
-            // Check if we can search by podcast title to get feedUrl and release dates
-            const searchRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(show.title)}&media=podcast&entity=podcast&limit=3`);
-            if (searchRes.ok) {
-              const sData = await searchRes.json();
-              const foundPodcast = (sData.results || []).find((p: any) => 
-                p.collectionName?.toLowerCase().includes(show.title.toLowerCase()) || 
-                show.title.toLowerCase().includes(p.collectionName?.toLowerCase())
-              );
-
-              if (foundPodcast) {
-                // Fetch lookup episodes with releaseDate
-                const epRes = await fetch(`https://itunes.apple.com/lookup?id=${foundPodcast.collectionId}&entity=podcastEpisode&limit=60`);
-                if (epRes.ok) {
-                  const epData = await epRes.json();
-                  if (epData.results && epData.results.length > 1) {
-                    const itunesEps = epData.results.slice(1);
-                    const updatedTracks = show.tracks.map((t, idx) => {
-                      if (t.releaseDate) return t;
-                      const matchedEp = itunesEps.find((ep: any) => 
-                        ep.trackName?.trim().toLowerCase() === t.title.trim().toLowerCase() ||
-                        ep.episodeUrl === t.audioUrl ||
-                        ep.previewUrl === t.audioUrl
-                      ) || itunesEps[idx];
-
-                      if (matchedEp && matchedEp.releaseDate) {
-                        return { ...t, releaseDate: matchedEp.releaseDate };
-                      }
-                      return t;
-                    });
-
-                    if (updatedTracks.some(t => t.releaseDate)) {
-                      await onEditShow({ ...show, tracks: updatedTracks });
-                    }
-                  }
-                }
-              }
-            }
-          } catch (healErr) {
-            console.warn(`Could not auto-heal dates for podcast ${show.title}:`, healErr);
-          }
-        }
-      }
-    };
-
-    healPodcastsWithoutDates();
-  }, [audioShows.length]);
 
   // ---------------- GATHER RECENT EPISODES (LAST 2 MONTHS) ----------------
   const now = new Date();
@@ -384,7 +290,7 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
             {recentEpisodes.map((item, idx) => {
               return (
                 <div
-                  key={`${item.show.id}-${item.track.id}-${idx}`}
+                  key={`ep-card-${item.show.id}-${item.track.id || 'idx'}-${idx}`}
                   onClick={() => onSelectShow(item.show, item.trackIndex)}
                   className="w-72 sm:w-80 p-3.5 rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200/80 dark:border-drive-darkBorder hover:border-amber-500/60 shadow-sm hover:shadow-lg transition-all duration-200 flex flex-col justify-between shrink-0 snap-start cursor-pointer group"
                 >

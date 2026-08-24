@@ -89,8 +89,10 @@ export function parsePodcastRssXmlString(xmlText: string): ParsedPodcastRss {
       }
     }
 
+    const uniqueId = `ep-${index + 1}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+
     episodes.push({
-      id: `ep-${epGuid.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || (Date.now() + '-' + index)}`,
+      id: uniqueId,
       title: epTitle,
       artist: author || undefined,
       duration: durationStr,
@@ -134,31 +136,42 @@ export async function fetchAndParsePodcastRss(url: string, signal?: AbortSignal)
     }
   } catch (e: any) {
     if (e.name === 'AbortError') throw e;
-    console.warn('Backend RSS parse error, falling back to direct browser fetch:', e);
   }
 
-  // Strategy 2: Direct browser fetch or AllOrigins CORS proxy fallback
+  // Strategy 2: CORS Proxy Fallbacks (avoids direct fetch CORS errors)
   let xmlText = '';
-  try {
-    const directRes = await fetch(url.trim(), { signal });
-    if (directRes.ok) {
-      xmlText = await directRes.text();
-    }
-  } catch (e: any) {
-    if (e.name === 'AbortError') throw e;
-    console.warn('Direct fetch failed (likely CORS), trying open CORS proxy:', e);
-  }
+  const proxies = [
+    (target: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
+    (target: string) => `https://corsproxy.io/?url=${encodeURIComponent(target)}`,
+    (target: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(target)}`
+  ];
 
-  if (!xmlText) {
+  for (const getProxyUrl of proxies) {
+    if (xmlText) break;
     try {
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url.trim())}`;
+      const proxyUrl = getProxyUrl(url.trim());
       const proxyRes = await fetch(proxyUrl, { signal });
       if (proxyRes.ok) {
-        xmlText = await proxyRes.text();
+        const text = await proxyRes.text();
+        if (text && (text.includes('<rss') || text.includes('<channel') || text.includes('<feed'))) {
+          xmlText = text;
+          break;
+        }
       }
     } catch (e: any) {
       if (e.name === 'AbortError') throw e;
-      console.error('AllOrigins CORS proxy failed:', e);
+    }
+  }
+
+  // Strategy 3: Direct browser fetch only as final fallback
+  if (!xmlText) {
+    try {
+      const directRes = await fetch(url.trim(), { signal });
+      if (directRes.ok) {
+        xmlText = await directRes.text();
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
     }
   }
 
