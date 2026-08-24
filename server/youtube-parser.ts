@@ -1,5 +1,5 @@
 // server/youtube-parser.ts
-// Robust YouTube Channel, Playlist, and Video Parser without requiring an API key.
+// Robust YouTube Channel, Playlist, and Video Parser with Deep Pagination Support (0 API key costs).
 
 export interface YouTubeVideoItem {
   id: string;
@@ -30,8 +30,8 @@ export interface YouTubeParsedResult {
   videos: YouTubeVideoItem[];
 }
 
-function parseDurationStringToSeconds(durationStr: string): number {
-  if (!durationStr) return 0;
+export function parseDurationStringToSeconds(durationStr: string): number {
+  if (!durationStr) return 600;
   const parts = durationStr.trim().split(':').map(p => parseInt(p, 10) || 0);
   if (parts.length === 3) {
     return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -42,10 +42,10 @@ function parseDurationStringToSeconds(durationStr: string): number {
   if (parts.length === 1) {
     return parts[0];
   }
-  return 0;
+  return 600;
 }
 
-function formatSecondsToDuration(seconds: number): string {
+export function formatSecondsToDuration(seconds: number): string {
   if (isNaN(seconds) || seconds <= 0) return '00:00';
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
@@ -56,7 +56,7 @@ function formatSecondsToDuration(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-function cleanHtmlText(raw: string): string {
+export function cleanHtmlText(raw: string): string {
   if (!raw) return '';
   return raw
     .replace(/&amp;/g, '&')
@@ -128,7 +128,7 @@ export function parseYouTubeRssXml(xml: string): { title?: string; author?: stri
       videoId,
       title,
       description,
-      duration: '10:00', // standard fallback for RSS
+      duration: '10:00',
       durationSeconds: 600,
       thumbnail,
       author,
@@ -172,7 +172,7 @@ function extractYtInitialData(html: string): any | null {
 }
 
 /**
- * Recursively searches for objects matching a predicate in JSON
+ * Recursively searches for objects matching a key in JSON
  */
 function findObjectsWithKey(obj: any, key: string, results: any[] = []): any[] {
   if (!obj || typeof obj !== 'object') return results;
@@ -180,7 +180,7 @@ function findObjectsWithKey(obj: any, key: string, results: any[] = []): any[] {
     results.push(obj[key]);
   }
   for (const k of Object.keys(obj)) {
-    if (typeof obj[k] === 'object') {
+    if (typeof obj[k] === 'object' && obj[k] !== null) {
       findObjectsWithKey(obj[k], key, results);
     }
   }
@@ -188,7 +188,226 @@ function findObjectsWithKey(obj: any, key: string, results: any[] = []): any[] {
 }
 
 /**
- * Main parser function: accepts a URL, detects its type, and parses the metadata and videos
+ * Extracts all video objects from any YouTube JSON payload (InitialData or Browse response)
+ */
+function extractVideosFromPayload(
+  payload: any, 
+  seenIds: Set<string>, 
+  defaultAuthor?: string, 
+  listId?: string
+): YouTubeVideoItem[] {
+  const newVideos: YouTubeVideoItem[] = [];
+
+  // 1. Modern lockupViewModel (YouTube 2024-2026 UI)
+  const lockups = findObjectsWithKey(payload, 'lockupViewModel');
+  for (const l of lockups) {
+    const vid = l.contentId || l.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint?.videoId;
+    if (!vid || seenIds.has(vid)) continue;
+    if (l.contentType && l.contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO' && l.contentType !== 'LOCKUP_CONTENT_TYPE_SHORTS') continue;
+
+    const title = l.metadata?.lockupMetadataViewModel?.title?.content ||
+                  l.accessibilityContext?.label ||
+                  'Vídeo';
+
+    const thumbSources = l.contentImage?.thumbnailViewModel?.image?.sources;
+    const thumb = thumbSources && thumbSources.length > 0 
+      ? thumbSources[thumbSources.length - 1].url 
+      : `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+
+    const badges = findObjectsWithKey(l, 'thumbnailOverlayBadgeViewModel');
+    let durationStr = '10:00';
+    if (badges.length > 0) {
+      durationStr = badges[0].thumbnailBadges?.[0]?.thumbnailBadgeViewModel?.text || '10:00';
+    }
+
+    seenIds.add(vid);
+    newVideos.push({
+      id: `yt-${vid}`,
+      videoId: vid,
+      title: cleanHtmlText(title),
+      duration: durationStr,
+      durationSeconds: parseDurationStringToSeconds(durationStr),
+      thumbnail: thumb,
+      author: defaultAuthor,
+      url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
+      embedUrl: `https://www.youtube.com/embed/${vid}`
+    });
+  }
+
+  // 2. Standard videoRenderer
+  const videoRenderers = findObjectsWithKey(payload, 'videoRenderer');
+  for (const vr of videoRenderers) {
+    const vid = vr.videoId;
+    if (!vid || seenIds.has(vid)) continue;
+
+    const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Vídeo';
+    const durationStr = vr.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText ||
+                        vr.lengthText?.simpleText ||
+                        vr.lengthText?.runs?.[0]?.text || '10:00';
+    const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+    const author = vr.shortBylineText?.runs?.[0]?.text || vr.ownerText?.runs?.[0]?.text || defaultAuthor;
+
+    seenIds.add(vid);
+    newVideos.push({
+      id: `yt-${vid}`,
+      videoId: vid,
+      title: cleanHtmlText(title),
+      duration: durationStr,
+      durationSeconds: parseDurationStringToSeconds(durationStr),
+      thumbnail: thumb,
+      author: cleanHtmlText(author || ''),
+      url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
+      embedUrl: `https://www.youtube.com/embed/${vid}`
+    });
+  }
+
+  // 3. Grid gridVideoRenderer
+  const gridVideos = findObjectsWithKey(payload, 'gridVideoRenderer');
+  for (const vr of gridVideos) {
+    const vid = vr.videoId;
+    if (!vid || seenIds.has(vid)) continue;
+
+    const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Vídeo';
+    const durationStr = vr.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText ||
+                        vr.lengthText?.simpleText || '10:00';
+    const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+    const author = vr.shortBylineText?.runs?.[0]?.text || defaultAuthor;
+
+    seenIds.add(vid);
+    newVideos.push({
+      id: `yt-${vid}`,
+      videoId: vid,
+      title: cleanHtmlText(title),
+      duration: durationStr,
+      durationSeconds: parseDurationStringToSeconds(durationStr),
+      thumbnail: thumb,
+      author: cleanHtmlText(author || ''),
+      url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
+      embedUrl: `https://www.youtube.com/embed/${vid}`
+    });
+  }
+
+  // 4. Playlist playlistVideoRenderer
+  const playlistVideos = findObjectsWithKey(payload, 'playlistVideoRenderer');
+  for (const vr of playlistVideos) {
+    const vid = vr.videoId;
+    if (!vid || seenIds.has(vid)) continue;
+
+    const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Vídeo';
+    const durationStr = vr.lengthText?.simpleText || vr.lengthText?.runs?.[0]?.text || '10:00';
+    const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+    const author = vr.shortBylineText?.runs?.[0]?.text || defaultAuthor;
+
+    seenIds.add(vid);
+    newVideos.push({
+      id: `yt-${vid}`,
+      videoId: vid,
+      title: cleanHtmlText(title),
+      duration: durationStr,
+      durationSeconds: parseDurationStringToSeconds(durationStr),
+      thumbnail: thumb,
+      author: cleanHtmlText(author || ''),
+      url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
+      embedUrl: `https://www.youtube.com/embed/${vid}`
+    });
+  }
+
+  // 5. Compact compactVideoRenderer
+  const compactVideos = findObjectsWithKey(payload, 'compactVideoRenderer');
+  for (const vr of compactVideos) {
+    const vid = vr.videoId;
+    if (!vid || seenIds.has(vid)) continue;
+
+    const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Vídeo';
+    const durationStr = vr.lengthText?.simpleText || vr.lengthText?.runs?.[0]?.text || '10:00';
+    const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+    const author = vr.shortBylineText?.runs?.[0]?.text || defaultAuthor;
+
+    seenIds.add(vid);
+    newVideos.push({
+      id: `yt-${vid}`,
+      videoId: vid,
+      title: cleanHtmlText(title),
+      duration: durationStr,
+      durationSeconds: parseDurationStringToSeconds(durationStr),
+      thumbnail: thumb,
+      author: cleanHtmlText(author || ''),
+      url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
+      embedUrl: `https://www.youtube.com/embed/${vid}`
+    });
+  }
+
+  return newVideos;
+}
+
+/**
+ * Paginates through YouTube continuation tokens via public Innertube browse API
+ */
+async function paginateYouTubeContinuations(
+  initialPayload: any,
+  apiKey: string,
+  clientVersion: string,
+  fetchHeaders: any,
+  seenIds: Set<string>,
+  maxPages = 60,
+  maxVideos = 2500,
+  defaultAuthor?: string,
+  listId?: string
+): Promise<YouTubeVideoItem[]> {
+  const allVideos: YouTubeVideoItem[] = [];
+  const continuations = findObjectsWithKey(initialPayload, 'continuationCommand');
+  let token = continuations.length > 0 ? continuations[0].token : null;
+  let page = 1;
+
+  while (token && page < maxPages && seenIds.size < maxVideos) {
+    page++;
+    try {
+      const browseUrl = apiKey
+        ? `https://www.youtube.com/youtubei/v1/browse?key=${apiKey}`
+        : 'https://www.youtube.com/youtubei/v1/browse';
+
+      const bRes = await fetch(browseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': fetchHeaders['User-Agent'],
+          'X-YouTube-Client-Name': '1',
+          'X-YouTube-Client-Version': clientVersion
+        },
+        body: JSON.stringify({
+          context: {
+            client: {
+              clientName: 'WEB',
+              clientVersion: clientVersion,
+              hl: 'pt-BR',
+              gl: 'BR'
+            }
+          },
+          continuation: token
+        })
+      });
+
+      if (!bRes.ok) break;
+
+      const bData = await bRes.json();
+      const pageVideos = extractVideosFromPayload(bData, seenIds, defaultAuthor, listId);
+      if (pageVideos.length === 0) break;
+
+      allVideos.push(...pageVideos);
+
+      const nextContinuations = findObjectsWithKey(bData, 'continuationCommand');
+      token = nextContinuations.length > 0 ? nextContinuations[0].token : null;
+    } catch (err) {
+      console.warn(`Pagination error on page ${page}:`, err);
+      break;
+    }
+  }
+
+  return allVideos;
+}
+
+/**
+ * Main parser function: accepts a URL, detects its type, and parses the metadata and all videos
  */
 export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResult> {
   const url = rawUrl.trim();
@@ -208,17 +427,25 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
   // ==========================================
   // CASE 1: PLAYLIST
   // ==========================================
-  if (playlistId && !url.includes('/watch?v=') || (playlistId && url.includes('/playlist'))) {
+  if (playlistId && (!url.includes('/watch?v=') || url.includes('/playlist'))) {
     try {
       const playlistPageUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
       const pageRes = await fetch(playlistPageUrl, { headers: fetchHeaders });
       const html = await pageRes.text();
+
+      let apiKey = '';
+      const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/) || html.match(/innertubeApiKey":"([^"]+)"/);
+      if (apiKeyMatch) apiKey = apiKeyMatch[1];
+
+      const clientVersionMatch = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/) || html.match(/clientVersion":"([^"]+)"/);
+      const clientVersion = clientVersionMatch ? clientVersionMatch[1] : '2.20260820.08.00';
 
       const ytData = extractYtInitialData(html);
       let playlistTitle = 'Playlist do YouTube';
       let playlistAuthor = 'YouTube';
       let playlistDesc = '';
       let playlistCover = `https://i.ytimg.com/vi/${videoId || 'default'}/maxresdefault.jpg`;
+      const seenIds = new Set<string>();
       const videos: YouTubeVideoItem[] = [];
 
       // Extract metadata from page
@@ -233,7 +460,6 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
       }
 
       if (ytData) {
-        // Extract playlist header
         const microformat = ytData.microformat?.microformatDataRenderer;
         if (microformat?.title) playlistTitle = cleanHtmlText(microformat.title);
         if (microformat?.description) playlistDesc = cleanHtmlText(microformat.description);
@@ -241,33 +467,22 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
           playlistCover = microformat.thumbnail.thumbnails.slice(-1)[0].url;
         }
 
-        // Find all playlistVideoRenderer items
-        const videoRenderers = findObjectsWithKey(ytData, 'playlistVideoRenderer');
-        for (const item of videoRenderers) {
-          if (!item.videoId) continue;
-          const vid = item.videoId;
-          const title = item.title?.runs?.[0]?.text || item.title?.simpleText || 'Vídeo';
-          const durationStr = item.lengthText?.simpleText || item.lengthText?.runs?.[0]?.text || '00:00';
-          const durationSec = parseDurationStringToSeconds(durationStr);
-          const author = item.shortBylineText?.runs?.[0]?.text || playlistAuthor;
-          
-          let thumb = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
-          if (item.thumbnail?.thumbnails?.length > 0) {
-            thumb = item.thumbnail.thumbnails.slice(-1)[0].url;
-          }
+        const initialVideos = extractVideosFromPayload(ytData, seenIds, playlistAuthor, playlistId);
+        videos.push(...initialVideos);
 
-          videos.push({
-            id: `yt-${vid}`,
-            videoId: vid,
-            title: cleanHtmlText(title),
-            duration: durationStr,
-            durationSeconds: durationSec,
-            thumbnail: thumb,
-            author: cleanHtmlText(author),
-            url: `https://www.youtube.com/watch?v=${vid}&list=${playlistId}`,
-            embedUrl: `https://www.youtube.com/embed/${vid}`
-          });
-        }
+        // Paginate all remaining pages in the playlist
+        const paginatedVideos = await paginateYouTubeContinuations(
+          ytData,
+          apiKey,
+          clientVersion,
+          fetchHeaders,
+          seenIds,
+          60,
+          2500,
+          playlistAuthor,
+          playlistId
+        );
+        videos.push(...paginatedVideos);
       }
 
       // If scraping ytInitialData yielded 0 items, try playlist RSS fallback
@@ -316,10 +531,17 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
   const isChannelUrl = url.includes('/@') || url.includes('/channel/') || url.includes('/c/') || url.includes('/user/');
   if (isChannelUrl) {
     try {
-      // Step 1: Fetch channel HTML
+      // Fetch channel videos tab
       const targetUrl = url.endsWith('/videos') ? url : `${url.replace(/\/$/, '')}/videos`;
       const res = await fetch(targetUrl, { headers: fetchHeaders });
       const html = await res.text();
+
+      let apiKey = '';
+      const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/) || html.match(/innertubeApiKey":"([^"]+)"/);
+      if (apiKeyMatch) apiKey = apiKeyMatch[1];
+
+      const clientVersionMatch = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/) || html.match(/clientVersion":"([^"]+)"/);
+      const clientVersion = clientVersionMatch ? clientVersionMatch[1] : '2.20260820.08.00';
 
       let channelId = '';
       const channelIdMatch = html.match(/<meta itemprop="channelId" content="([^"]+)"/i) ||
@@ -334,6 +556,7 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
       let channelDesc = '';
       let channelAvatar = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60';
       let channelBanner = '';
+      const seenIds = new Set<string>();
       const videos: YouTubeVideoItem[] = [];
 
       const titleMatch = html.match(/<meta property="og:title" content="([^"]+)"/i);
@@ -355,47 +578,26 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
           channelBanner = header.banner.thumbnails.slice(-1)[0].url;
         }
 
-        // Find videoRenderers or gridVideoRenderers
-        const gridVideos = findObjectsWithKey(ytData, 'gridVideoRenderer');
-        const standardVideos = findObjectsWithKey(ytData, 'videoRenderer');
-        const richVideos = findObjectsWithKey(ytData, 'compactVideoRenderer');
-        const allItems = [...gridVideos, ...standardVideos, ...richVideos];
+        // Extract initial page of videos
+        const initialVideos = extractVideosFromPayload(ytData, seenIds, channelTitle);
+        videos.push(...initialVideos);
 
-        for (const item of allItems) {
-          if (!item.videoId) continue;
-          const vid = item.videoId;
-          if (videos.some(v => v.videoId === vid)) continue;
-
-          const title = item.title?.runs?.[0]?.text || item.title?.simpleText || 'Vídeo';
-          const durationStr = item.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)
-            ?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText ||
-            item.lengthText?.simpleText ||
-            item.lengthText?.runs?.[0]?.text ||
-            '10:00';
-          const durationSec = parseDurationStringToSeconds(durationStr);
-
-          let thumb = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
-          if (item.thumbnail?.thumbnails?.length > 0) {
-            thumb = item.thumbnail.thumbnails.slice(-1)[0].url;
-          }
-
-          videos.push({
-            id: `yt-${vid}`,
-            videoId: vid,
-            title: cleanHtmlText(title),
-            duration: durationStr,
-            durationSeconds: durationSec,
-            thumbnail: thumb,
-            author: channelTitle,
-            channelId,
-            url: `https://www.youtube.com/watch?v=${vid}`,
-            embedUrl: `https://www.youtube.com/embed/${vid}`
-          });
-        }
+        // Paginate through all channel videos (up to 2500)
+        const paginatedVideos = await paginateYouTubeContinuations(
+          ytData,
+          apiKey,
+          clientVersion,
+          fetchHeaders,
+          seenIds,
+          60,
+          2500,
+          channelTitle
+        );
+        videos.push(...paginatedVideos);
       }
 
-      // If ytInitialData gave few or no videos, fallback to official channel RSS
-      if (channelId && videos.length < 5) {
+      // If ytInitialData gave 0 videos, fallback to official channel RSS
+      if (channelId && videos.length === 0) {
         try {
           const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
           const rssRes = await fetch(rssUrl, { headers: fetchHeaders });
@@ -403,7 +605,8 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
             const xml = await rssRes.text();
             const parsedRss = parseYouTubeRssXml(xml);
             for (const v of parsedRss.videos) {
-              if (!videos.some(existing => existing.videoId === v.videoId)) {
+              if (!seenIds.has(v.videoId)) {
+                seenIds.add(v.videoId);
                 videos.push(v);
               }
             }
@@ -438,7 +641,6 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
   // ==========================================
   if (videoId) {
     try {
-      // Use official OEmbed API for clean, fast video data
       const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
       const oembedRes = await fetch(oembedUrl);
       

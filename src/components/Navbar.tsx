@@ -144,18 +144,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* YouTube Global Importer Trigger */}
-          {onOpenYouTubeModal && (
-            <button
-              onClick={() => onOpenYouTubeModal()}
-              title="Importar Canais ou Playlists do YouTube"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 transition-all shadow-sm active:scale-95"
-            >
-              <Youtube className="w-4 h-4 text-red-600 dark:text-red-400" />
-              <span className="hidden sm:inline">YouTube</span>
-            </button>
-          )}
-
           {/* Telegram Connection Badge & Login Button */}
           <button
             onClick={onOpenAuth}
