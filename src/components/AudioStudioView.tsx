@@ -30,7 +30,12 @@ import {
   ChevronRight, 
   Image as ImageIcon, 
   Disc,
-  Upload
+  Upload,
+  Send,
+  CloudDownload,
+  CloudUpload,
+  Loader2,
+  ShieldCheck
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem, VideoTimestamp } from '../types/index.js';
 
@@ -65,6 +70,11 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+
+  // Backup Telegram States
+  const [backingUpTrackIds, setBackingUpTrackIds] = useState<string[]>([]);
+  const [isBackingUpAll, setIsBackingUpAll] = useState<boolean>(false);
+  const [backupSuccessMessage, setBackupSuccessMessage] = useState<string | null>(null);
 
   // Sleep Timer state
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
@@ -202,7 +212,6 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     if (audioRef.current.duration) {
       setDuration(audioRef.current.duration);
     }
-    // Update progress periodically (every 5 seconds)
     if (activeTrack && Math.floor(curr) % 5 === 0 && curr > 0) {
       onUpdateTrackProgress(activeTrack.id, Math.floor(curr), false);
     }
@@ -258,6 +267,80 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // ---------------- TELEGRAM BACKUP HANDLERS ----------------
+  const handleBackupTrackToTelegram = async (track: AudioTrack) => {
+    if (!track || track.fileId) return;
+    setBackingUpTrackIds(prev => [...prev, track.id]);
+    setBackupSuccessMessage(null);
+
+    try {
+      const res = await fetch('/api/podcasts/backup-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          showId: audioShow.id,
+          trackId: track.id,
+          audioUrl: track.audioUrl,
+          title: track.title,
+          folderId: audioShow.folderId
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.updatedShow) {
+          await onUpdateAudioShow(data.updatedShow);
+        }
+        setBackupSuccessMessage(`Episódio "${track.title}" salvo no Telegram!`);
+        setTimeout(() => setBackupSuccessMessage(null), 5000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Erro ao realizar backup no Telegram.');
+      }
+    } catch (e) {
+      console.error('Error backing up to Telegram:', e);
+      alert('Falha ao conectar com o serviço de backup.');
+    } finally {
+      setBackingUpTrackIds(prev => prev.filter(id => id !== track.id));
+    }
+  };
+
+  const handleBackupAllToTelegram = async () => {
+    const unbackedTracks = tracks.filter(t => t.audioUrl && !t.fileId);
+    if (unbackedTracks.length === 0) {
+      alert('Todos os episódios já estão salvos no Telegram!');
+      return;
+    }
+
+    setIsBackingUpAll(true);
+    setBackupSuccessMessage(null);
+
+    try {
+      const res = await fetch('/api/podcasts/backup-all-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ showId: audioShow.id })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.updatedShow) {
+          await onUpdateAudioShow(data.updatedShow);
+        }
+        setBackupSuccessMessage(`Backup concluído! ${data.backedUpCount || unbackedTracks.length} episódios salvos no Telegram.`);
+        setTimeout(() => setBackupSuccessMessage(null), 6000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Erro ao realizar backup em lote no Telegram.');
+      }
+    } catch (e) {
+      console.error('Error backing up all to Telegram:', e);
+      alert('Falha ao conectar com o serviço de backup.');
+    } finally {
+      setIsBackingUpAll(false);
+    }
   };
 
   // ---------------- TIMESTAMPS / MARCADORES HANDLERS ----------------
@@ -331,6 +414,9 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const isAllTracksCompleted = tracks.length > 0 && tracks.every(t => t.isCompleted);
   const completedTracksCount = tracks.filter(t => t.isCompleted).length;
   const progressPercent = tracks.length > 0 ? Math.round((completedTracksCount / tracks.length) * 100) : 0;
+
+  const totalSavedInTelegram = tracks.filter(t => t.fileId).length;
+  const hasUnsavedTracks = tracks.some(t => t.audioUrl && !t.fileId);
 
   const handleToggleAllTracks = async () => {
     const nextCompleted = !isAllTracksCompleted;
@@ -454,13 +540,40 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
+          {/* Backup Telegram Quick Action Button */}
+          {hasUnsavedTracks ? (
+            <button
+              onClick={handleBackupAllToTelegram}
+              disabled={isBackingUpAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-md shadow-sky-600/20 transition-all active:scale-95 disabled:opacity-50"
+              title="Salvar todos os episódios no Telegram com 1 clique"
+            >
+              {isBackingUpAll ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span className="hidden sm:inline">Salvando no Telegram...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Backup Telegram</span>
+                </>
+              )}
+            </button>
+          ) : (
+            <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 text-[11px] font-bold">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Salvo no Telegram ({totalSavedInTelegram})</span>
+            </div>
+          )}
+
           {onOpenEditModal && (
             <button
               onClick={onOpenEditModal}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all"
             >
               <Edit3 className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Editar Informações</span>
+              <span className="hidden md:inline">Editar</span>
             </button>
           )}
 
@@ -478,6 +591,19 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Backup Success Toast Notification */}
+      {backupSuccessMessage && (
+        <div className="bg-sky-600 text-white text-xs font-bold px-4 py-2 flex items-center justify-between shadow-lg animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <Send className="w-4 h-4" />
+            <span>{backupSuccessMessage}</span>
+          </div>
+          <button onClick={() => setBackupSuccessMessage(null)} className="text-white/80 hover:text-white">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Main Workspace */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
@@ -529,6 +655,37 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                       {activeTrack?.artist || audioShow.artist || audioShow.host}
                       {activeFile && ` • .${activeFile.extension?.toUpperCase()}`}
                     </p>
+                  )}
+
+                  {/* Active Track Telegram Backup Button / Badge */}
+                  {activeTrack && (
+                    <div className="flex items-center justify-center mt-2">
+                      {activeTrack.fileId ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-500/40 text-sky-300 text-[10px] font-bold">
+                          <Send className="w-3 h-3 text-sky-400" />
+                          <span>Salvo no Telegram</span>
+                        </span>
+                      ) : activeTrack.audioUrl ? (
+                        <button
+                          onClick={() => handleBackupTrackToTelegram(activeTrack)}
+                          disabled={backingUpTrackIds.includes(activeTrack.id)}
+                          className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold shadow-md shadow-sky-600/30 transition-all active:scale-95 disabled:opacity-50"
+                          title="Fazer backup deste episódio para o Telegram com 1 clique"
+                        >
+                          {backingUpTrackIds.includes(activeTrack.id) ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              <span>Salvando no Telegram...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-3 h-3" />
+                              <span>Backup no Telegram</span>
+                            </>
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
                   )}
                 </div>
 
@@ -828,19 +985,34 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                   Faixas ({tracks.length}) • {progressPercent}%
                 </h3>
               </div>
-              <button
-                onClick={() => setIsTracksSidebarOpen(false)}
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
-                title="Colapsar coluna de faixas"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              
+              <div className="flex items-center gap-1">
+                {hasUnsavedTracks && (
+                  <button
+                    onClick={handleBackupAllToTelegram}
+                    disabled={isBackingUpAll}
+                    className="p-1 px-2 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                    title="Backup de todos os episódios no Telegram"
+                  >
+                    {isBackingUpAll ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                    <span>Backup Todos</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setIsTracksSidebarOpen(false)}
+                  className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
+                  title="Colapsar coluna de faixas"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
               {tracks.map((track, idx) => {
                 const isCurrent = currentTrackIndex === idx;
-                const trackFile = track.fileId ? allFiles.find(f => f.id === track.fileId) : null;
+                const isBackingUpThis = backingUpTrackIds.includes(track.id);
 
                 return (
                   <div
@@ -880,18 +1052,46 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                         )}
                       </div>
 
-                      {/* Track Title and Artist */}
+                      {/* Track Title, Artist and Telegram status */}
                       <div className="overflow-hidden flex-1">
-                        <span className="truncate leading-tight block">{track.title}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate leading-tight block">{track.title}</span>
+                          {track.fileId && (
+                            <span title="Salvo no Telegram">
+                              <Send className="w-3 h-3 text-sky-500 shrink-0 inline" />
+                            </span>
+                          )}
+                        </div>
                         {track.artist && (
                           <span className="text-[10px] text-gray-400 font-normal truncate block">{track.artist}</span>
                         )}
                       </div>
                     </div>
 
-                    <span className="text-[10px] text-gray-400 font-mono ml-2 shrink-0">
-                      {track.duration || '03:45'}
-                    </span>
+                    <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                      {/* Individual Track Backup Button */}
+                      {!track.fileId && track.audioUrl && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBackupTrackToTelegram(track);
+                          }}
+                          disabled={isBackingUpThis}
+                          className="p-1 rounded-lg text-sky-500 hover:bg-sky-500/10 dark:hover:bg-sky-950/40 transition-colors"
+                          title="Fazer Backup no Telegram com 1 clique"
+                        >
+                          {isBackingUpThis ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <CloudUpload className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
+
+                      <span className="text-[10px] text-gray-400 font-mono">
+                        {track.duration || '03:45'}
+                      </span>
+                    </div>
                   </div>
                 );
               })}

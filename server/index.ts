@@ -1660,6 +1660,283 @@ app.post('/api/audio-shows/import-podcast', async (req, res) => {
   }
 });
 
+// ---------------- BACKUP DE EPISÓDIOS NO TELEGRAM ----------------
+app.post('/api/podcasts/backup-telegram', async (req, res) => {
+  try {
+    const { showId, trackId, audioUrl, title, folderId } = req.body;
+    if (!showId || !trackId) {
+      return res.status(400).json({ error: 'showId e trackId são obrigatórios' });
+    }
+
+    const show = db.getAudioShowById(showId);
+    if (!show) {
+      return res.status(404).json({ error: 'Álbum/Podcast não encontrado' });
+    }
+
+    const trackIndex = (show.tracks || []).findIndex((t: any) => t.id === trackId);
+    if (trackIndex === -1) {
+      return res.status(404).json({ error: 'Episódio não encontrado no podcast' });
+    }
+
+    const track = show.tracks[trackIndex];
+    const streamUrl = audioUrl || track.audioUrl;
+    if (!streamUrl) {
+      return res.status(400).json({ error: 'Este episódio não possui URL de áudio para download.' });
+    }
+
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+
+    const cleanTitle = (track.title || title || 'episodio').replace(/[/\\?%*:|"<>]/g, '_').trim();
+    const diskFileName = `podcast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.mp3`;
+    const tempFilePath = path.join(UPLOADS_DIR, diskFileName);
+
+    const audioRes = await fetch(streamUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
+        'Accept': '*/*'
+      }
+    });
+
+    if (!audioRes.ok) {
+      return res.status(400).json({ error: `Erro ao baixar áudio do episódio (HTTP ${audioRes.status})` });
+    }
+
+    const buffer = Buffer.from(await audioRes.arrayBuffer());
+    fs.writeFileSync(tempFilePath, buffer);
+    const fileSize = buffer.length;
+
+    let targetFolderId = folderId || show.folderId;
+    if (!targetFolderId) {
+      const allFolders = db.getFolders();
+      const podcastsRoot = allFolders.find(f => !f.parentId && f.name.toLowerCase().includes('podcast'));
+      const newFolder = db.createFolder(`🎙️ ${show.title}`, podcastsRoot ? podcastsRoot.id : null);
+      targetFolderId = newFolder.id;
+      show.folderId = targetFolderId;
+    }
+
+    const uploadId = `backup-${trackId}-${Date.now()}`;
+    activeUploadsMap.set(uploadId, {
+      uploadId,
+      fileName: `${cleanTitle}.mp3`,
+      size: fileSize,
+      transferred: Math.round(fileSize * 0.15),
+      progress: 15,
+      speed: '2.0 MB/s',
+      stage: 'cloud',
+      stageLabel: 'Enviando ao Telegram...',
+      updatedAt: Date.now()
+    });
+
+    const telegramResult = await telegramService.uploadToSavedMessages(
+      tempFilePath,
+      `${cleanTitle}.mp3`,
+      `🎙️ Podcast: ${show.title} | ${track.title}`,
+      (progressPct) => {
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: `${cleanTitle}.mp3`,
+          size: fileSize,
+          transferred: Math.round((fileSize * progressPct) / 100),
+          progress: progressPct,
+          speed: '2.5 MB/s',
+          stage: progressPct === 100 ? 'completed' : 'cloud',
+          stageLabel: progressPct === 100 ? 'Salvo no Telegram!' : 'Enviando ao Telegram...',
+          updatedAt: Date.now()
+        });
+      }
+    );
+
+    const newDriveItem = db.createFile({
+      name: `${cleanTitle}.mp3`,
+      parentId: targetFolderId,
+      size: fileSize,
+      mimeType: 'audio/mpeg',
+      extension: 'mp3',
+      type: 'audio',
+      telegramMeta: {
+        messageId: telegramResult.messageId,
+        chatId: 'me',
+        fileSize: fileSize,
+        mimeType: 'audio/mpeg',
+        telegramFileName: diskFileName,
+        uploadDate: new Date().toISOString(),
+        isUploadedToTelegram: telegramResult.success
+      }
+    });
+
+    show.tracks[trackIndex] = {
+      ...track,
+      fileId: newDriveItem.id
+    };
+
+    const updatedShow = db.saveAudioShow(show);
+
+    activeUploadsMap.set(uploadId, {
+      uploadId,
+      fileName: `${cleanTitle}.mp3`,
+      size: fileSize,
+      transferred: fileSize,
+      progress: 100,
+      speed: 'Concluído',
+      stage: 'completed',
+      stageLabel: 'Salvo no Telegram!',
+      updatedAt: Date.now()
+    });
+    setTimeout(() => activeUploadsMap.delete(uploadId), 6000);
+
+    res.json({
+      success: true,
+      file: newDriveItem,
+      updatedShow,
+      updatedTrack: show.tracks[trackIndex]
+    });
+  } catch (error: any) {
+    console.error('Error backing up podcast episode to Telegram:', error);
+    res.status(500).json({ error: error.message || 'Erro ao realizar backup do episódio no Telegram' });
+  }
+});
+
+app.post('/api/podcasts/backup-all-telegram', async (req, res) => {
+  try {
+    const { showId } = req.body;
+    if (!showId) {
+      return res.status(400).json({ error: 'showId é obrigatório' });
+    }
+
+    const show = db.getAudioShowById(showId);
+    if (!show) {
+      return res.status(404).json({ error: 'Álbum/Podcast não encontrado' });
+    }
+
+    const tracksToBackup = (show.tracks || []).filter((t: any) => t.audioUrl && !t.fileId);
+    if (tracksToBackup.length === 0) {
+      return res.json({ success: true, message: 'Todos os episódios já estão salvos no Telegram!', updatedShow: show });
+    }
+
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+
+    let targetFolderId = show.folderId;
+    if (!targetFolderId) {
+      const allFolders = db.getFolders();
+      const podcastsRoot = allFolders.find(f => !f.parentId && f.name.toLowerCase().includes('podcast'));
+      const newFolder = db.createFolder(`🎙️ ${show.title}`, podcastsRoot ? podcastsRoot.id : null);
+      targetFolderId = newFolder.id;
+      show.folderId = targetFolderId;
+    }
+
+    let backedUpCount = 0;
+
+    for (let i = 0; i < show.tracks.length; i++) {
+      const track = show.tracks[i];
+      if (!track.audioUrl || track.fileId) continue;
+
+      try {
+        const cleanTitle = (track.title || `episodio_${i + 1}`).replace(/[/\\?%*:|"<>]/g, '_').trim();
+        const diskFileName = `podcast_${Date.now()}_${i}.mp3`;
+        const tempFilePath = path.join(UPLOADS_DIR, diskFileName);
+
+        const audioRes = await fetch(track.audioUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
+            'Accept': '*/*'
+          }
+        });
+
+        if (audioRes.ok) {
+          const buffer = Buffer.from(await audioRes.arrayBuffer());
+          fs.writeFileSync(tempFilePath, buffer);
+          const fileSize = buffer.length;
+
+          const uploadId = `backup-${track.id}-${Date.now()}`;
+          activeUploadsMap.set(uploadId, {
+            uploadId,
+            fileName: `${cleanTitle}.mp3`,
+            size: fileSize,
+            transferred: Math.round(fileSize * 0.2),
+            progress: 20,
+            speed: '2.0 MB/s',
+            stage: 'cloud',
+            stageLabel: 'Enviando ao Telegram...',
+            updatedAt: Date.now()
+          });
+
+          const telegramResult = await telegramService.uploadToSavedMessages(
+            tempFilePath,
+            `${cleanTitle}.mp3`,
+            `🎙️ Podcast: ${show.title} | ${track.title}`,
+            (progressPct) => {
+              activeUploadsMap.set(uploadId, {
+                uploadId,
+                fileName: `${cleanTitle}.mp3`,
+                size: fileSize,
+                transferred: Math.round((fileSize * progressPct) / 100),
+                progress: progressPct,
+                speed: '2.5 MB/s',
+                stage: progressPct === 100 ? 'completed' : 'cloud',
+                stageLabel: progressPct === 100 ? 'Salvo no Telegram!' : 'Enviando ao Telegram...',
+                updatedAt: Date.now()
+              });
+            }
+          );
+
+          const newDriveItem = db.createFile({
+            name: `${cleanTitle}.mp3`,
+            parentId: targetFolderId,
+            size: fileSize,
+            mimeType: 'audio/mpeg',
+            extension: 'mp3',
+            type: 'audio',
+            telegramMeta: {
+              messageId: telegramResult.messageId,
+              chatId: 'me',
+              fileSize: fileSize,
+              mimeType: 'audio/mpeg',
+              telegramFileName: diskFileName,
+              uploadDate: new Date().toISOString(),
+              isUploadedToTelegram: telegramResult.success
+            }
+          });
+
+          show.tracks[i] = {
+            ...track,
+            fileId: newDriveItem.id
+          };
+
+          backedUpCount++;
+          activeUploadsMap.set(uploadId, {
+            uploadId,
+            fileName: `${cleanTitle}.mp3`,
+            size: fileSize,
+            transferred: fileSize,
+            progress: 100,
+            speed: 'Concluído',
+            stage: 'completed',
+            stageLabel: 'Salvo no Telegram!',
+            updatedAt: Date.now()
+          });
+          setTimeout(() => activeUploadsMap.delete(uploadId), 5000);
+        }
+      } catch (err) {
+        console.error(`Error backing up track ${track.title}:`, err);
+      }
+    }
+
+    const updatedShow = db.saveAudioShow(show);
+    res.json({
+      success: true,
+      backedUpCount,
+      updatedShow
+    });
+  } catch (error: any) {
+    console.error('Error backing up all podcast episodes to Telegram:', error);
+    res.status(500).json({ error: error.message || 'Erro ao realizar backup dos episódios no Telegram' });
+  }
+});
+
 app.get('/api/audio-categories', (_req, res) => {
   res.json(db.getAudioCategories());
 });
