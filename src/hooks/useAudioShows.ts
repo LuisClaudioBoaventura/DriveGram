@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AudioShow, AudioTrack } from '../types/index.js';
 
 export function useAudioShows() {
@@ -15,7 +15,39 @@ export function useAudioShows() {
   ]);
   const [activeShow, setActiveShow] = useState<AudioShow | null>(null);
   const [activeTrack, setActiveTrack] = useState<AudioTrack | null>(null);
+  const [activeTrackIndex, setActiveTrackIndex] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+
+  // Global Audio Playback & Floating Player states
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+  const [volume, setVolume] = useState<number>(1);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [isFloatingOpen, setIsFloatingOpen] = useState<boolean>(false);
+
+  const activeShowRef = useRef<AudioShow | null>(activeShow);
+  const activeTrackRef = useRef<AudioTrack | null>(activeTrack);
+  const activeTrackIndexRef = useRef<number>(activeTrackIndex);
+  const currentTimeRef = useRef<number>(currentTime);
+
+  useEffect(() => {
+    activeShowRef.current = activeShow;
+  }, [activeShow]);
+
+  useEffect(() => {
+    activeTrackRef.current = activeTrack;
+  }, [activeTrack]);
+
+  useEffect(() => {
+    activeTrackIndexRef.current = activeTrackIndex;
+  }, [activeTrackIndex]);
+
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
 
   const fetchAudioShows = useCallback(async () => {
     try {
@@ -392,14 +424,282 @@ export function useAudioShows() {
     return { success: false, newEpisodesCount: 0 };
   };
 
+  const savePlaybackPosition = useCallback(async () => {
+    const currentShow = activeShowRef.current;
+    const currentTrk = activeTrackRef.current;
+    const pos = currentTimeRef.current;
+    if (!currentShow || !currentTrk || pos <= 0) return;
+
+    const updatedTracks = (currentShow.tracks || []).map(t => {
+      if (t.id === currentTrk.id) {
+        return {
+          ...t,
+          lastPositionSeconds: Math.floor(pos)
+        };
+      }
+      return t;
+    });
+
+    const updatedShow: AudioShow = {
+      ...currentShow,
+      tracks: updatedTracks
+    };
+
+    try {
+      await fetch(`/api/audio-shows/${updatedShow.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedShow)
+      });
+    } catch (e) {}
+  }, []);
+
+  const playShowAndTrack = useCallback((show: AudioShow, trackIndex = 0, autoPlay = true) => {
+    setActiveShow(show);
+    setActiveTrackIndex(trackIndex);
+    const track = show.tracks?.[trackIndex] || null;
+    setActiveTrack(track);
+    setIsFloatingOpen(true);
+
+    if (track?.lastPositionSeconds && track.lastPositionSeconds > 0) {
+      setCurrentTime(track.lastPositionSeconds);
+      if (audioRef.current) {
+        audioRef.current.currentTime = track.lastPositionSeconds;
+      }
+    } else {
+      setCurrentTime(0);
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+      }
+    }
+
+    if (autoPlay) {
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.playbackRate = playbackSpeed;
+          audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+      }, 100);
+    }
+  }, [playbackSpeed]);
+
+  const selectTrack = useCallback((trackIndex: number, autoPlay = true) => {
+    if (!activeShow || !activeShow.tracks || trackIndex < 0 || trackIndex >= activeShow.tracks.length) return;
+    savePlaybackPosition();
+    setActiveTrackIndex(trackIndex);
+    const track = activeShow.tracks[trackIndex];
+    setActiveTrack(track);
+
+    if (track?.lastPositionSeconds && track.lastPositionSeconds > 0) {
+      setCurrentTime(track.lastPositionSeconds);
+      if (audioRef.current) {
+        audioRef.current.currentTime = track.lastPositionSeconds;
+      }
+    } else {
+      setCurrentTime(0);
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+      }
+    }
+
+    if (autoPlay) {
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.playbackRate = playbackSpeed;
+          audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+      }, 100);
+    }
+  }, [activeShow, playbackSpeed, savePlaybackPosition]);
+
+  const togglePlay = useCallback(() => {
+    if (!audioRef.current) {
+      setIsPlaying(prev => !prev);
+      return;
+    }
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      savePlaybackPosition();
+    } else {
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  }, [isPlaying, savePlaybackPosition]);
+
+  const seekTo = useCallback((seconds: number) => {
+    const valid = Math.max(0, Math.min(duration || 999999, seconds));
+    setCurrentTime(valid);
+    if (audioRef.current) {
+      audioRef.current.currentTime = valid;
+    }
+    currentTimeRef.current = valid;
+  }, [duration]);
+
+  const skip = useCallback((seconds: number) => {
+    if (audioRef.current) {
+      const target = Math.max(0, Math.min(duration || 999999, audioRef.current.currentTime + seconds));
+      audioRef.current.currentTime = target;
+      setCurrentTime(target);
+      currentTimeRef.current = target;
+    } else {
+      setCurrentTime(prev => {
+        const next = Math.max(0, Math.min(duration || 999999, prev + seconds));
+        currentTimeRef.current = next;
+        return next;
+      });
+    }
+  }, [duration]);
+
+  const handleSpeedChange = useCallback((speed: number) => {
+    setPlaybackSpeed(speed);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = speed;
+    }
+  }, []);
+
+  const handleVolumeChange = useCallback((vol: number) => {
+    const clamped = Math.max(0, Math.min(1, vol));
+    setVolume(clamped);
+    if (audioRef.current) {
+      audioRef.current.volume = clamped;
+      audioRef.current.muted = clamped === 0;
+    }
+    setIsMuted(clamped === 0);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => {
+      const next = !prev;
+      if (audioRef.current) {
+        audioRef.current.muted = next;
+      }
+      return next;
+    });
+  }, []);
+
+  const closeFloatingPlayer = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    savePlaybackPosition();
+    setIsPlaying(false);
+    setIsFloatingOpen(false);
+  }, [savePlaybackPosition]);
+
+  const getNextTrack = useCallback((): AudioTrack | null => {
+    if (!activeShow || !activeShow.tracks) return null;
+    if (activeTrackIndex < activeShow.tracks.length - 1) {
+      return activeShow.tracks[activeTrackIndex + 1];
+    }
+    return null;
+  }, [activeShow, activeTrackIndex]);
+
+  const getPreviousTrack = useCallback((): AudioTrack | null => {
+    if (!activeShow || !activeShow.tracks) return null;
+    if (activeTrackIndex > 0) {
+      return activeShow.tracks[activeTrackIndex - 1];
+    }
+    return null;
+  }, [activeShow, activeTrackIndex]);
+
+  const playNextTrack = useCallback(() => {
+    const nextIdx = activeTrackIndex + 1;
+    if (activeShow?.tracks && nextIdx < activeShow.tracks.length) {
+      selectTrack(nextIdx, true);
+    }
+  }, [activeShow, activeTrackIndex, selectTrack]);
+
+  const playPreviousTrack = useCallback(() => {
+    if (audioRef.current && audioRef.current.currentTime > 3) {
+      audioRef.current.currentTime = 0;
+      setCurrentTime(0);
+      return;
+    }
+    const prevIdx = activeTrackIndex - 1;
+    if (prevIdx >= 0) {
+      selectTrack(prevIdx, true);
+    }
+  }, [activeTrackIndex, selectTrack]);
+
+  const handleAudioEnded = useCallback(() => {
+    if (activeShow && activeTrack) {
+      toggleTrackCompletion(activeTrack.id);
+      playNextTrack();
+    }
+  }, [activeShow, activeTrack, toggleTrackCompletion, playNextTrack]);
+
+  const backupTrackToTelegram = useCallback(async (track: AudioTrack) => {
+    if (!activeShow || !track || track.fileId) return;
+    try {
+      const payload = JSON.stringify({
+        showId: activeShow.id,
+        trackId: track.id,
+        audioUrl: track.audioUrl,
+        title: track.title,
+        folderId: activeShow.folderId
+      });
+
+      let res = await fetch('/api/podcasts/backup-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch('/api/audio-shows/backup-telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.updatedShow) {
+          await updateAudioShow(data.updatedShow);
+        }
+      }
+    } catch (e) {
+      console.error('Error backing up track to telegram:', e);
+    }
+  }, [activeShow, updateAudioShow]);
+
   return {
     audioShows,
     categories,
     activeShow,
+    activeAudioShow: activeShow,
     activeTrack,
+    activeTrackIndex,
     loading,
+    audioRef,
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    isMuted,
+    playbackSpeed,
+    isFloatingOpen,
     setActiveShow,
     setActiveTrack,
+    setActiveTrackIndex,
+    setCurrentTime,
+    setDuration,
+    setPlaybackSpeed: handleSpeedChange,
+    setVolume: handleVolumeChange,
+    togglePlay,
+    seekTo,
+    skip,
+    toggleMute,
+    playShowAndTrack,
+    selectTrack,
+    playNextTrack,
+    playPreviousTrack,
+    getNextTrack,
+    getPreviousTrack,
+    closeFloatingPlayer,
+    handleAudioEnded,
+    backupTrackToTelegram,
     fetchAudioShows,
     createAudioShow,
     createAudioShowFromFolder,

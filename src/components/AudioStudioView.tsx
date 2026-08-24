@@ -36,7 +36,8 @@ import {
   CloudUpload,
   Loader2,
   ShieldCheck,
-  RefreshCw
+  RefreshCw,
+  Minimize2
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem, VideoTimestamp } from '../types/index.js';
 
@@ -51,6 +52,7 @@ interface AudioStudioViewProps {
   onOpenEditModal?: () => void;
   initialTrackIndex?: number;
   onRefreshSinglePodcast?: (showId: string) => Promise<{ success: boolean; newEpisodesCount: number; show?: any }>;
+  onMinimizeToFloating?: () => void;
 }
 
 export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
@@ -63,7 +65,8 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   onUpdateTrackProgress,
   onOpenEditModal,
   initialTrackIndex,
-  onRefreshSinglePodcast
+  onRefreshSinglePodcast,
+  onMinimizeToFloating
 }) => {
   const [currentTrackIndex, setCurrentTrackIndex] = useState(initialTrackIndex !== undefined ? initialTrackIndex : 0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -593,6 +596,17 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Salvo no Telegram ({totalSavedInTelegram})</span>
             </div>
+          )}
+
+          {onMinimizeToFloating && (
+            <button
+              onClick={onMinimizeToFloating}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100/90 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 hover:text-emerald-500 border border-gray-200/80 dark:border-gray-800 text-xs font-bold transition-all shadow-xs"
+              title="Minimizar para Disco de Vinil Flutuante e explorar outras pastas"
+            >
+              <Disc className="w-3.5 h-3.5 text-emerald-500 animate-spin" style={{ animationDuration: '6s' }} />
+              <span className="hidden sm:inline">Janela Flutuante</span>
+            </button>
           )}
 
           {onOpenEditModal && (

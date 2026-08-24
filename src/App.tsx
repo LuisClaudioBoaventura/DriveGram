@@ -9,6 +9,7 @@ import { CourseView } from './components/CourseView.js';
 import { BooksCatalog } from './components/BooksCatalog.js';
 import { BookReaderView } from './components/BookReaderView.js';
 import { FloatingAudiobookPlayer } from './components/FloatingAudiobookPlayer.js';
+import { FloatingPodcastPlayer } from './components/FloatingPodcastPlayer.js';
 import { ComicsCatalog } from './components/ComicsCatalog.js';
 import { ComicStudioView } from './components/ComicStudioView.js';
 import { NewComicModal } from './components/NewComicModal.js';
@@ -625,6 +626,7 @@ export function App() {
               onUpdateTrackProgress={audioShows.updateTrackProgress}
               onOpenEditModal={() => setEditingAudioShow(selectedAudioForView)}
               onRefreshSinglePodcast={audioShows.refreshSinglePodcast}
+              onMinimizeToFloating={() => setSelectedAudioForView(null)}
             />
           ) : selectedAdultVideoForView ? (
             /* Active Adult Cinema Video Player */
@@ -782,12 +784,9 @@ export function App() {
               categories={audioShows.categories}
               folders={fs.allFolders}
               onSelectShow={(a, trackIndex) => {
-                audioShows.setActiveShow(a);
+                audioShows.playShowAndTrack(a, trackIndex !== undefined ? trackIndex : 0, true);
                 setSelectedAudioForView(a);
-                setSelectedAudioTrackIndex(trackIndex || 0);
-                if (trackIndex !== undefined && a.tracks?.[trackIndex]) {
-                  audioShows.setActiveTrack(a.tracks[trackIndex]);
-                }
+                setSelectedAudioTrackIndex(trackIndex !== undefined ? trackIndex : 0);
               }}
               onOpenNewModal={() => setIsAudioModalOpen(true)}
               onEditShow={(a) => setEditingAudioShow(a)}
@@ -1477,6 +1476,44 @@ export function App() {
           hasNextChapter={!!books.getNextChapter()}
           hasPreviousChapter={!!books.getPreviousChapter()}
           isCardVisible={selectedBookForView === null}
+        />
+      )}
+
+      {/* Persistent Global Floating Podcast / Music Player with Vinyl Disc */}
+      {audioShows.activeAudioShow && audioShows.isFloatingOpen && (
+        <FloatingPodcastPlayer
+          show={audioShows.activeAudioShow}
+          activeTrack={audioShows.activeTrack}
+          activeTrackIndex={audioShows.activeTrackIndex}
+          allFiles={fs.allFiles}
+          isPlaying={audioShows.isPlaying}
+          currentTime={audioShows.currentTime}
+          duration={audioShows.duration}
+          playbackSpeed={audioShows.playbackSpeed}
+          volume={audioShows.volume}
+          isMuted={audioShows.isMuted}
+          audioRef={audioShows.audioRef}
+          onTogglePlay={audioShows.togglePlay}
+          onSeek={audioShows.seekTo}
+          onSkip={audioShows.skip}
+          onSpeedChange={audioShows.setPlaybackSpeed}
+          onVolumeChange={audioShows.setVolume}
+          onToggleMute={audioShows.toggleMute}
+          onNextTrack={audioShows.playNextTrack}
+          onPreviousTrack={audioShows.playPreviousTrack}
+          onOpenFullStudio={(show, trackIdx) => {
+            setSelectedAudioForView(show);
+            if (trackIdx !== undefined) setSelectedAudioTrackIndex(trackIdx);
+            fs.setActiveTab('podcasts');
+          }}
+          onClose={audioShows.closeFloatingPlayer}
+          onAudioEnded={audioShows.handleAudioEnded}
+          onTimeUpdate={audioShows.setCurrentTime}
+          onLoadedMetadata={audioShows.setDuration}
+          hasNextTrack={!!audioShows.getNextTrack()}
+          hasPreviousTrack={!!audioShows.getPreviousTrack()}
+          isCardVisible={selectedAudioForView === null}
+          onBackupTrack={audioShows.backupTrackToTelegram}
         />
       )}
 
