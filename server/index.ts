@@ -1420,16 +1420,37 @@ app.get('/api/podcasts/episodes', async (req, res) => {
   }
 });
 
+function decodeXmlEntities(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const code = parseInt(dec, 10);
+      return !isNaN(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return !isNaN(code) ? String.fromCharCode(code) : '';
+    })
+    .trim();
+}
+
 function parsePodcastRssXml(xmlText: string) {
   const getTag = (xml: string, tag: string): string => {
     const match = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
     if (!match) return '';
-    return match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1').trim();
+    return decodeXmlEntities(match[1]);
   };
 
   const getAttr = (xml: string, tag: string, attr: string): string => {
     const match = xml.match(new RegExp(`<${tag}[^>]*\\b${attr}=["']([^"']+)["'][^>]*>`, 'i'));
-    return match ? match[1].trim() : '';
+    return match ? decodeXmlEntities(match[1]) : '';
   };
 
   const channelMatch = xmlText.match(/<channel[^>]*>([\s\S]*?)<\/channel>/i);
@@ -1441,9 +1462,9 @@ function parsePodcastRssXml(xmlText: string) {
   
   let coverImage = getAttr(channelXml, 'itunes:image', 'href');
   if (!coverImage) {
-    const imageBlock = getTag(channelXml, 'image');
+    const imageBlock = channelXml.match(/<image[^>]*>([\s\S]*?)<\/image>/i);
     if (imageBlock) {
-      coverImage = getTag(imageBlock, 'url');
+      coverImage = getTag(imageBlock[1], 'url');
     }
   }
   if (!coverImage) {
@@ -1462,7 +1483,6 @@ function parsePodcastRssXml(xmlText: string) {
     
     if (!epAudio) return;
 
-    const epGuid = getTag(itemXml, 'guid') || `ep-rss-${Date.now()}-${index}`;
     const epDurationRaw = getTag(itemXml, 'itunes:duration');
     let durationSeconds = 0;
     let durationStr = '45:00';
@@ -1604,7 +1624,7 @@ app.post('/api/youtube/import', async (req, res) => {
       selectedVideos
     } = req.body;
 
-    if (!title) {
+    if (!title || !title.trim()) {
       return res.status(400).json({ error: 'Título é obrigatório' });
     }
     const videos = Array.isArray(selectedVideos) && selectedVideos.length > 0 ? selectedVideos : [];
@@ -1741,44 +1761,30 @@ app.post('/api/youtube/import', async (req, res) => {
   }
 });
 
+// ---------------- IMPORTAÇÃO DE PODCASTS ----------------
 app.post('/api/audio-shows/import-podcast', async (req, res) => {
   try {
-    const { podcastId, title, artist, host, category, genre, description, coverImage, feedUrl, folderId, episodes: passedEpisodes } = req.body;
-    if (!title) return res.status(400).json({ error: 'Título do podcast é obrigatório' });
+    const {
+      podcastId,
+      title,
+      artist,
+      host,
+      category,
+      genre,
+      description,
+      coverImage,
+      feedUrl,
+      folderId,
+      episodes: initialEpisodes
+    } = req.body;
 
-    let episodes: any[] = passedEpisodes && Array.isArray(passedEpisodes) && passedEpisodes.length > 0 ? passedEpisodes : [];
-    
-    // If no episodes passed, try iTunes Lookup or RSS feed
-    if (episodes.length === 0 && podcastId) {
-      try {
-        const lookupUrl = `https://itunes.apple.com/lookup?id=${podcastId}&entity=podcastEpisode&limit=50`;
-        const epRes = await fetch(lookupUrl);
-        const epData: any = await epRes.json();
-        if (epData.results && epData.results.length > 1) {
-          episodes = epData.results.slice(1).map((ep: any, index: number) => {
-            const durationSeconds = ep.trackTimeMillis ? Math.round(ep.trackTimeMillis / 1000) : 0;
-            const mins = Math.floor(durationSeconds / 60);
-            const secs = durationSeconds % 60;
-            const durationStr = durationSeconds > 0 ? `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : '45:00';
-
-            return {
-              id: `ep-${ep.trackId || Date.now() + '-' + index}`,
-              title: ep.trackName || `Episódio ${index + 1}`,
-              artist: host || artist,
-              duration: durationStr,
-              durationSeconds,
-              audioUrl: ep.episodeUrl || ep.previewUrl,
-              order: index + 1,
-              trackNumber: index + 1,
-              releaseDate: ep.releaseDate || ep.pubDate
-            };
-          });
-        }
-      } catch (e) {
-        console.warn('Could not fetch podcast episodes for import:', e);
-      }
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'Título do podcast é obrigatório' });
     }
 
+    let episodes: any[] = Array.isArray(initialEpisodes) ? initialEpisodes : [];
+
+    // Strictly parse only from feedUrl if available
     if (episodes.length === 0 && feedUrl) {
       try {
         const feedRes = await fetch(feedUrl, {
@@ -1828,14 +1834,14 @@ app.post('/api/audio-shows/import-podcast', async (req, res) => {
   }
 });
 
-// ---------------- ATUALIZAÇÃO AUTOMÁTICA DE PODCASTS ----------------
+// ---------------- ATUALIZAÇÃO AUTOMÁTICA DE PODCASTS (ESTRITAMENTE DENTRO DO RSS) ----------------
 async function refreshSinglePodcastInternal(show: any): Promise<{ show: any; newEpisodesCount: number }> {
   if (show.showType !== 'podcast') return { show, newEpisodesCount: 0 };
 
   let fetchedEpisodes: any[] = [];
-  let feedUrlToUse = show.feedUrl;
+  const feedUrlToUse = show.feedUrl;
 
-  // Strategy 1: If show has feedUrl, fetch latest RSS directly
+  // STRICT RULE: Only fetch episodes from the podcast's own RSS feedUrl
   if (feedUrlToUse) {
     try {
       const feedRes = await fetch(feedUrlToUse, {
@@ -1852,70 +1858,13 @@ async function refreshSinglePodcastInternal(show: any): Promise<{ show: any; new
           if (parsed.coverImage && (!show.coverImage || show.coverImage.includes('unsplash'))) {
             show.coverImage = parsed.coverImage;
           }
+          if (parsed.description && !show.description) {
+            show.description = parsed.description;
+          }
         }
       }
     } catch (e) {
       console.warn(`[AutoSync] RSS fetch failed for podcast "${show.title}":`, e);
-    }
-  }
-
-  // Strategy 2: If no feedUrl or RSS failed, try iTunes lookup
-  if (fetchedEpisodes.length === 0) {
-    let cleanItunesId = show.podcastId || (/^\d+$/.test(show.id.replace(/^itunes-/, '')) ? show.id.replace(/^itunes-/, '') : null);
-
-    if (!cleanItunesId && show.title) {
-      try {
-        const searchRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(show.title)}&media=podcast&entity=podcast&limit=1`);
-        if (searchRes.ok) {
-          const sData: any = await searchRes.json();
-          if (sData.results && sData.results.length > 0) {
-            cleanItunesId = sData.results[0].collectionId ? String(sData.results[0].collectionId) : null;
-            if (sData.results[0].feedUrl && !show.feedUrl) {
-              show.feedUrl = sData.results[0].feedUrl;
-              feedUrlToUse = sData.results[0].feedUrl;
-            }
-          }
-        }
-      } catch (searchErr) {
-        console.warn(`[AutoSync] iTunes search failed for podcast "${show.title}":`, searchErr);
-      }
-    }
-
-    if (cleanItunesId) {
-      try {
-        const lookupUrl = `https://itunes.apple.com/lookup?id=${cleanItunesId}&entity=podcastEpisode&limit=100`;
-        const res = await fetch(lookupUrl);
-        if (res.ok) {
-          const data: any = await res.json();
-          if (data.results && data.results.length > 1) {
-            if (data.results[0]?.feedUrl && !show.feedUrl) {
-              show.feedUrl = data.results[0].feedUrl;
-            }
-            fetchedEpisodes = data.results.slice(1).map((ep: any, index: number) => {
-              const durationSeconds = ep.trackTimeMillis ? Math.round(ep.trackTimeMillis / 1000) : 0;
-              const mins = Math.floor(durationSeconds / 60);
-              const secs = durationSeconds % 60;
-              const durationStr = durationSeconds > 0 ? `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : '45:00';
-              const uniqueId = `ep-${index + 1}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-
-              return {
-                id: uniqueId,
-                title: ep.trackName || `Episódio ${index + 1}`,
-                artist: show.host || show.artist,
-                duration: durationStr,
-                durationSeconds,
-                audioUrl: ep.episodeUrl || ep.previewUrl,
-                order: index + 1,
-                trackNumber: index + 1,
-                releaseDate: ep.releaseDate || ep.pubDate,
-                description: ep.description || ''
-              };
-            });
-          }
-        }
-      } catch (lookupErr) {
-        console.warn(`[AutoSync] iTunes lookup failed for podcast "${show.title}":`, lookupErr);
-      }
     }
   }
 

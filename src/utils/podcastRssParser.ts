@@ -21,16 +21,37 @@ export interface ParsedPodcastRss {
   }>;
 }
 
+function decodeXmlEntities(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const code = parseInt(dec, 10);
+      return !isNaN(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return !isNaN(code) ? String.fromCharCode(code) : '';
+    })
+    .trim();
+}
+
 export function parsePodcastRssXmlString(xmlText: string): ParsedPodcastRss {
   const getTag = (xml: string, tag: string): string => {
     const match = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
     if (!match) return '';
-    return match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1').trim();
+    return decodeXmlEntities(match[1]);
   };
 
   const getAttr = (xml: string, tag: string, attr: string): string => {
     const match = xml.match(new RegExp(`<${tag}[^>]*\\b${attr}=["']([^"']+)["'][^>]*>`, 'i'));
-    return match ? match[1].trim() : '';
+    return match ? decodeXmlEntities(match[1]) : '';
   };
 
   const channelMatch = xmlText.match(/<channel[^>]*>([\s\S]*?)<\/channel>/i);
@@ -42,9 +63,9 @@ export function parsePodcastRssXmlString(xmlText: string): ParsedPodcastRss {
   
   let coverImage = getAttr(channelXml, 'itunes:image', 'href');
   if (!coverImage) {
-    const imageBlock = getTag(channelXml, 'image');
+    const imageBlock = channelXml.match(/<image[^>]*>([\s\S]*?)<\/image>/i);
     if (imageBlock) {
-      coverImage = getTag(imageBlock, 'url');
+      coverImage = getTag(imageBlock[1], 'url');
     }
   }
   if (!coverImage) {

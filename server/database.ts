@@ -934,16 +934,13 @@ class Database {
     if (!this.data.audioShows) this.data.audioShows = [];
     const audioShows = this.data.audioShows;
     const files = this.data.files.filter(f => !f.isTrash);
-    const folders = this.data.folders.filter(f => !f.isTrash);
 
     for (let show of audioShows) {
       if (!show.folderId) continue;
 
-      const subFolders = folders.filter(f => f.parentId === show.folderId);
-      const subFolderIds = new Set(subFolders.map(sf => sf.id));
-
+      // Only match files directly inside this show's dedicated folder
       const audioFiles = files.filter(f => 
-        (f.parentId === show.folderId || subFolderIds.has(f.parentId || '')) &&
+        f.parentId === show.folderId &&
         (f.type === 'audio' || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes((f.extension || '').toLowerCase()))
       );
 
@@ -952,7 +949,9 @@ class Database {
       const existingTracks = show.tracks || [];
       const updatedTracks = [...existingTracks];
 
-      // Match every downloaded audio file to existing tracks or add new ones
+      const isRssPodcast = show.showType === 'podcast' || !!show.feedUrl;
+
+      // Match downloaded audio files to existing tracks
       for (const file of audioFiles) {
         const cleanFileName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().trim();
         
@@ -969,8 +968,8 @@ class Database {
           if ((!track.timestamps || track.timestamps.length === 0) && file.timestamps && file.timestamps.length > 0) {
             track.timestamps = file.timestamps;
           }
-        } else {
-          // New local file in folder not matching an existing track
+        } else if (!isRssPodcast) {
+          // Only add new local files for music albums / manual playlists, NEVER for RSS podcasts
           updatedTracks.push({
             id: 'track-' + show.id + '-' + file.id,
             title: file.name.replace(/\.[^/.]+$/, ''),

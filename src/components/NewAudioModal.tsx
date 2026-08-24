@@ -316,7 +316,7 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
     try {
       let episodesToSave = podcast.episodes || [];
 
-      // If no episodes yet, fetch them from RSS or iTunes lookup
+      // Fetch episodes strictly from the podcast's official RSS feed
       if (episodesToSave.length === 0 && podcast.feedUrl) {
         try {
           const rssData = await fetchAndParsePodcastRss(podcast.feedUrl);
@@ -325,40 +325,6 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
           }
         } catch (rssErr) {
           console.warn('Could not parse feedUrl for episodes:', rssErr);
-        }
-      }
-
-      if (episodesToSave.length === 0 && podcast.id && !podcast.id.startsWith('rss-')) {
-        try {
-          const lookupUrl = `https://itunes.apple.com/lookup?id=${podcast.id}&entity=podcastEpisode&limit=50`;
-          const res = await fetch(lookupUrl);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.results && data.results.length > 1) {
-              episodesToSave = data.results.slice(1).map((ep: any, index: number) => {
-                const durationSeconds = ep.trackTimeMillis ? Math.round(ep.trackTimeMillis / 1000) : 0;
-                const mins = Math.floor(durationSeconds / 60);
-                const secs = durationSeconds % 60;
-                const durationStr = durationSeconds > 0 ? `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : '45:00';
-
-                const uniqueId = `ep-${index + 1}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-
-                return {
-                  id: uniqueId,
-                  title: ep.trackName || `Episódio ${index + 1}`,
-                  artist: podcast.host || podcast.artist,
-                  duration: durationStr,
-                  durationSeconds,
-                  audioUrl: ep.episodeUrl || ep.previewUrl,
-                  order: index + 1,
-                  trackNumber: index + 1,
-                  releaseDate: ep.releaseDate
-                };
-              });
-            }
-          }
-        } catch (lookupErr) {
-          console.warn('Could not lookup iTunes episodes:', lookupErr);
         }
       }
 
