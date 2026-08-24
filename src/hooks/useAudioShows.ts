@@ -454,12 +454,15 @@ export function useAudioShows() {
     } catch (e) {}
   }, []);
 
-  const playShowAndTrack = useCallback((show: AudioShow, trackIndex = 0, autoPlay = true) => {
+  const playShowAndTrack = useCallback((show: AudioShow, trackIndex = 0, autoPlay = false) => {
     setActiveShow(show);
     setActiveTrackIndex(trackIndex);
     const track = show.tracks?.[trackIndex] || null;
     setActiveTrack(track);
-    setIsFloatingOpen(true);
+
+    if (autoPlay) {
+      setIsFloatingOpen(true);
+    }
 
     if (track?.lastPositionSeconds && track.lastPositionSeconds > 0) {
       setCurrentTime(track.lastPositionSeconds);
@@ -480,6 +483,11 @@ export function useAudioShows() {
           audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
         }
       }, 100);
+    } else {
+      setIsPlaying(false);
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
     }
   }, [playbackSpeed]);
 

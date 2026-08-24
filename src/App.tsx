@@ -784,7 +784,7 @@ export function App() {
               categories={audioShows.categories}
               folders={fs.allFolders}
               onSelectShow={(a, trackIndex) => {
-                audioShows.playShowAndTrack(a, trackIndex !== undefined ? trackIndex : 0, true);
+                audioShows.playShowAndTrack(a, trackIndex !== undefined ? trackIndex : 0, false);
                 setSelectedAudioForView(a);
                 setSelectedAudioTrackIndex(trackIndex !== undefined ? trackIndex : 0);
               }}
