@@ -460,6 +460,89 @@ class TelegramService {
   }
 
   /**
+   * Uploads an image buffer or file from URL as a Cover to Telegram Saved Messages
+   */
+  public async uploadCoverToTelegram(
+    imageUrlOrBuffer: string | Buffer,
+    title: string,
+    tag: string = 'youtube_cover'
+  ): Promise<{ messageId?: number; filePath?: string; success: boolean }> {
+    const coversDir = path.join(path.dirname(__filename), '..', 'uploads', 'covers');
+    if (!fs.existsSync(coversDir)) {
+      fs.mkdirSync(coversDir, { recursive: true });
+    }
+
+    const cleanTitle = (title || 'capa').replace(/[/\\?%*:|"<>]/g, '_').trim().slice(0, 50);
+    const diskFileName = `cover_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.jpg`;
+    const localFilePath = path.join(coversDir, diskFileName);
+
+    let buffer: Buffer | null = null;
+
+    if (Buffer.isBuffer(imageUrlOrBuffer)) {
+      buffer = imageUrlOrBuffer;
+    } else if (typeof imageUrlOrBuffer === 'string') {
+      if (imageUrlOrBuffer.startsWith('data:image')) {
+        const base64Data = imageUrlOrBuffer.split(',')[1];
+        if (base64Data) buffer = Buffer.from(base64Data, 'base64');
+      } else if (imageUrlOrBuffer.startsWith('http://') || imageUrlOrBuffer.startsWith('https://')) {
+        try {
+          const res = await fetch(imageUrlOrBuffer, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGram/1.0'
+            }
+          });
+          if (res.ok) {
+            buffer = Buffer.from(await res.arrayBuffer());
+          }
+        } catch (e: any) {
+          console.warn(`[DriveGram Telegram] Could not download cover from URL ${imageUrlOrBuffer}:`, e.message);
+        }
+      } else if (fs.existsSync(imageUrlOrBuffer)) {
+        buffer = fs.readFileSync(imageUrlOrBuffer);
+      }
+    }
+
+    if (!buffer || buffer.length === 0) {
+      return { success: false };
+    }
+
+    // Save locally to cache directory
+    fs.writeFileSync(localFilePath, buffer);
+
+    // If connected to Telegram, send directly to Saved Messages
+    if (this.client && this.authState.isConnected) {
+      try {
+        (buffer as any).name = `${diskFileName}`;
+        const message = await this.client.sendFile('me', {
+          file: buffer,
+          caption: `🖼️ #drivegram_cover #${tag}\n📌 ${title}\n📅 ${new Date().toLocaleString('pt-BR')}`
+        });
+
+        // Also save indexed cache by messageId
+        const tgCachedPath = path.join(coversDir, `cover_tg_${message.id}_${diskFileName}`);
+        try {
+          fs.copyFileSync(localFilePath, tgCachedPath);
+        } catch (e) {}
+
+        console.log(`[DriveGram Telegram] Successfully saved cover for "${title}" to Telegram (Message ID: ${message.id})`);
+        return {
+          messageId: message.id,
+          filePath: diskFileName,
+          success: true
+        };
+      } catch (tgErr: any) {
+        console.error(`[DriveGram Telegram] Failed to upload cover to Telegram:`, tgErr);
+      }
+    }
+
+    // Saved to local cache (pending or offline)
+    return {
+      filePath: diskFileName,
+      success: true
+    };
+  }
+
+  /**
    * Download media purely into memory buffer without creating/writing any file to disk
    */
   public async getMediaBufferInMemory(messageId: number): Promise<Buffer | null> {

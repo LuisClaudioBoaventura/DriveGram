@@ -662,6 +662,84 @@ app.get('/api/stream/:id', async (req, res) => {
   }
 });
 
+// ---------------- CAPAS & THUMBNAILS VIA TELEGRAM & CACHE LOCAL ----------------
+app.get('/api/covers/telegram/:messageId', async (req, res) => {
+  try {
+    const messageId = parseInt(req.params.messageId, 10);
+    if (!messageId || isNaN(messageId)) {
+      return res.status(400).json({ error: 'messageId inválido' });
+    }
+
+    const coversDir = path.join(UPLOADS_DIR, 'covers');
+    if (!fs.existsSync(coversDir)) {
+      fs.mkdirSync(coversDir, { recursive: true });
+    }
+
+    // 1. Check if cached on local disk
+    const cachedFiles = fs.readdirSync(coversDir).filter(f => f.startsWith(`cover_tg_${messageId}_`));
+    if (cachedFiles.length > 0) {
+      const filePath = path.join(coversDir, cachedFiles[0]);
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return fs.createReadStream(filePath).pipe(res);
+    }
+
+    // 2. Download directly from Telegram Saved Messages
+    const buffer = await telegramService.getMediaBufferInMemory(messageId);
+    if (buffer && buffer.length > 0) {
+      const cachedPath = path.join(coversDir, `cover_tg_${messageId}_${Date.now()}.jpg`);
+      try {
+        fs.writeFileSync(cachedPath, buffer);
+      } catch (e) {}
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.send(buffer);
+    }
+
+    // 3. Fallback URL redirect if available
+    const fallback = req.query.fallback as string;
+    if (fallback && (fallback.startsWith('http://') || fallback.startsWith('https://'))) {
+      return res.redirect(fallback);
+    }
+
+    res.status(404).json({ error: 'Capa não encontrada no Telegram' });
+  } catch (e: any) {
+    console.error('Error serving Telegram cover:', e);
+    const fallback = req.query.fallback as string;
+    if (fallback && (fallback.startsWith('http://') || fallback.startsWith('https://'))) {
+      return res.redirect(fallback);
+    }
+    res.status(500).json({ error: 'Erro ao carregar capa do Telegram' });
+  }
+});
+
+app.get('/api/covers/local/:fileName', (req, res) => {
+  try {
+    const fileName = path.basename(req.params.fileName);
+    const coversDir = path.join(UPLOADS_DIR, 'covers');
+    const filePath = path.join(coversDir, fileName);
+
+    if (fs.existsSync(filePath)) {
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return fs.createReadStream(filePath).pipe(res);
+    }
+
+    const fallback = req.query.fallback as string;
+    if (fallback && (fallback.startsWith('http://') || fallback.startsWith('https://'))) {
+      return res.redirect(fallback);
+    }
+
+    res.status(404).json({ error: 'Capa local não encontrada' });
+  } catch (e: any) {
+    const fallback = req.query.fallback as string;
+    if (fallback && (fallback.startsWith('http://') || fallback.startsWith('https://'))) {
+      return res.redirect(fallback);
+    }
+    res.status(500).json({ error: 'Erro ao carregar capa local' });
+  }
+});
+
 // ---------------- STREAMING MODE & CACHE DURATION SETTINGS ----------------
 app.get('/api/settings/streaming-mode', (_req, res) => {
   res.json({ 
@@ -1632,6 +1710,20 @@ app.post('/api/youtube/import', async (req, res) => {
       return res.status(400).json({ error: 'Selecione ao menos um vídeo para importar' });
     }
 
+    // Process and upload gallery cover image to Telegram Saved Messages
+    const rawCoverUrl = coverImage || videos[0]?.thumbnail || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60';
+    let finalCoverUrl = rawCoverUrl;
+    try {
+      const coverResult = await telegramService.uploadCoverToTelegram(rawCoverUrl, title.trim(), 'youtube_' + targetType);
+      if (coverResult.messageId) {
+        finalCoverUrl = `/api/covers/telegram/${coverResult.messageId}?fallback=${encodeURIComponent(rawCoverUrl)}`;
+      } else if (coverResult.filePath) {
+        finalCoverUrl = `/api/covers/local/${coverResult.filePath}?fallback=${encodeURIComponent(rawCoverUrl)}`;
+      }
+    } catch (covErr) {
+      console.warn('Could not save YouTube cover to Telegram:', covErr);
+    }
+
     // 1. IMPORT AS COURSE
     if (targetType === 'course') {
       const courseFolder = db.getOrCreateCourseFolder(title, folderId || undefined);
@@ -1642,7 +1734,7 @@ app.post('/api/youtube/import', async (req, res) => {
         instructor: author || 'YouTube',
         category: category || 'Tecnologia & Programação',
         description: description || '',
-        coverImage: coverImage || videos[0]?.thumbnail || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60',
+        coverImage: finalCoverUrl,
         folderId: finalFolderId,
         modules: [
           {
@@ -1679,7 +1771,7 @@ app.post('/api/youtube/import', async (req, res) => {
         category: category || 'Podcasts',
         genre: 'YouTube Podcast',
         description: description || '',
-        coverImage: coverImage || videos[0]?.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
+        coverImage: finalCoverUrl,
         folderId: finalFolderId,
         tracks: videos.map((v: any, idx: number) => ({
           id: `track-${Date.now()}-${idx}`,
@@ -1709,7 +1801,7 @@ app.post('/api/youtube/import', async (req, res) => {
         genre: 'Web Série',
         category: category || 'Séries',
         description: description || '',
-        coverImage: coverImage || videos[0]?.thumbnail || 'https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=800&auto=format&fit=crop&q=60',
+        coverImage: finalCoverUrl,
         folderId: finalFolderId,
         seasons: [
           {
@@ -1745,7 +1837,7 @@ app.post('/api/youtube/import', async (req, res) => {
         category: category || 'Vídeos',
         genre: 'YouTube',
         description: v.description || description || '',
-        coverImage: v.thumbnail || coverImage || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=60',
+        coverImage: finalCoverUrl,
         folderId: finalFolderId,
         videoUrl: v.url,
         embedUrl: v.embedUrl,
@@ -2974,6 +3066,71 @@ app.post('/api/manifest/import', (req, res) => {
   if (!success) return res.status(400).json({ error: 'Manifesto inválido' });
   res.json({ success: true, message: 'Estrutura restaurada com sucesso!' });
 });
+
+// ---------------- AUTO-SYNC YOUTUBE COVERS TO TELEGRAM ----------------
+async function syncExistingYouTubeCoversToTelegram() {
+  try {
+    const data = db.getData();
+    let updatedCount = 0;
+
+    // 1. Series
+    for (const s of data.series || []) {
+      if (s.coverImage && (s.coverImage.includes('ytimg.com') || s.coverImage.includes('googleusercontent.com')) && !s.coverImage.startsWith('/api/covers/telegram/')) {
+        const rawUrl = s.coverImage;
+        const res = await telegramService.uploadCoverToTelegram(rawUrl, s.title, 'youtube_series');
+        if (res.messageId) {
+          s.coverImage = `/api/covers/telegram/${res.messageId}?fallback=${encodeURIComponent(rawUrl)}`;
+          updatedCount++;
+        }
+      }
+    }
+
+    // 2. Courses
+    for (const c of data.courses || []) {
+      if (c.coverImage && (c.coverImage.includes('ytimg.com') || c.coverImage.includes('googleusercontent.com')) && !c.coverImage.startsWith('/api/covers/telegram/')) {
+        const rawUrl = c.coverImage;
+        const res = await telegramService.uploadCoverToTelegram(rawUrl, c.title, 'youtube_course');
+        if (res.messageId) {
+          c.coverImage = `/api/covers/telegram/${res.messageId}?fallback=${encodeURIComponent(rawUrl)}`;
+          updatedCount++;
+        }
+      }
+    }
+
+    // 3. Audio Shows
+    for (const a of data.audioShows || []) {
+      if (a.coverImage && (a.coverImage.includes('ytimg.com') || a.coverImage.includes('googleusercontent.com')) && !a.coverImage.startsWith('/api/covers/telegram/')) {
+        const rawUrl = a.coverImage;
+        const res = await telegramService.uploadCoverToTelegram(rawUrl, a.title, 'youtube_audio');
+        if (res.messageId) {
+          a.coverImage = `/api/covers/telegram/${res.messageId}?fallback=${encodeURIComponent(rawUrl)}`;
+          updatedCount++;
+        }
+      }
+    }
+
+    // 4. Videos
+    for (const v of data.videos || []) {
+      if (v.coverImage && (v.coverImage.includes('ytimg.com') || v.coverImage.includes('googleusercontent.com')) && !v.coverImage.startsWith('/api/covers/telegram/')) {
+        const rawUrl = v.coverImage;
+        const res = await telegramService.uploadCoverToTelegram(rawUrl, v.title, 'youtube_video');
+        if (res.messageId) {
+          v.coverImage = `/api/covers/telegram/${res.messageId}?fallback=${encodeURIComponent(rawUrl)}`;
+          updatedCount++;
+        }
+      }
+    }
+
+    if (updatedCount > 0) {
+      console.log(`[DriveGram YouTube Cover Sync] Synced ${updatedCount} YouTube covers to Telegram.`);
+    }
+  } catch (e) {
+    console.warn('[DriveGram YouTube Cover Sync] Error during cover sync:', e);
+  }
+}
+
+// Run 3s after startup to sync covers
+setTimeout(syncExistingYouTubeCoversToTelegram, 3000);
 
 // ---------------- 30-DAY TRASH AUTO-PURGE ROUTINE ----------------
 async function purgeExpiredTrashRoutine() {
