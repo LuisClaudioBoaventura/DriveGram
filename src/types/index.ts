@@ -364,6 +364,7 @@ export interface AudioTrack {
   lastPositionSeconds?: number;
   timestamps?: VideoTimestamp[];
   notes?: string;
+  releaseDate?: string; // Data de publicação do episódio (ex: "2026-08-20T10:00:00Z")
 }
 
 export interface AudioShow {

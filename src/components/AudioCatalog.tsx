@@ -1,15 +1,62 @@
-import React, { useState } from 'react';
-import { Headphones, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, Music2, Mic, Disc } from 'lucide-react';
-import { AudioShow, FolderItem } from '../types/index.js';
+import React, { useState, useRef } from 'react';
+import { 
+  Headphones, 
+  Play, 
+  Search, 
+  Plus, 
+  Sparkles, 
+  Filter, 
+  Edit3, 
+  Trash2, 
+  CheckCircle2, 
+  Music2, 
+  Mic, 
+  Disc,
+  Clock,
+  Calendar,
+  Send,
+  Radio,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink
+} from 'lucide-react';
+import { AudioShow, AudioTrack, FolderItem } from '../types/index.js';
 
 interface AudioCatalogProps {
   audioShows: AudioShow[];
   categories: string[];
   folders: FolderItem[];
-  onSelectShow: (show: AudioShow) => void;
+  onSelectShow: (show: AudioShow, initialTrackIndex?: number) => void;
   onOpenNewModal: () => void;
   onEditShow?: (show: AudioShow) => void;
   onDeleteShow?: (id: string) => void;
+}
+
+interface RecentEpisodeItem {
+  show: AudioShow;
+  track: AudioTrack;
+  trackIndex: number;
+  pubDate: Date;
+  pubDateFormatted: string;
+}
+
+function formatRelativeDate(date: Date): string {
+  const now = new Date();
+  const diffTime = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) {
+    return 'Hoje';
+  } else if (diffDays === 1) {
+    return 'Ontem';
+  } else if (diffDays < 7 && diffDays > 1) {
+    return `Há ${diffDays} dias`;
+  } else if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return `Há ${weeks} sem.`;
+  } else {
+    return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
 }
 
 export const AudioCatalog: React.FC<AudioCatalogProps> = ({
@@ -23,7 +70,59 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'music_album' | 'podcast' | 'playlist'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const recentScrollRef = useRef<HTMLDivElement>(null);
 
+  // ---------------- GATHER RECENT EPISODES (LAST 2 MONTHS) ----------------
+  const twoMonthsAgo = new Date();
+  twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+  const twoMonthsAgoMs = twoMonthsAgo.getTime();
+
+  const recentEpisodes: RecentEpisodeItem[] = [];
+
+  audioShows.forEach(show => {
+    if (show.showType === 'podcast' || show.tracks?.some(t => t.releaseDate)) {
+      (show.tracks || []).forEach((track, trackIndex) => {
+        let epDate: Date | null = null;
+        if (track.releaseDate) {
+          const parsed = new Date(track.releaseDate);
+          if (!isNaN(parsed.getTime())) {
+            epDate = parsed;
+          }
+        }
+
+        if (!epDate && show.createdAt) {
+          const parsed = new Date(show.createdAt);
+          if (!isNaN(parsed.getTime())) {
+            epDate = parsed;
+          }
+        }
+
+        if (epDate) {
+          if (epDate.getTime() >= twoMonthsAgoMs) {
+            recentEpisodes.push({
+              show,
+              track,
+              trackIndex,
+              pubDate: epDate,
+              pubDateFormatted: formatRelativeDate(epDate)
+            });
+          }
+        }
+      });
+    }
+  });
+
+  // Sort sequentially by publication date descending (newest to oldest)
+  recentEpisodes.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+
+  const handleScrollRecent = (direction: 'left' | 'right') => {
+    if (recentScrollRef.current) {
+      const scrollAmount = direction === 'left' ? -320 : 320;
+      recentScrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  // Filter shows
   const filteredShows = audioShows.filter(show => {
     const matchesSearch = show.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (show.artist && show.artist.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -61,7 +160,7 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
           </h1>
 
           <p className="text-xs sm:text-sm text-emerald-200/90 leading-relaxed">
-            Ouça suas músicas, discografias completas e podcasts favoritos com reprodutor de áudio dedicado e playlists sincronizadas na nuvem Telegram.
+            Ouça suas músicas, discografias completas e podcasts favoritos com reprodutor de áudio dedicado, streaming online e backup direto na nuvem Telegram.
           </p>
 
           <div className="pt-2 flex flex-wrap items-center gap-3">
@@ -103,168 +202,287 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
         </div>
       </div>
 
-        {/* Filter & Search Toolbar */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white dark:bg-drive-darkSurface p-3 rounded-2xl border border-gray-200 dark:border-drive-darkBorder shadow-sm">
-          {/* Search Input */}
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por álbum, artista, podcast..."
-              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-transparent focus:border-emerald-500 focus:outline-none"
-            />
+      {/* ================= CARD: NOVOS EPISÓDIOS (ÚLTIMOS 2 MESES) ================= */}
+      {recentEpisodes.length > 0 && (
+        <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 via-emerald-500/5 to-transparent border border-amber-500/20 dark:border-amber-500/15 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center shadow-inner">
+                <Sparkles className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm sm:text-base font-black text-gray-900 dark:text-gray-100">
+                    Novos Episódios
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 text-[10px] font-bold tracking-wider uppercase">
+                    Últimos 2 Meses
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  {recentEpisodes.length} {recentEpisodes.length === 1 ? 'episódio recente lançado' : 'episódios recentes lançados'} em ordem cronológica
+                </p>
+              </div>
+            </div>
+
+            {/* Carousel Scroll Buttons */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => handleScrollRecent('left')}
+                className="p-2 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:border-amber-500 text-gray-600 dark:text-gray-300 hover:text-amber-500 shadow-xs transition-all active:scale-95"
+                title="Anterior"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleScrollRecent('right')}
+                className="p-2 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:border-amber-500 text-gray-600 dark:text-gray-300 hover:text-amber-500 shadow-xs transition-all active:scale-95"
+                title="Próximo"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          {/* Type Selector (Álbuns / Podcasts / Playlists) */}
-          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-0.5 rounded-xl text-xs font-bold shrink-0">
-            <button
-              onClick={() => setSelectedType('all')}
-              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'all' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
-            >
-              <span>Todos</span>
-            </button>
-            <button
-              onClick={() => setSelectedType('music_album')}
-              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'music_album' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
-            >
-              <Disc className="w-3.5 h-3.5" />
-              <span>Álbuns</span>
-            </button>
-            <button
-              onClick={() => setSelectedType('podcast')}
-              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'podcast' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
-            >
-              <Mic className="w-3.5 h-3.5" />
-              <span>Podcasts</span>
-            </button>
-            <button
-              onClick={() => setSelectedType('playlist')}
-              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'playlist' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
-            >
-              <Music2 className="w-3.5 h-3.5" />
-              <span>Playlists</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Shows Grid (1:1 Square Album/Podcast Cards) */}
-        {filteredShows.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {filteredShows.map(show => {
-              const tracksCount = show.tracks?.length || 0;
-              const completedCount = (show.tracks || []).filter(t => t.isCompleted).length;
-
+          {/* Horizontal Scrolling Episodes Cards */}
+          <div
+            ref={recentScrollRef}
+            className="flex items-stretch gap-3.5 overflow-x-auto pb-2 pt-1 scroll-smooth snap-x snap-mandatory no-scrollbar"
+            style={{ scrollbarWidth: 'none' }}
+          >
+            {recentEpisodes.map((item, idx) => {
               return (
                 <div
-                  key={show.id}
-                  className="group relative flex flex-col rounded-2xl overflow-hidden bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/50 hover:shadow-xl transition-all duration-300"
+                  key={`${item.show.id}-${item.track.id}-${idx}`}
+                  onClick={() => onSelectShow(item.show, item.trackIndex)}
+                  className="w-72 sm:w-80 p-3.5 rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200/80 dark:border-drive-darkBorder hover:border-amber-500/60 shadow-sm hover:shadow-lg transition-all duration-200 flex flex-col justify-between shrink-0 snap-start cursor-pointer group"
                 >
-                  {/* Square Cover Art */}
-                  <div
-                    onClick={() => onSelectShow(show)}
-                    className="relative aspect-square w-full overflow-hidden bg-black/60 cursor-pointer select-none"
-                  >
-                    <img
-                      src={show.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
-                      alt={show.title}
-                      draggable={false}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
-                    />
-
-                    {/* Top Badges */}
-                    <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-600/90 text-white text-[9px] font-black uppercase shadow">
-                        {show.showType === 'podcast' ? 'Podcast' : show.showType === 'playlist' ? 'Playlist' : 'Álbum'}
-                      </span>
-                    </div>
-
-                    {/* Play Hover Trigger */}
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
-                      <div className="w-11 h-11 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-600/50">
-                        <Play className="w-5 h-5 ml-0.5 fill-current" />
+                  <div className="flex items-start gap-3">
+                    {/* Podcast Cover */}
+                    <div className="relative w-16 h-16 rounded-xl overflow-hidden shadow-md bg-black/60 shrink-0 border border-gray-200 dark:border-gray-700">
+                      <img
+                        src={item.show.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                        alt={item.show.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                        <Play className="w-5 h-5 text-white fill-current" />
                       </div>
                     </div>
 
-                    {/* Edit/Delete Overlay Actions */}
-                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                      {onEditShow && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEditShow(show);
-                          }}
-                          className="p-1.5 rounded-lg bg-black/70 hover:bg-emerald-600 text-white shadow transition-colors"
-                          title="Editar"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {onDeleteShow && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Excluir "${show.title}"?`)) {
-                              onDeleteShow(show.id);
-                            }
-                          }}
-                          className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white shadow transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                    {/* Info */}
+                    <div className="overflow-hidden flex-1 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold text-[9px] truncate max-w-[140px]">
+                          🎙️ {item.show.title}
+                        </span>
+                      </div>
+
+                      <h4 className="text-xs font-bold text-gray-900 dark:text-gray-100 line-clamp-2 leading-tight group-hover:text-amber-500 transition-colors" title={item.track.title}>
+                        {item.track.title}
+                      </h4>
+
+                      {(item.show.artist || item.show.host) && (
+                        <p className="text-[10px] text-gray-400 truncate">
+                          {item.show.artist || item.show.host}
+                        </p>
                       )}
                     </div>
                   </div>
 
-                  {/* Info Body */}
-                  <div className="p-3 flex-1 flex flex-col justify-between space-y-1">
-                    <div>
-                      <h3
-                        onClick={() => onSelectShow(show)}
-                        className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate hover:text-emerald-500 cursor-pointer transition-colors"
-                        title={show.title}
-                      >
-                        {show.title}
-                      </h3>
-                      {(show.artist || show.host) && (
-                        <p className="text-[10px] text-gray-400 truncate">
-                          {show.artist || show.host}
-                        </p>
+                  {/* Bottom Metadata & Play Pill */}
+                  <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-drive-darkBorder/60 flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 font-semibold text-[10px]">
+                        <Calendar className="w-3 h-3 text-amber-500" />
+                        <span>{item.pubDateFormatted}</span>
+                      </span>
+
+                      {item.track.fileId && (
+                        <span className="flex items-center gap-1 text-sky-500 font-bold text-[10px]" title="Salvo no Telegram">
+                          <Send className="w-2.5 h-2.5" />
+                        </span>
                       )}
                     </div>
 
-                    <div className="pt-1 flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 dark:border-gray-800">
-                      <span>{tracksCount} {tracksCount === 1 ? 'faixa' : 'faixas'}</span>
-                      {completedCount > 0 && (
-                        <span className="text-emerald-500 font-bold">
-                          {completedCount}/{tracksCount} ouvidos
-                        </span>
-                      )}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-400 font-mono text-[10px]">
+                        {item.track.duration || '45:00'}
+                      </span>
+                      <div className="w-6 h-6 rounded-full bg-emerald-600 group-hover:bg-amber-500 text-white flex items-center justify-center transition-colors shadow-xs">
+                        <Play className="w-3 h-3 fill-current ml-0.5" />
+                      </div>
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center p-16 text-center bg-white dark:bg-drive-darkSurface rounded-3xl border border-dashed border-gray-300 dark:border-gray-800 space-y-3">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-              <Headphones className="w-8 h-8" />
-            </div>
-            <h3 className="font-bold text-base">Nenhum álbum ou podcast catalogado</h3>
-            <p className="text-xs text-gray-500 max-w-md">
-              Vincule pastas de áudio (.mp3, .wav, .flac) do seu Drive para criar sua biblioteca de músicas e podcasts.
-            </p>
-            <button
-              onClick={onOpenNewModal}
-              className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all"
-            >
-              Adicionar Primeiro Álbum / Podcast
-            </button>
+        </div>
+      )}
+
+      {/* Filter & Search Toolbar */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white dark:bg-drive-darkSurface p-3 rounded-2xl border border-gray-200 dark:border-drive-darkBorder shadow-sm">
+        {/* Search Input */}
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar por álbum, artista, podcast..."
+            className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-transparent focus:border-emerald-500 focus:outline-none"
+          />
+        </div>
+
+        {/* Type Selector (Álbuns / Podcasts / Playlists) */}
+        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-0.5 rounded-xl text-xs font-bold shrink-0">
+          <button
+            onClick={() => setSelectedType('all')}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'all' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
+          >
+            <span>Todos</span>
+          </button>
+          <button
+            onClick={() => setSelectedType('music_album')}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'music_album' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
+          >
+            <Disc className="w-3.5 h-3.5" />
+            <span>Álbuns</span>
+          </button>
+          <button
+            onClick={() => setSelectedType('podcast')}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'podcast' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
+          >
+            <Mic className="w-3.5 h-3.5" />
+            <span>Podcasts</span>
+          </button>
+          <button
+            onClick={() => setSelectedType('playlist')}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'playlist' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
+          >
+            <Music2 className="w-3.5 h-3.5" />
+            <span>Playlists</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Shows Grid (1:1 Square Album/Podcast Cards) */}
+      {filteredShows.length > 0 ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          {filteredShows.map(show => {
+            const tracksCount = show.tracks?.length || 0;
+            const completedCount = (show.tracks || []).filter(t => t.isCompleted).length;
+
+            return (
+              <div
+                key={show.id}
+                className="group relative flex flex-col rounded-2xl overflow-hidden bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/50 hover:shadow-xl transition-all duration-300"
+              >
+                {/* Square Cover Art */}
+                <div
+                  onClick={() => onSelectShow(show)}
+                  className="relative aspect-square w-full overflow-hidden bg-black/60 cursor-pointer select-none"
+                >
+                  <img
+                    src={show.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                    alt={show.title}
+                    draggable={false}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+                  />
+
+                  {/* Top Badges */}
+                  <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-600/90 text-white text-[9px] font-black uppercase shadow">
+                      {show.showType === 'podcast' ? 'Podcast' : show.showType === 'playlist' ? 'Playlist' : 'Álbum'}
+                    </span>
+                  </div>
+
+                  {/* Play Hover Trigger */}
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
+                    <div className="w-11 h-11 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-600/50">
+                      <Play className="w-5 h-5 ml-0.5 fill-current" />
+                    </div>
+                  </div>
+
+                  {/* Edit/Delete Overlay Actions */}
+                  <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                    {onEditShow && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditShow(show);
+                        }}
+                        className="p-1.5 rounded-lg bg-black/70 hover:bg-emerald-600 text-white shadow transition-colors"
+                        title="Editar"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {onDeleteShow && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Excluir "${show.title}"?`)) {
+                            onDeleteShow(show.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white shadow transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Info Body */}
+                <div className="p-3 flex-1 flex flex-col justify-between space-y-1">
+                  <div>
+                    <h3
+                      onClick={() => onSelectShow(show)}
+                      className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate hover:text-emerald-500 cursor-pointer transition-colors"
+                      title={show.title}
+                    >
+                      {show.title}
+                    </h3>
+                    {(show.artist || show.host) && (
+                      <p className="text-[10px] text-gray-400 truncate">
+                        {show.artist || show.host}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pt-1 flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 dark:border-gray-800">
+                    <span>{tracksCount} {tracksCount === 1 ? 'faixa' : 'faixas'}</span>
+                    {completedCount > 0 && (
+                      <span className="text-emerald-500 font-bold">
+                        {completedCount}/{tracksCount} ouvidos
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center p-16 text-center bg-white dark:bg-drive-darkSurface rounded-3xl border border-dashed border-gray-300 dark:border-gray-800 space-y-3">
+          <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+            <Headphones className="w-8 h-8" />
           </div>
-        )}
+          <h3 className="font-bold text-base">Nenhum álbum ou podcast catalogado</h3>
+          <p className="text-xs text-gray-500 max-w-md">
+            Adicione podcasts via busca online, feed RSS ou vincule pastas de áudio do seu Drive.
+          </p>
+          <button
+            onClick={onOpenNewModal}
+            className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all"
+          >
+            Adicionar Primeiro Álbum / Podcast
+          </button>
+        </div>
+      )}
     </div>
   );
 };

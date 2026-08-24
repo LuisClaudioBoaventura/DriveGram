@@ -349,7 +349,8 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
                   durationSeconds,
                   audioUrl: ep.episodeUrl || ep.previewUrl,
                   order: index + 1,
-                  trackNumber: index + 1
+                  trackNumber: index + 1,
+                  releaseDate: ep.releaseDate
                 };
               });
             }

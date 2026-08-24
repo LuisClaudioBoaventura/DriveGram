@@ -163,6 +163,7 @@ export function App() {
 
   const [selectedSeriesForView, setSelectedSeriesForView] = useState<SeriesShow | null>(null);
   const [selectedAudioForView, setSelectedAudioForView] = useState<AudioShow | null>(null);
+  const [selectedAudioTrackIndex, setSelectedAudioTrackIndex] = useState<number>(0);
   const [selectedAdultVideoForView, setSelectedAdultVideoForView] = useState<AdultVideo | null>(null);
   const [adultPlaylist, setAdultPlaylist] = useState<AdultVideo[]>([]);
   const [isPerformerModalOpen, setIsPerformerModalOpen] = useState(false);
@@ -608,6 +609,7 @@ export function App() {
             <AudioStudioView
               audioShow={selectedAudioForView}
               allFiles={fs.allFiles}
+              initialTrackIndex={selectedAudioTrackIndex}
               onBackToCatalog={() => setSelectedAudioForView(null)}
               onUpdateAudioShow={async (updated) => {
                 await audioShows.updateAudioShow(updated);
@@ -778,9 +780,13 @@ export function App() {
               audioShows={audioShows.audioShows}
               categories={audioShows.categories}
               folders={fs.allFolders}
-              onSelectShow={(a) => {
+              onSelectShow={(a, trackIndex) => {
                 audioShows.setActiveShow(a);
                 setSelectedAudioForView(a);
+                setSelectedAudioTrackIndex(trackIndex || 0);
+                if (trackIndex !== undefined && a.tracks?.[trackIndex]) {
+                  audioShows.setActiveTrack(a.tracks[trackIndex]);
+                }
               }}
               onOpenNewModal={() => setIsAudioModalOpen(true)}
               onEditShow={(a) => setEditingAudioShow(a)}

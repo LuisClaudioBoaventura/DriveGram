@@ -48,6 +48,7 @@ interface AudioStudioViewProps {
   onToggleTrackCompletion: (trackId: string) => Promise<void>;
   onUpdateTrackProgress: (trackId: string, seconds: number, isCompleted?: boolean) => Promise<void>;
   onOpenEditModal?: () => void;
+  initialTrackIndex?: number;
 }
 
 export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
@@ -58,9 +59,10 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   onDeleteAudioShow,
   onToggleTrackCompletion,
   onUpdateTrackProgress,
-  onOpenEditModal
+  onOpenEditModal,
+  initialTrackIndex
 }) => {
-  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(initialTrackIndex !== undefined ? initialTrackIndex : 0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
