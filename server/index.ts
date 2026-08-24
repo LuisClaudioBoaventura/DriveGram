@@ -1614,11 +1614,8 @@ app.post('/api/youtube/import', async (req, res) => {
 
     // 1. IMPORT AS COURSE
     if (targetType === 'course') {
-      let finalFolderId = folderId;
-      if (!finalFolderId) {
-        const courseFolder = db.getOrCreateCourseFolder(title);
-        finalFolderId = courseFolder.id;
-      }
+      const courseFolder = db.getOrCreateCourseFolder(title, folderId || undefined);
+      const finalFolderId = courseFolder.id;
 
       const newCourse = db.saveCourse({
         title: title.trim(),
@@ -1651,11 +1648,8 @@ app.post('/api/youtube/import', async (req, res) => {
 
     // 2. IMPORT AS PODCAST / AUDIO SHOW
     if (targetType === 'podcast' || targetType === 'audio') {
-      let finalFolderId = folderId;
-      if (!finalFolderId) {
-        const podcastFolder = db.getOrCreatePodcastFolder({ title: title.trim(), showType: 'podcast' } as any);
-        finalFolderId = podcastFolder.id;
-      }
+      const podcastFolder = db.getOrCreatePodcastFolder({ title: title.trim(), showType: 'podcast' } as any);
+      const finalFolderId = podcastFolder.id;
 
       const newShow = db.saveAudioShow({
         title: title.trim(),
@@ -1686,11 +1680,8 @@ app.post('/api/youtube/import', async (req, res) => {
 
     // 3. IMPORT AS SERIES / TV SHOW
     if (targetType === 'series') {
-      let finalFolderId = folderId;
-      if (!finalFolderId) {
-        const seriesFolder = db.getOrCreateSeriesFolder(title);
-        finalFolderId = seriesFolder.id;
-      }
+      const seriesFolder = db.getOrCreateSeriesFolder(title, folderId || undefined);
+      const finalFolderId = seriesFolder.id;
 
       const newSeries = db.saveSeries({
         title: title.trim(),
@@ -1723,11 +1714,8 @@ app.post('/api/youtube/import', async (req, res) => {
     }
 
     // 4. IMPORT AS MOVIE VIDEOS
-    let finalFolderId = folderId;
-    if (!finalFolderId) {
-      const videoFolder = db.getOrCreateVideoFolder();
-      finalFolderId = videoFolder.id;
-    }
+    const videoFolder = db.getOrCreateVideoFolder(videos.length > 1 ? title : undefined, folderId || undefined);
+    const finalFolderId = videoFolder.id;
 
     const savedVideos = [];
     for (const v of videos) {

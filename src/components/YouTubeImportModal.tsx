@@ -87,10 +87,43 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<string | null>(null);
 
+  // Get corresponding default root folder name for target type
+  const getDefaultTargetFolderName = (type: YouTubeTargetType) => {
+    switch (type) {
+      case 'course': return '🎓 Cursos & Treinamentos';
+      case 'podcast': return '🎙️ Músicas & Podcasts';
+      case 'series': return '🎬 Séries & TV Shows';
+      case 'video': return '🎥 Filmes & Vídeos';
+    }
+  };
+
+  const getDefaultTargetFolder = (type: YouTubeTargetType): FolderItem | undefined => {
+    const aliases: Record<YouTubeTargetType, string[]> = {
+      course: ['cursos & treinamentos', 'cursos e treinamentos', 'cursos', 'treinamentos', 'aulas'],
+      podcast: ['musicas e podcasts', 'músicas e podcasts', 'musicas & podcasts', 'músicas & podcasts', 'podcasts', 'músicas', 'musicas'],
+      series: ['séries & tv shows', 'series & tv shows', 'séries e tv shows', 'series e tv shows', 'séries', 'series'],
+      video: ['filmes & vídeos', 'filmes e vídeos', 'filmes & videos', 'filmes e videos', 'filmes', 'vídeos', 'videos']
+    };
+    const targetAliases = aliases[type] || [];
+    return allFolders.find(f => {
+      if (f.parentId) return false;
+      const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+      return targetAliases.some(alias => normalized === alias || normalized.includes(alias));
+    });
+  };
+
+  const handleSelectTargetType = (type: YouTubeTargetType) => {
+    setTargetType(type);
+    const defaultFolder = getDefaultTargetFolder(type);
+    setSelectedFolderId(defaultFolder ? defaultFolder.id : '');
+  };
+
   // Reset or initialize on open
   useEffect(() => {
     if (isOpen) {
       setTargetType(initialType);
+      const defaultFolder = getDefaultTargetFolder(initialType);
+      setSelectedFolderId(defaultFolder ? defaultFolder.id : '');
     } else {
       setUrlInput('');
       setParseError(null);
@@ -99,7 +132,7 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
       setIsImporting(false);
       setImportProgress(null);
     }
-  }, [isOpen, initialType]);
+  }, [isOpen, initialType, allFolders]);
 
   if (!isOpen) return null;
 
@@ -144,9 +177,9 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
       // Auto-detect best destination if not explicitly locked
       if (data.type === 'playlist') {
         // Playlists are great as courses or podcasts
-        if (targetType === 'video') setTargetType('course');
+        if (targetType === 'video') handleSelectTargetType('course');
       } else if (data.type === 'video') {
-        setTargetType('video');
+        handleSelectTargetType('video');
       }
 
       // Pre-select all videos
@@ -414,7 +447,7 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
                   {/* Option 1: Course */}
                   <button
                     type="button"
-                    onClick={() => setTargetType('course')}
+                    onClick={() => handleSelectTargetType('course')}
                     className={`p-3.5 rounded-2xl text-left border transition-all flex flex-col justify-between ${
                       targetType === 'course'
                         ? 'bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/30'
@@ -438,7 +471,7 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
                   {/* Option 2: Podcast / Audio */}
                   <button
                     type="button"
-                    onClick={() => setTargetType('podcast')}
+                    onClick={() => handleSelectTargetType('podcast')}
                     className={`p-3.5 rounded-2xl text-left border transition-all flex flex-col justify-between ${
                       targetType === 'podcast'
                         ? 'bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400 ring-2 ring-emerald-500/30'
@@ -462,7 +495,7 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
                   {/* Option 3: Series */}
                   <button
                     type="button"
-                    onClick={() => setTargetType('series')}
+                    onClick={() => handleSelectTargetType('series')}
                     className={`p-3.5 rounded-2xl text-left border transition-all flex flex-col justify-between ${
                       targetType === 'series'
                         ? 'bg-purple-500/10 border-purple-500 text-purple-600 dark:text-purple-400 ring-2 ring-purple-500/30'
@@ -486,7 +519,7 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
                   {/* Option 4: Videos */}
                   <button
                     type="button"
-                    onClick={() => setTargetType('video')}
+                    onClick={() => handleSelectTargetType('video')}
                     className={`p-3.5 rounded-2xl text-left border transition-all flex flex-col justify-between ${
                       targetType === 'video'
                         ? 'bg-amber-500/10 border-amber-500 text-amber-600 dark:text-amber-400 ring-2 ring-amber-500/30'
@@ -537,9 +570,12 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
 
                 <div className="sm:col-span-2 space-y-1.5">
                   <label className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex items-center justify-between">
-                    <span>Pasta de Destino no "Meu Drive"</span>
-                    <span className="text-[10px] text-gray-400 font-normal">
-                      Criação automática de pasta inclusa
+                    <span className="flex items-center gap-1.5">
+                      <Folder className="w-3.5 h-3.5 text-blue-500" />
+                      Pasta de Destino no "Meu Drive"
+                    </span>
+                    <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium">
+                      Padrão: {getDefaultTargetFolderName(targetType)}
                     </span>
                   </label>
                   <select
@@ -547,12 +583,17 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
                     onChange={(e) => setSelectedFolderId(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-500/40"
                   >
-                    <option value="">📁 Criar pasta automática dedicada no Meu Drive</option>
-                    {allFolders.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        📁 {f.name}
-                      </option>
-                    ))}
+                    <option value="">
+                      ✨ Criar automaticamente em "{getDefaultTargetFolderName(targetType)}"
+                    </option>
+                    {allFolders.map((f) => {
+                      const isDefault = f.id === getDefaultTargetFolder(targetType)?.id;
+                      return (
+                        <option key={f.id} value={f.id}>
+                          📁 {f.name} {isDefault ? ' ⭐ (Pasta Padrão desta Categoria)' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>

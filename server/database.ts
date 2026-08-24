@@ -2056,17 +2056,21 @@ class Database {
     return podcastFolder;
   }
 
-  public getOrCreateCourseFolder(courseTitle: string): FolderItem {
+  public getOrCreateCourseFolder(courseTitle: string, parentFolderId?: string): FolderItem {
     const allFolders = this.data.folders.filter(f => !f.isTrash);
-    const rootAliases = ['cursos & treinamentos', 'cursos e treinamentos', 'cursos', 'treinamentos', 'aulas'];
-    let coursesRoot = allFolders.find(f => {
-      if (f.parentId) return false;
-      const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
-      return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
-    });
-
+    let coursesRoot = parentFolderId ? allFolders.find(f => f.id === parentFolderId) : null;
+    
     if (!coursesRoot) {
-      coursesRoot = this.createFolder('🎓 Cursos & Treinamentos', null, '#3b82f6', 'Biblioteca de Cursos e Treinamentos');
+      const rootAliases = ['cursos & treinamentos', 'cursos e treinamentos', 'cursos', 'treinamentos', 'aulas'];
+      coursesRoot = allFolders.find(f => {
+        if (f.parentId) return false;
+        const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+        return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
+      });
+
+      if (!coursesRoot) {
+        coursesRoot = this.createFolder('🎓 Cursos & Treinamentos', null, '#3b82f6', 'Biblioteca de Cursos e Treinamentos');
+      }
     }
 
     const title = courseTitle?.trim() || 'Curso';
@@ -2084,17 +2088,21 @@ class Database {
     return courseFolder;
   }
 
-  public getOrCreateSeriesFolder(seriesTitle: string): FolderItem {
+  public getOrCreateSeriesFolder(seriesTitle: string, parentFolderId?: string): FolderItem {
     const allFolders = this.data.folders.filter(f => !f.isTrash);
-    const rootAliases = ['séries & tv shows', 'series & tv shows', 'séries e tv shows', 'series e tv shows', 'séries', 'series'];
-    let seriesRoot = allFolders.find(f => {
-      if (f.parentId) return false;
-      const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
-      return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
-    });
+    let seriesRoot = parentFolderId ? allFolders.find(f => f.id === parentFolderId) : null;
 
     if (!seriesRoot) {
-      seriesRoot = this.createFolder('🎬 Séries & TV Shows', null, '#8b5cf6', 'Biblioteca de Séries e TV Shows');
+      const rootAliases = ['séries & tv shows', 'series & tv shows', 'séries e tv shows', 'series e tv shows', 'séries', 'series'];
+      seriesRoot = allFolders.find(f => {
+        if (f.parentId) return false;
+        const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+        return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
+      });
+
+      if (!seriesRoot) {
+        seriesRoot = this.createFolder('🎬 Séries & TV Shows', null, '#8b5cf6', 'Biblioteca de Séries e TV Shows');
+      }
     }
 
     const title = seriesTitle?.trim() || 'Série';
@@ -2112,17 +2120,34 @@ class Database {
     return seriesFolder;
   }
 
-  public getOrCreateVideoFolder(): FolderItem {
+  public getOrCreateVideoFolder(videoTitle?: string, parentFolderId?: string): FolderItem {
     const allFolders = this.data.folders.filter(f => !f.isTrash);
-    const rootAliases = ['filmes & vídeos', 'filmes e vídeos', 'filmes & videos', 'filmes e videos', 'filmes', 'vídeos', 'videos'];
-    let videoRoot = allFolders.find(f => {
-      if (f.parentId) return false;
-      const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
-      return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
-    });
+    let videoRoot = parentFolderId ? allFolders.find(f => f.id === parentFolderId) : null;
 
     if (!videoRoot) {
-      videoRoot = this.createFolder('🎥 Filmes & Vídeos', null, '#f59e0b', 'Biblioteca de Filmes e Vídeos');
+      const rootAliases = ['filmes & vídeos', 'filmes e vídeos', 'filmes & videos', 'filmes e videos', 'filmes', 'vídeos', 'videos'];
+      videoRoot = allFolders.find(f => {
+        if (f.parentId) return false;
+        const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+        return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
+      });
+
+      if (!videoRoot) {
+        videoRoot = this.createFolder('🎥 Filmes & Vídeos', null, '#f59e0b', 'Biblioteca de Filmes e Vídeos');
+      }
+    }
+
+    if (videoTitle && videoTitle.trim()) {
+      const title = videoTitle.trim();
+      const folderName = `🎥 ${title}`;
+      let subFolder = allFolders.find(f => 
+        f.parentId === videoRoot!.id && 
+        (f.name.toLowerCase().trim() === folderName.toLowerCase().trim() || f.name.toLowerCase().trim() === title.toLowerCase().trim())
+      );
+      if (!subFolder) {
+        subFolder = this.createFolder(folderName, videoRoot.id, '#f59e0b', `Vídeos de ${title}`);
+      }
+      return subFolder;
     }
 
     return videoRoot;
