@@ -284,28 +284,38 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     setBackupSuccessMessage(null);
 
     try {
-      const res = await fetch('/api/podcasts/backup-telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          showId: audioShow.id,
-          trackId: track.id,
-          audioUrl: track.audioUrl,
-          title: track.title,
-          folderId: audioShow.folderId
-        })
+      const payload = JSON.stringify({
+        showId: audioShow.id,
+        trackId: track.id,
+        audioUrl: track.audioUrl,
+        title: track.title,
+        folderId: audioShow.folderId
       });
 
-      if (res.ok) {
+      let res = await fetch('/api/podcasts/backup-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch('/api/audio-shows/backup-telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
         const data = await res.json();
         if (data.updatedShow) {
           await onUpdateAudioShow(data.updatedShow);
         }
-        setBackupSuccessMessage(`Episódio "${track.title}" salvo no Telegram!`);
+        setBackupSuccessMessage(`Episódio "${track.title}" salvo no Telegram e pasta criada no Meu Drive!`);
         setTimeout(() => setBackupSuccessMessage(null), 5000);
       } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error || 'Erro ao realizar backup no Telegram.');
+        const err = res ? await res.json().catch(() => ({})) : {};
+        alert(err.error || 'Erro ao realizar backup no Telegram. Verifique se o servidor backend está em execução.');
       }
     } catch (e) {
       console.error('Error backing up to Telegram:', e);
@@ -326,13 +336,23 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
     setBackupSuccessMessage(null);
 
     try {
-      const res = await fetch('/api/podcasts/backup-all-telegram', {
+      const payload = JSON.stringify({ showId: audioShow.id });
+
+      let res = await fetch('/api/podcasts/backup-all-telegram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ showId: audioShow.id })
-      });
+        body: payload
+      }).catch(() => null);
 
-      if (res.ok) {
+      if (!res || !res.ok) {
+        res = await fetch('/api/audio-shows/backup-all-telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
         const data = await res.json();
         if (data.updatedShow) {
           await onUpdateAudioShow(data.updatedShow);
@@ -340,8 +360,8 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
         setBackupSuccessMessage(`Backup concluído! ${data.backedUpCount || unbackedTracks.length} episódios salvos no Telegram.`);
         setTimeout(() => setBackupSuccessMessage(null), 6000);
       } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error || 'Erro ao realizar backup em lote no Telegram.');
+        const err = res ? await res.json().catch(() => ({})) : {};
+        alert(err.error || 'Erro ao realizar backup em lote no Telegram. Verifique se o servidor backend está em execução.');
       }
     } catch (e) {
       console.error('Error backing up all to Telegram:', e);

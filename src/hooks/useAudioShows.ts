@@ -323,11 +323,19 @@ export function useAudioShows() {
 
   const refreshAllPodcasts = async () => {
     try {
-      const res = await fetch('/api/podcasts/refresh-all', {
+      let res = await fetch('/api/podcasts/refresh-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
-      });
-      if (res.ok) {
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch('/api/audio-shows/refresh-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
         const data = await res.json();
         if (data.updatedShows) {
           setAudioShows(data.updatedShows);
@@ -352,11 +360,19 @@ export function useAudioShows() {
 
   const refreshSinglePodcast = async (showId: string) => {
     try {
-      const res = await fetch(`/api/podcasts/${showId}/refresh`, {
+      let res = await fetch(`/api/podcasts/${showId}/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
-      });
-      if (res.ok) {
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch(`/api/audio-shows/${showId}/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
         const data = await res.json();
         if (data.show) {
           setAudioShows(prev => prev.map(s => s.id === showId ? data.show : s));

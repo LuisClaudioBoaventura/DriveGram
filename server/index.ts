@@ -1806,7 +1806,7 @@ async function refreshSinglePodcastInternal(show: any): Promise<{ show: any; new
   return { show: savedShow, newEpisodesCount };
 }
 
-app.post('/api/podcasts/refresh-all', async (_req, res) => {
+app.post(['/api/podcasts/refresh-all', '/api/audio-shows/refresh-all'], async (_req, res) => {
   try {
     const shows = db.getAudioShows().filter((s: any) => s.showType === 'podcast');
     let totalNewEpisodes = 0;
@@ -1836,9 +1836,13 @@ app.post('/api/podcasts/refresh-all', async (_req, res) => {
   }
 });
 
-app.post('/api/podcasts/:id/refresh', async (req, res) => {
+app.post(['/api/podcasts/:id/refresh', '/api/audio-shows/:id/refresh'], async (req, res) => {
   try {
-    const show = db.getAudioShowById(req.params.id);
+    let show = db.getAudioShowById(req.params.id);
+    if (!show) {
+      const allShows = db.getAudioShows();
+      show = allShows.find((s: any) => s.id === req.params.id || s.title?.toLowerCase().trim() === req.params.id.toLowerCase().trim() || s.podcastId === req.params.id);
+    }
     if (!show) {
       return res.status(404).json({ error: 'Podcast não encontrado' });
     }
@@ -1871,24 +1875,42 @@ setInterval(async () => {
 }, 1000 * 60 * 60 * 2);
 
 // ---------------- BACKUP DE EPISÓDIOS NO TELEGRAM ----------------
-app.post('/api/podcasts/backup-telegram', async (req, res) => {
+app.post(['/api/podcasts/backup-telegram', '/api/audio-shows/backup-telegram'], async (req, res) => {
   try {
     const { showId, trackId, audioUrl, title, folderId } = req.body;
-    if (!showId || !trackId) {
-      return res.status(400).json({ error: 'showId e trackId são obrigatórios' });
+    if (!showId) {
+      return res.status(400).json({ error: 'showId é obrigatório' });
     }
 
-    const show = db.getAudioShowById(showId);
+    let show = db.getAudioShowById(showId);
+    if (!show) {
+      const allShows = db.getAudioShows();
+      show = allShows.find((s: any) => s.id === showId || s.title?.toLowerCase().trim() === showId.toLowerCase().trim() || s.podcastId === showId);
+    }
     if (!show) {
       return res.status(404).json({ error: 'Álbum/Podcast não encontrado' });
     }
 
-    const trackIndex = (show.tracks || []).findIndex((t: any) => t.id === trackId);
-    if (trackIndex === -1) {
-      return res.status(404).json({ error: 'Episódio não encontrado no podcast' });
+    let trackIndex = (show.tracks || []).findIndex((t: any) => 
+      (trackId && t.id === trackId) || 
+      (t.audioUrl && audioUrl && t.audioUrl === audioUrl) ||
+      (t.title && title && t.title.toLowerCase().trim() === title.toLowerCase().trim())
+    );
+
+    let track = trackIndex >= 0 ? show.tracks[trackIndex] : null;
+    if (!track) {
+      track = {
+        id: trackId || `ep-${Date.now()}`,
+        title: title || 'Episódio',
+        audioUrl: audioUrl,
+        order: (show.tracks?.length || 0) + 1,
+        trackNumber: (show.tracks?.length || 0) + 1
+      };
+      if (!show.tracks) show.tracks = [];
+      show.tracks.push(track);
+      trackIndex = show.tracks.length - 1;
     }
 
-    const track = show.tracks[trackIndex];
     const streamUrl = audioUrl || track.audioUrl;
     if (!streamUrl) {
       return res.status(400).json({ error: 'Este episódio não possui URL de áudio para download.' });
@@ -1921,7 +1943,7 @@ app.post('/api/podcasts/backup-telegram', async (req, res) => {
     const targetFolder = db.getOrCreatePodcastFolder(show);
     const targetFolderId = targetFolder.id;
 
-    const uploadId = `backup-${trackId}-${Date.now()}`;
+    const uploadId = `backup-${trackId || Date.now()}-${Date.now()}`;
     activeUploadsMap.set(uploadId, {
       uploadId,
       fileName: `${cleanTitle}.mp3`,
@@ -2003,14 +2025,18 @@ app.post('/api/podcasts/backup-telegram', async (req, res) => {
   }
 });
 
-app.post('/api/podcasts/backup-all-telegram', async (req, res) => {
+app.post(['/api/podcasts/backup-all-telegram', '/api/audio-shows/backup-all-telegram'], async (req, res) => {
   try {
     const { showId } = req.body;
     if (!showId) {
       return res.status(400).json({ error: 'showId é obrigatório' });
     }
 
-    const show = db.getAudioShowById(showId);
+    let show = db.getAudioShowById(showId);
+    if (!show) {
+      const allShows = db.getAudioShows();
+      show = allShows.find((s: any) => s.id === showId || s.title?.toLowerCase().trim() === showId.toLowerCase().trim() || s.podcastId === showId);
+    }
     if (!show) {
       return res.status(404).json({ error: 'Álbum/Podcast não encontrado' });
     }

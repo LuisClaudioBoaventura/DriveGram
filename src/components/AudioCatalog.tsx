@@ -151,19 +151,29 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
 
     setBackingUpTrackIds(prev => [...prev, item.track.id]);
     try {
-      const res = await fetch('/api/podcasts/backup-telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          showId: item.show.id,
-          trackId: item.track.id,
-          audioUrl: item.track.audioUrl,
-          title: item.track.title,
-          folderId: item.show.folderId
-        })
+      const payload = JSON.stringify({
+        showId: item.show.id,
+        trackId: item.track.id,
+        audioUrl: item.track.audioUrl,
+        title: item.track.title,
+        folderId: item.show.folderId
       });
 
-      if (res.ok) {
+      let res = await fetch('/api/podcasts/backup-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch('/api/audio-shows/backup-telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
         const data = await res.json();
         if (data.updatedShow && onEditShow) {
           onEditShow(data.updatedShow);
@@ -174,8 +184,8 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
         });
         setTimeout(() => setSyncFeedbackMessage(null), 6000);
       } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error || 'Erro ao realizar backup do episódio.');
+        const err = res ? await res.json().catch(() => ({})) : {};
+        alert(err.error || 'Erro ao realizar backup do episódio. Verifique se o servidor backend está ativo.');
       }
     } catch (err) {
       console.error('Error backing up episode:', err);
