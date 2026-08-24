@@ -901,31 +901,74 @@ class Database {
 
       const audioFiles = files.filter(f => 
         (f.parentId === show.folderId || subFolderIds.has(f.parentId || '')) &&
-        (f.type === 'audio' || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(f.extension.toLowerCase()))
+        (f.type === 'audio' || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes((f.extension || '').toLowerCase()))
       );
 
       audioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
       const existingTracks = show.tracks || [];
 
-      if (audioFiles.length > 0) {
-        show.tracks = audioFiles.map((file, idx) => {
-          const existing = existingTracks.find(t => t.fileId === file.id || t.title === file.name.replace(/\.[^/.]+$/, ""));
-          return {
-            id: existing?.id || 'track-' + show.id + '-' + file.id,
-            title: existing?.title || file.name.replace(/\.[^/.]+$/, ""),
-            artist: existing?.artist || show.artist || show.host || 'Artista',
-            album: existing?.album || show.title,
-            duration: existing?.duration || '03:45',
-            fileId: file.id,
-            order: idx + 1,
-            trackNumber: existing?.trackNumber || (idx + 1),
-            isCompleted: existing?.isCompleted || false,
-            lastPositionSeconds: existing?.lastPositionSeconds || 0,
-            timestamps: existing?.timestamps || file.timestamps || [],
-            notes: existing?.notes
-          };
-        });
+      // If show is a Podcast or contains remote stream/RSS tracks
+      if (show.showType === 'podcast' || existingTracks.some(t => t.audioUrl || !t.fileId)) {
+        const updatedTracks = [...existingTracks];
+
+        // Match every downloaded audio file to existing tracks or add new ones
+        for (const file of audioFiles) {
+          const cleanFileName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().trim();
+          
+          let track = updatedTracks.find(t => t.fileId === file.id);
+          if (!track) {
+            track = updatedTracks.find(t => {
+              const cleanTrackTitle = (t.title || '').toLowerCase().trim();
+              return cleanTrackTitle === cleanFileName || cleanTrackTitle.includes(cleanFileName) || cleanFileName.includes(cleanTrackTitle);
+            });
+          }
+
+          if (track) {
+            track.fileId = file.id;
+            if ((!track.timestamps || track.timestamps.length === 0) && file.timestamps && file.timestamps.length > 0) {
+              track.timestamps = file.timestamps;
+            }
+          } else {
+            // New local file in folder not matching an existing track
+            updatedTracks.push({
+              id: 'track-' + show.id + '-' + file.id,
+              title: file.name.replace(/\.[^/.]+$/, ''),
+              artist: show.artist || show.host || 'Artista',
+              album: show.title,
+              duration: '03:45',
+              fileId: file.id,
+              order: updatedTracks.length + 1,
+              trackNumber: updatedTracks.length + 1,
+              isCompleted: false,
+              lastPositionSeconds: 0,
+              timestamps: file.timestamps || []
+            });
+          }
+        }
+
+        show.tracks = updatedTracks;
+      } else {
+        // Pure local music albums
+        if (audioFiles.length > 0) {
+          show.tracks = audioFiles.map((file, idx) => {
+            const existing = existingTracks.find(t => t.fileId === file.id || t.title === file.name.replace(/\.[^/.]+$/, ""));
+            return {
+              id: existing?.id || 'track-' + show.id + '-' + file.id,
+              title: existing?.title || file.name.replace(/\.[^/.]+$/, ""),
+              artist: existing?.artist || show.artist || show.host || 'Artista',
+              album: existing?.album || show.title,
+              duration: existing?.duration || '03:45',
+              fileId: file.id,
+              order: idx + 1,
+              trackNumber: existing?.trackNumber || (idx + 1),
+              isCompleted: existing?.isCompleted || false,
+              lastPositionSeconds: existing?.lastPositionSeconds || 0,
+              timestamps: existing?.timestamps || file.timestamps || [],
+              notes: existing?.notes
+            };
+          });
+        }
       }
 
       show.updatedAt = new Date().toISOString();

@@ -1859,6 +1859,21 @@ app.post(['/api/podcasts/:id/refresh', '/api/audio-shows/:id/refresh'], async (r
   }
 });
 
+// Run auto-repair on startup after 2 seconds to restore any missing podcast episodes
+setTimeout(async () => {
+  try {
+    const shows = db.getAudioShows().filter((s: any) => s.showType === 'podcast');
+    for (const show of shows) {
+      if (!show.tracks || show.tracks.length <= 1 || !show.tracks.some((t: any) => t.audioUrl)) {
+        console.log(`[AutoRepair] Restoring full episode list for podcast "${show.title}"...`);
+        await refreshSinglePodcastInternal(show).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.warn('[AutoRepair] Error restoring podcast episodes:', err);
+  }
+}, 2000);
+
 // Periodic Automatic Background Refresh (Runs every 2 hours)
 setInterval(async () => {
   try {
@@ -1993,12 +2008,26 @@ app.post(['/api/podcasts/backup-telegram', '/api/audio-shows/backup-telegram'], 
       }
     });
 
-    show.tracks[trackIndex] = {
-      ...track,
-      fileId: newDriveItem.id
-    };
+    const latestShow = db.getAudioShowById(show.id) || show;
+    const currentTrackIdx = (latestShow.tracks || []).findIndex((t: any) => 
+      (track.id && t.id === track.id) || 
+      (t.audioUrl && track.audioUrl && t.audioUrl === track.audioUrl) ||
+      (t.title && track.title && t.title.toLowerCase().trim() === track.title.toLowerCase().trim())
+    );
 
-    const updatedShow = db.saveAudioShow(show);
+    if (currentTrackIdx >= 0) {
+      latestShow.tracks[currentTrackIdx] = {
+        ...latestShow.tracks[currentTrackIdx],
+        fileId: newDriveItem.id
+      };
+    } else {
+      latestShow.tracks.push({
+        ...track,
+        fileId: newDriveItem.id
+      });
+    }
+
+    const updatedShow = db.saveAudioShow(latestShow);
 
     activeUploadsMap.set(uploadId, {
       uploadId,
