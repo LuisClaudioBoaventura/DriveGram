@@ -39,7 +39,10 @@ import {
   Copy,
   ExternalLink,
   Radio,
-  Share2
+  Share2,
+  Shuffle,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import { Course, Lesson, CourseModule, DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 
@@ -142,6 +145,17 @@ export const CourseView: React.FC<CourseViewProps> = ({
     [course.modules[0]?.id || '']: true
   });
   const [isCinemaMode, setIsCinemaMode] = useState(false);
+  const [lessonViewMode, setLessonViewMode] = useState<'list' | 'grid'>('list');
+
+  const handlePlayRandomLesson = () => {
+    const allLessons = course.modules.flatMap(m => m.lessons);
+    const uncompleted = allLessons.filter(l => !l.isCompleted);
+    const pool = uncompleted.length > 0 ? uncompleted : allLessons;
+    if (pool.length > 0) {
+      const idx = Math.floor(Math.random() * pool.length);
+      onSelectLesson(pool[idx]);
+    }
+  };
 
   // Video current time for subtitles
   const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
@@ -1390,19 +1404,76 @@ export const CourseView: React.FC<CourseViewProps> = ({
         {/* Right: Quick Index Sidebar with Green Dots on Completed Lessons */}
         {!isCinemaMode && (
           <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface flex flex-col shrink-0">
-            <div className="p-4 border-b border-gray-200 dark:border-drive-darkBorder flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ListOrdered className="w-4 h-4 text-blue-500" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800 dark:text-gray-200">
-                  Índice do Curso
-                </h3>
+            <div className="p-3 border-b border-gray-200 dark:border-drive-darkBorder space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <ListOrdered className="w-4 h-4 text-blue-500" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800 dark:text-gray-200">
+                    Aulas ({course.modules.reduce((acc, m) => acc + m.lessons.length, 0)})
+                  </h3>
+                </div>
+
+                {/* View Mode Toggle: Lista vs Grade */}
+                <div className="flex items-center bg-gray-100 dark:bg-drive-darkBg p-0.5 rounded-lg border border-gray-200 dark:border-drive-darkBorder">
+                  <button
+                    onClick={() => setLessonViewMode('list')}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                      lessonViewMode === 'list'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                    }`}
+                    title="Visualizar em Lista"
+                  >
+                    <List className="w-3 h-3" />
+                    <span>Lista</span>
+                  </button>
+                  <button
+                    onClick={() => setLessonViewMode('grid')}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                      lessonViewMode === 'grid'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                    }`}
+                    title="Visualizar em Grade"
+                  >
+                    <LayoutGrid className="w-3 h-3" />
+                    <span>Grade</span>
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={handleAddNewModule}
-                className="flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                <Plus className="w-3.5 h-3.5" /> Módulo
-              </button>
+
+              {/* Action Buttons: Aleatório, Autoplay e + Módulo */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handlePlayRandomLesson}
+                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-900/50 hover:bg-amber-500/25 transition-all"
+                  title="Assistir aula aleatória"
+                >
+                  <Shuffle className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Aleatório</span>
+                </button>
+
+                <button
+                  onClick={() => setIsAutoPlayNext(!isAutoPlayNext)}
+                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                    isAutoPlayNext
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-400 dark:border-emerald-800'
+                      : 'bg-gray-100 dark:bg-drive-darkBg text-gray-500 border-gray-200 dark:border-drive-darkBorder hover:text-gray-800'
+                  }`}
+                  title={isAutoPlayNext ? 'Autoplay ativado (toca a próxima aula automaticamente)' : 'Autoplay desativado'}
+                >
+                  <Sparkles className={`w-3.5 h-3.5 ${isAutoPlayNext ? 'text-emerald-500' : ''}`} />
+                  <span>{isAutoPlayNext ? 'Autoplay: On' : 'Autoplay: Off'}</span>
+                </button>
+
+                <button
+                  onClick={handleAddNewModule}
+                  className="p-1.5 rounded-lg text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 hover:bg-blue-100 transition-all shrink-0"
+                  title="Adicionar Novo Módulo"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Modules and Lessons Accordion with Bolinha Verde Indicator */}
@@ -1477,7 +1548,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Lessons List with Drag & Drop Reordering */}
+                    {/* Lessons List or Grid with Drag & Drop Reordering */}
                     {isOpen && (
                       <div 
                         onDragOver={(e) => {
@@ -1499,7 +1570,9 @@ export const CourseView: React.FC<CourseViewProps> = ({
                             } catch (err) {}
                           }
                         }}
-                        className={`border-t border-gray-200/60 dark:border-drive-darkBorder divide-y divide-gray-100 dark:divide-drive-darkBorder/60 bg-white dark:bg-drive-darkSurface transition-colors ${
+                        className={`border-t border-gray-200/60 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface transition-colors ${
+                          lessonViewMode === 'grid' ? 'p-2 grid grid-cols-2 gap-2' : 'divide-y divide-gray-100 dark:divide-drive-darkBorder/60'
+                        } ${
                           dragOverModuleId === module.id ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''
                         }`}
                       >
@@ -1507,6 +1580,50 @@ export const CourseView: React.FC<CourseViewProps> = ({
                           const isActive = activeLesson?.id === lesson.id;
                           const isBeingDragged = draggedLessonId === lesson.id;
                           const isDragTarget = dragOverLessonId === lesson.id;
+
+                          if (lessonViewMode === 'grid') {
+                            return (
+                              <div
+                                key={lesson.id}
+                                onClick={() => onSelectLesson(lesson)}
+                                className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between select-none relative group ${
+                                  isActive
+                                    ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 shadow-sm font-bold'
+                                    : lesson.isCompleted
+                                    ? 'bg-gray-50/70 dark:bg-drive-darkBg/60 border-gray-200 dark:border-drive-darkBorder text-gray-500'
+                                    : 'bg-white dark:bg-drive-darkSurface border-gray-200 dark:border-drive-darkBorder hover:border-blue-400'
+                                }`}
+                              >
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-mono text-blue-500">
+                                      #{lesson.order || 1}
+                                    </span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onToggleCompletion(lesson.id);
+                                      }}
+                                      className="text-gray-400 hover:text-emerald-500"
+                                    >
+                                      {lesson.isCompleted ? (
+                                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500/20" />
+                                      ) : (
+                                        <Circle className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                  </div>
+                                  <h5 className={`text-xs line-clamp-2 leading-tight ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                                    {lesson.title}
+                                  </h5>
+                                </div>
+                                <div className="flex items-center justify-between pt-2 mt-1 border-t border-gray-100 dark:border-drive-darkBorder/40 text-[10px] text-gray-400">
+                                  <span>{lesson.duration || '10:00'}</span>
+                                  <Play className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity fill-current" />
+                                </div>
+                              </div>
+                            );
+                          }
 
                           return (
                             <div
