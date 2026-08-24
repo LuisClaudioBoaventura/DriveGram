@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   ArrowLeft, 
   Play, 
@@ -73,9 +73,11 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
   const [isAutoPlayNext, setIsAutoPlayNext] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
-  const [isCinemaMode, setIsCinemaMode] = useState<boolean>(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [nextEpisodeToPlay, setNextEpisodeToPlay] = useState<SeriesEpisode | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const activeEpisodeRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll active item in sidebar into view
@@ -85,22 +87,30 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
     }
   }, [playingEpisode?.id]);
 
-  // Keep playing episode updated if series seasons change
+  // Keep playing episode status updated if parent series data updates
   useEffect(() => {
     if (playingEpisode) {
       const refreshed = allEpisodes.find(e => e.id === playingEpisode.id);
-      if (refreshed && (refreshed.isCompleted !== playingEpisode.isCompleted || refreshed.title !== playingEpisode.title)) {
-        setPlayingEpisode(refreshed);
+      if (refreshed && refreshed.isCompleted !== playingEpisode.isCompleted) {
+        setPlayingEpisode(prev => prev && prev.id === refreshed.id ? { ...prev, isCompleted: refreshed.isCompleted } : prev);
       }
     }
-  }, [series, allEpisodes]);
+  }, [series]);
 
   const handleStartPlaying = (episode: SeriesEpisode) => {
+    setCountdown(null);
+    setNextEpisodeToPlay(null);
     setPlayingEpisode(episode);
+
+    // Sync selectedSeasonIdx with the episode's season
+    const sIdx = seasons.findIndex(s => s.episodes?.some(e => e.id === episode.id));
+    if (sIdx >= 0 && sIdx !== selectedSeasonIdx) {
+      setSelectedSeasonIdx(sIdx);
+    }
   };
 
   // Next episode finder (supports Shuffle / Random)
-  const getNextEpisode = (currentEp: SeriesEpisode): SeriesEpisode | null => {
+  const getNextEpisode = useCallback((currentEp: SeriesEpisode): SeriesEpisode | null => {
     if (isShuffle) {
       const candidates = allEpisodes.filter(e => e.id !== currentEp.id && !e.isCompleted);
       const pool = candidates.length > 0 ? candidates : allEpisodes.filter(e => e.id !== currentEp.id);
@@ -112,29 +122,114 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
     const flatIndex = allEpisodes.findIndex(e => e.id === currentEp.id);
     if (flatIndex >= 0 && flatIndex < allEpisodes.length - 1) {
       return allEpisodes[flatIndex + 1];
+    } else if (flatIndex === allEpisodes.length - 1 && allEpisodes.length > 1) {
+      // Loop back to start if at last episode
+      return allEpisodes[0];
     }
     return null;
-  };
+  }, [allEpisodes, isShuffle]);
 
   // Previous episode finder
-  const getPreviousEpisode = (currentEp: SeriesEpisode): SeriesEpisode | null => {
+  const getPreviousEpisode = useCallback((currentEp: SeriesEpisode): SeriesEpisode | null => {
     const flatIndex = allEpisodes.findIndex(e => e.id === currentEp.id);
     if (flatIndex > 0) {
       return allEpisodes[flatIndex - 1];
     }
     return null;
-  };
+  }, [allEpisodes]);
+
+  const handleEpisodeEnded = useCallback(() => {
+    if (!playingEpisode) return;
+    
+    // Mark current episode progress as completed
+    onUpdateEpisodeProgress(playingEpisode.id, 0, true);
+
+    if (isAutoPlayNext) {
+      const nextEp = getNextEpisode(playingEpisode);
+      if (nextEp) {
+        setNextEpisodeToPlay(nextEp);
+        setCountdown(3); // 3 seconds countdown
+      }
+    }
+  }, [playingEpisode, onUpdateEpisodeProgress, isAutoPlayNext, getNextEpisode]);
+
+  // Countdown timer handler for autoplay
+  useEffect(() => {
+    let timer: any;
+    if (countdown !== null && countdown > 0) {
+      timer = setTimeout(() => {
+        setCountdown(prev => (prev !== null && prev > 0 ? prev - 1 : null));
+      }, 1000);
+    } else if (countdown === 0) {
+      if (nextEpisodeToPlay) {
+        handleStartPlaying(nextEpisodeToPlay);
+      }
+      setCountdown(null);
+      setNextEpisodeToPlay(null);
+    }
+    return () => clearTimeout(timer);
+  }, [countdown, nextEpisodeToPlay]);
+
+  // YouTube IFrame Player message listener for autoplay
+  useEffect(() => {
+    const handleWindowMessage = (event: MessageEvent) => {
+      try {
+        let data = event.data;
+        if (typeof data === 'string') {
+          try {
+            data = JSON.parse(data);
+          } catch {
+            return;
+          }
+        }
+        if (!data || typeof data !== 'object') return;
+
+        // YouTube IFrame API messages:
+        // 1. onStateChange with info === 0 (YT.PlayerState.ENDED)
+        // 2. infoDelivery with info.playerState === 0
+        const isEnded = 
+          (data.event === 'onStateChange' && (data.info === 0 || data.info === '0')) ||
+          (data.event === 'infoDelivery' && (data.info?.playerState === 0 || data.info?.playerState === '0'));
+
+        if (isEnded) {
+          handleEpisodeEnded();
+        }
+      } catch (err) {}
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => {
+      window.removeEventListener('message', handleWindowMessage);
+    };
+  }, [handleEpisodeEnded]);
+
+  // Continuously register 'listening' to YouTube iframe so it sends stateChange postMessages
+  useEffect(() => {
+    if (!iframeRef.current) return;
+    const sendListening = () => {
+      try {
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ event: 'listening', id: playingEpisode?.id || 'yt-player' }),
+          '*'
+        );
+      } catch (e) {}
+    };
+
+    sendListening();
+    const interval = setInterval(sendListening, 1500);
+    return () => clearInterval(interval);
+  }, [playingEpisode?.id]);
 
   const handlePlayNext = () => {
     if (!playingEpisode) return;
     const next = getNextEpisode(playingEpisode);
-    if (next) setPlayingEpisode(next);
+    if (next) handleStartPlaying(next);
   };
 
   const handlePlayPrevious = () => {
     if (!playingEpisode) return;
     const prev = getPreviousEpisode(playingEpisode);
-    if (prev) setPlayingEpisode(prev);
+    if (prev) handleStartPlaying(prev);
   };
 
   const handlePlayRandom = () => {
@@ -144,21 +239,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
     const randomIndex = Math.floor(Math.random() * pool.length);
     const chosen = pool[randomIndex];
     setIsShuffle(true);
-    setPlayingEpisode(chosen);
-  };
-
-  const handleEpisodeEnded = () => {
-    if (!playingEpisode) return;
-    onUpdateEpisodeProgress(playingEpisode.id, 0, true);
-
-    if (isAutoPlayNext) {
-      const nextEp = getNextEpisode(playingEpisode);
-      if (nextEp) {
-        setTimeout(() => {
-          setPlayingEpisode(nextEp);
-        }, 1200);
-      }
-    }
+    handleStartPlaying(chosen);
   };
 
   const playingFile = playingEpisode?.fileId ? allFiles.find(f => f.id === playingEpisode.fileId) : null;
@@ -190,6 +271,16 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
     const epFile = ep.fileId ? allFiles.find(f => f.id === ep.fileId) : null;
     return epFile?.thumbnailUrl || series.coverImage || 'https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=800&auto=format&fit=crop&q=60';
   };
+
+  const embedOrigin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
+  const ytVideoId = playingEpisode ? getYouTubeVideoId(playingEpisode) : null;
+  const ytEmbedUrl = playingEpisode
+    ? ytVideoId
+      ? `https://www.youtube.com/embed/${ytVideoId}?autoplay=1&enablejsapi=1&origin=${embedOrigin}`
+      : playingEpisode.embedUrl?.includes('?')
+      ? `${playingEpisode.embedUrl}&autoplay=1&enablejsapi=1&origin=${embedOrigin}`
+      : `${playingEpisode.embedUrl}?autoplay=1&enablejsapi=1&origin=${embedOrigin}`
+    : '';
 
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-950 text-gray-100 overflow-hidden select-none font-sans">
@@ -306,16 +397,24 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   onEnded={handleEpisodeEnded}
                   className="w-full h-full object-contain"
                 />
-              ) : playingEpisode.embedUrl || (playingEpisode.videoUrl && (playingEpisode.videoUrl.includes('youtube.com') || playingEpisode.videoUrl.includes('youtu.be'))) ? (
+              ) : ytEmbedUrl ? (
                 <iframe
-                  src={
-                    playingEpisode.embedUrl ||
-                    `https://www.youtube.com/embed/${getYouTubeVideoId(playingEpisode) || ''}?autoplay=1&enablejsapi=1`
-                  }
+                  ref={iframeRef}
+                  key={playingEpisode.id}
+                  id="yt-player"
+                  src={ytEmbedUrl}
                   title={playingEpisode.title}
                   className="w-full h-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
+                  onLoad={() => {
+                    try {
+                      iframeRef.current?.contentWindow?.postMessage(
+                        JSON.stringify({ event: 'listening', id: 'yt-player' }),
+                        '*'
+                      );
+                    } catch (e) {}
+                  }}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center text-center p-8 text-gray-400">
@@ -339,6 +438,41 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   <Shuffle className="w-4 h-4" />
                   <span>Assistir Aleatório</span>
                 </button>
+              </div>
+            )}
+
+            {/* Autoplay Next Episode Countdown Overlay */}
+            {countdown !== null && nextEpisodeToPlay && (
+              <div className="absolute inset-0 z-40 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 space-y-4 animate-in fade-in duration-200">
+                <div className="w-14 h-14 rounded-full bg-purple-600/30 border border-purple-500/50 flex items-center justify-center text-purple-300 animate-pulse font-mono text-xl font-black">
+                  {countdown}
+                </div>
+                <div className="space-y-1 max-w-md">
+                  <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider">
+                    ⏭️ Próximo Episódio em {countdown}s
+                  </span>
+                  <h3 className="text-sm sm:text-base font-bold text-white line-clamp-2">
+                    {nextEpisodeToPlay.title}
+                  </h3>
+                </div>
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setCountdown(null);
+                      setNextEpisodeToPlay(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold transition-all border border-gray-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleStartPlaying(nextEpisodeToPlay)}
+                    className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition-all active:scale-95"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Tocar Agora</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
