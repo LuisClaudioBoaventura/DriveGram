@@ -279,7 +279,8 @@ export function useAudioShows() {
         durationSeconds: ep.durationSeconds || 0,
         audioUrl: ep.audioUrl,
         order: idx + 1,
-        trackNumber: idx + 1
+        trackNumber: idx + 1,
+        releaseDate: ep.releaseDate || ep.pubDate
       }));
 
       const fallbackShowData: Partial<AudioShow> = {

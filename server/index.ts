@@ -1598,7 +1598,8 @@ app.post('/api/audio-shows/import-podcast', async (req, res) => {
               durationSeconds,
               audioUrl: ep.episodeUrl || ep.previewUrl,
               order: index + 1,
-              trackNumber: index + 1
+              trackNumber: index + 1,
+              releaseDate: ep.releaseDate || ep.pubDate
             };
           });
         }

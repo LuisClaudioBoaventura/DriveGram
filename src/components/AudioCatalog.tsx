@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Headphones, 
   Play, 
@@ -18,9 +18,11 @@ import {
   Radio,
   ChevronLeft,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
 import { AudioShow, AudioTrack, FolderItem } from '../types/index.js';
+import { fetchAndParsePodcastRss } from '../utils/podcastRssParser.js';
 
 interface AudioCatalogProps {
   audioShows: AudioShow[];
@@ -40,12 +42,57 @@ interface RecentEpisodeItem {
   pubDateFormatted: string;
 }
 
+/**
+ * Robust parser for various podcast release date formats:
+ * - ISO 8601 ("2026-08-20T14:30:00Z")
+ * - RFC 2822 ("Wed, 19 Aug 2026 14:00:00 +0000" or "19 Aug 2026 14:00:00 GMT")
+ * - Brazilian ("19/08/2026")
+ * - Title regex matching
+ */
+function parseEpisodePublicationDate(track: AudioTrack): Date | null {
+  if (track.releaseDate) {
+    const raw = track.releaseDate.trim();
+    
+    // Direct Date parsing
+    const d1 = new Date(raw);
+    if (!isNaN(d1.getTime())) {
+      return d1;
+    }
+
+    // Clean RFC 2822 day prefixes (e.g. "Wed, ")
+    const cleaned = raw.replace(/^[a-zA-Z]+,s*/, '').trim();
+    const d2 = new Date(cleaned);
+    if (!isNaN(d2.getTime())) {
+      return d2;
+    }
+  }
+
+  // Regex check on title (e.g. "#123 - 20/08/2026" or "Episódio 2026-08-15")
+  if (track.title) {
+    const isoMatch = track.title.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const d = new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    const brMatch = track.title.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (brMatch) {
+      const d = new Date(`${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  return null;
+}
+
 function formatRelativeDate(date: Date): string {
   const now = new Date();
   const diffTime = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-  if (diffDays === 0) {
+  if (diffDays < 0) {
+    return 'Recente';
+  } else if (diffDays === 0) {
     return 'Hoje';
   } else if (diffDays === 1) {
     return 'Ontem';
@@ -71,8 +118,103 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   const [selectedType, setSelectedType] = useState<'all' | 'music_album' | 'podcast' | 'playlist'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const recentScrollRef = useRef<HTMLDivElement>(null);
+  const [isAutoSyncingDates, setIsAutoSyncingDates] = useState(false);
+
+  // ---------------- AUTO-HEAL DATES FOR PODCASTS WITHOUT RELEASE DATES ----------------
+  useEffect(() => {
+    const healPodcastsWithoutDates = async () => {
+      if (!onEditShow) return;
+
+      for (const show of audioShows) {
+        if (show.showType !== 'podcast' || !show.tracks || show.tracks.length === 0) continue;
+
+        // Check if any tracks lack releaseDate
+        const tracksWithoutDates = show.tracks.filter(t => !t.releaseDate);
+        if (tracksWithoutDates.length > 0 && show.tracks.length > 0) {
+          try {
+            // Strategy 1: Try iTunes lookup if numeric ID or show title
+            let updatedEpisodes: any[] = [];
+
+            // If show id is numeric iTunes ID or we can query by show title
+            const isItunesId = /^\d+$/.test(show.id.replace(/^itunes-/, ''));
+            if (isItunesId) {
+              const cleanId = show.id.replace(/^itunes-/, '');
+              const res = await fetch(`https://itunes.apple.com/lookup?id=${cleanId}&entity=podcastEpisode&limit=60`);
+              if (res.ok) {
+                const data = await res.json();
+                if (data.results && data.results.length > 1) {
+                  const itunesEpisodes = data.results.slice(1);
+                  const updatedTracks = show.tracks.map(t => {
+                    if (t.releaseDate) return t;
+                    const match = itunesEpisodes.find((ep: any) => 
+                      ep.trackName === t.title || 
+                      ep.episodeUrl === t.audioUrl ||
+                      ep.previewUrl === t.audioUrl
+                    );
+                    if (match && match.releaseDate) {
+                      return { ...t, releaseDate: match.releaseDate };
+                    }
+                    return t;
+                  });
+
+                  if (updatedTracks.some(t => t.releaseDate)) {
+                    await onEditShow({ ...show, tracks: updatedTracks });
+                    continue;
+                  }
+                }
+              }
+            }
+
+            // Strategy 2: If show description or genre or RSS available
+            // Check if we can search by podcast title to get feedUrl and release dates
+            const searchRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(show.title)}&media=podcast&entity=podcast&limit=3`);
+            if (searchRes.ok) {
+              const sData = await searchRes.json();
+              const foundPodcast = (sData.results || []).find((p: any) => 
+                p.collectionName?.toLowerCase().includes(show.title.toLowerCase()) || 
+                show.title.toLowerCase().includes(p.collectionName?.toLowerCase())
+              );
+
+              if (foundPodcast) {
+                // Fetch lookup episodes with releaseDate
+                const epRes = await fetch(`https://itunes.apple.com/lookup?id=${foundPodcast.collectionId}&entity=podcastEpisode&limit=60`);
+                if (epRes.ok) {
+                  const epData = await epRes.json();
+                  if (epData.results && epData.results.length > 1) {
+                    const itunesEps = epData.results.slice(1);
+                    const updatedTracks = show.tracks.map((t, idx) => {
+                      if (t.releaseDate) return t;
+                      const matchedEp = itunesEps.find((ep: any) => 
+                        ep.trackName?.trim().toLowerCase() === t.title.trim().toLowerCase() ||
+                        ep.episodeUrl === t.audioUrl ||
+                        ep.previewUrl === t.audioUrl
+                      ) || itunesEps[idx];
+
+                      if (matchedEp && matchedEp.releaseDate) {
+                        return { ...t, releaseDate: matchedEp.releaseDate };
+                      }
+                      return t;
+                    });
+
+                    if (updatedTracks.some(t => t.releaseDate)) {
+                      await onEditShow({ ...show, tracks: updatedTracks });
+                    }
+                  }
+                }
+              }
+            }
+          } catch (healErr) {
+            console.warn(`Could not auto-heal dates for podcast ${show.title}:`, healErr);
+          }
+        }
+      }
+    };
+
+    healPodcastsWithoutDates();
+  }, [audioShows.length]);
 
   // ---------------- GATHER RECENT EPISODES (LAST 2 MONTHS) ----------------
+  const now = new Date();
   const twoMonthsAgo = new Date();
   twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
   const twoMonthsAgoMs = twoMonthsAgo.getTime();
@@ -82,22 +224,11 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   audioShows.forEach(show => {
     if (show.showType === 'podcast' || show.tracks?.some(t => t.releaseDate)) {
       (show.tracks || []).forEach((track, trackIndex) => {
-        let epDate: Date | null = null;
-        if (track.releaseDate) {
-          const parsed = new Date(track.releaseDate);
-          if (!isNaN(parsed.getTime())) {
-            epDate = parsed;
-          }
-        }
-
-        if (!epDate && show.createdAt) {
-          const parsed = new Date(show.createdAt);
-          if (!isNaN(parsed.getTime())) {
-            epDate = parsed;
-          }
-        }
+        // Parse the genuine publication date
+        const epDate = parseEpisodePublicationDate(track);
 
         if (epDate) {
+          // Strictly filter only episodes within the last 2 months
           if (epDate.getTime() >= twoMonthsAgoMs) {
             recentEpisodes.push({
               show,
@@ -112,7 +243,7 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
     }
   });
 
-  // Sort sequentially by publication date descending (newest to oldest)
+  // Sort STRICTLY by real publication date descending (newest to oldest across all podcasts)
   recentEpisodes.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
 
   const handleScrollRecent = (direction: 'left' | 'right') => {
@@ -202,7 +333,7 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
         </div>
       </div>
 
-      {/* ================= CARD: NOVOS EPISÓDIOS (ÚLTIMOS 2 MESES) ================= */}
+      {/* ================= CARD: NOVOS EPISÓDIOS (ORDEM REAL DE PUBLICAÇÃO) ================= */}
       {recentEpisodes.length > 0 && (
         <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 via-emerald-500/5 to-transparent border border-amber-500/20 dark:border-amber-500/15 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
@@ -216,11 +347,11 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
                     Novos Episódios
                   </h2>
                   <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 text-[10px] font-bold tracking-wider uppercase">
-                    Últimos 2 Meses
+                    Ordem Real de Publicação
                   </span>
                 </div>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  {recentEpisodes.length} {recentEpisodes.length === 1 ? 'episódio recente lançado' : 'episódios recentes lançados'} em ordem cronológica
+                  {recentEpisodes.length} {recentEpisodes.length === 1 ? 'episódio lançado nos últimos 2 meses' : 'episódios lançados nos últimos 2 meses'} em ordem cronológica de publicação
                 </p>
               </div>
             </div>
