@@ -19,7 +19,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  RefreshCw
+  RefreshCw,
+  CloudUpload,
+  Loader2
 } from 'lucide-react';
 import { AudioShow, AudioTrack, FolderItem } from '../types/index.js';
 import { fetchAndParsePodcastRss } from '../utils/podcastRssParser.js';
@@ -138,9 +140,50 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   const [selectedType, setSelectedType] = useState<'all' | 'music_album' | 'podcast' | 'playlist'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isRefreshingPodcasts, setIsRefreshingPodcasts] = useState(false);
+  const [backingUpTrackIds, setBackingUpTrackIds] = useState<string[]>([]);
   const [syncFeedbackMessage, setSyncFeedbackMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
   const recentScrollRef = useRef<HTMLDivElement>(null);
   const hasAutoSyncedRef = useRef(false);
+
+  const handleBackupRecentEpisode = async (item: RecentEpisodeItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!item.track || item.track.fileId || backingUpTrackIds.includes(item.track.id)) return;
+
+    setBackingUpTrackIds(prev => [...prev, item.track.id]);
+    try {
+      const res = await fetch('/api/podcasts/backup-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          showId: item.show.id,
+          trackId: item.track.id,
+          audioUrl: item.track.audioUrl,
+          title: item.track.title,
+          folderId: item.show.folderId
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.updatedShow && onEditShow) {
+          onEditShow(data.updatedShow);
+        }
+        setSyncFeedbackMessage({
+          text: `🎉 Episódio "${item.track.title}" salvo no Telegram e pasta criada no Meu Drive!`,
+          type: 'success'
+        });
+        setTimeout(() => setSyncFeedbackMessage(null), 6000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Erro ao realizar backup do episódio.');
+      }
+    } catch (err) {
+      console.error('Error backing up episode:', err);
+      alert('Falha ao conectar com o serviço de backup.');
+    } finally {
+      setBackingUpTrackIds(prev => prev.filter(id => id !== item.track.id));
+    }
+  };
 
   const totalShows = audioShows.length;
   const totalTracks = audioShows.reduce((acc, s) => acc + (s.tracks?.length || 0), 0);
@@ -450,11 +493,26 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
                         <span>{item.pubDateFormatted}</span>
                       </span>
 
-                      {item.track.fileId && (
-                        <span className="flex items-center gap-1 text-sky-500 font-bold text-[10px]" title="Salvo no Telegram">
-                          <Send className="w-2.5 h-2.5" />
+                      {item.track.fileId ? (
+                        <span className="flex items-center gap-1 text-sky-500 font-bold text-[10px]" title="Salvo no Telegram e no Meu Drive">
+                          <Send className="w-3 h-3" />
+                          <span className="hidden sm:inline">Salvo</span>
                         </span>
-                      )}
+                      ) : item.track.audioUrl ? (
+                        <button
+                          onClick={(e) => handleBackupRecentEpisode(item, e)}
+                          disabled={backingUpTrackIds.includes(item.track.id)}
+                          className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-[10px] transition-colors active:scale-95 disabled:opacity-50"
+                          title="Salvar no Telegram (cria pasta no Meu Drive)"
+                        >
+                          {backingUpTrackIds.includes(item.track.id) ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <CloudUpload className="w-3 h-3" />
+                          )}
+                          <span className="hidden sm:inline">{backingUpTrackIds.includes(item.track.id) ? 'Salvando...' : 'Backup'}</span>
+                        </button>
+                      ) : null}
                     </div>
 
                     <div className="flex items-center gap-1.5">

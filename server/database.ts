@@ -1955,6 +1955,57 @@ class Database {
     return false;
   }
 
+  public getOrCreatePodcastFolder(showIdOrShow: string | AudioShow): FolderItem {
+    const show = typeof showIdOrShow === 'string' ? this.getAudioShowById(showIdOrShow) : showIdOrShow;
+    const allFolders = this.data.folders.filter(f => !f.isTrash);
+    
+    // 1. If show already has a valid folderId in database that exists in folders, return it
+    if (show?.folderId) {
+      const existing = allFolders.find(f => f.id === show.folderId);
+      if (existing) return existing;
+    }
+
+    // 2. Find or create root library folder "Musicas e Podcasts" / "Podcasts" in "Meu Drive"
+    const rootAliases = ['musicas e podcasts', 'músicas e podcasts', 'musicas & podcasts', 'músicas & podcasts', 'podcasts', 'músicas', 'musicas'];
+    let podcastsRoot = allFolders.find(f => {
+      if (f.parentId) return false;
+      const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+      return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
+    });
+
+    if (!podcastsRoot) {
+      podcastsRoot = this.createFolder('🎙️ Músicas & Podcasts', null, '#10b981', 'Biblioteca de Músicas e Podcasts');
+    }
+
+    const showTitle = show?.title?.trim() || 'Podcast';
+    const folderName = `🎙️ ${showTitle}`;
+
+    // 3. Find if a subfolder for this podcast already exists under podcastsRoot or in root
+    let podcastFolder = allFolders.find(f => 
+      f.parentId === podcastsRoot.id && 
+      (f.name.toLowerCase().trim() === folderName.toLowerCase().trim() || f.name.toLowerCase().trim() === showTitle.toLowerCase().trim())
+    );
+
+    if (!podcastFolder) {
+      podcastFolder = allFolders.find(f => 
+        !f.parentId && 
+        (f.name.toLowerCase().trim() === folderName.toLowerCase().trim() || f.name.toLowerCase().trim() === showTitle.toLowerCase().trim())
+      );
+    }
+
+    if (!podcastFolder) {
+      podcastFolder = this.createFolder(folderName, podcastsRoot.id, '#10b981', `Episódios salvos do podcast ${showTitle}`);
+    }
+
+    // 4. Link folderId to the show in database
+    if (show && show.id) {
+      show.folderId = podcastFolder.id;
+      this.saveAudioShow(show);
+    }
+
+    return podcastFolder;
+  }
+
   public getAudioCategories(): string[] {
     return this.data.audioCategories || initialDemoData.audioCategories;
   }

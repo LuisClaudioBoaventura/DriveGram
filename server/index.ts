@@ -1632,15 +1632,8 @@ app.post('/api/audio-shows/import-podcast', async (req, res) => {
 
     let finalFolderId = folderId;
     if (!finalFolderId) {
-      const allFolders = db.getFolders();
-      const podcastsRoot = allFolders.find(f => !f.parentId && f.name.toLowerCase().includes('podcast'));
-      
-      const newFolder = db.createFolder(
-        `🎙️ ${title.trim()}`,
-        podcastsRoot ? podcastsRoot.id : null,
-        `Podcast: ${title.trim()}`
-      );
-      finalFolderId = newFolder.id;
+      const podcastFolder = db.getOrCreatePodcastFolder({ title: title.trim(), showType: 'podcast' } as any);
+      finalFolderId = podcastFolder.id;
     }
 
     const newShow = db.saveAudioShow({
@@ -1924,14 +1917,9 @@ app.post('/api/podcasts/backup-telegram', async (req, res) => {
     fs.writeFileSync(tempFilePath, buffer);
     const fileSize = buffer.length;
 
-    let targetFolderId = folderId || show.folderId;
-    if (!targetFolderId) {
-      const allFolders = db.getFolders();
-      const podcastsRoot = allFolders.find(f => !f.parentId && f.name.toLowerCase().includes('podcast'));
-      const newFolder = db.createFolder(`🎙️ ${show.title}`, podcastsRoot ? podcastsRoot.id : null);
-      targetFolderId = newFolder.id;
-      show.folderId = targetFolderId;
-    }
+    // Ensure podcast folder in "Meu Drive" exists
+    const targetFolder = db.getOrCreatePodcastFolder(show);
+    const targetFolderId = targetFolder.id;
 
     const uploadId = `backup-${trackId}-${Date.now()}`;
     activeUploadsMap.set(uploadId, {
@@ -2036,14 +2024,9 @@ app.post('/api/podcasts/backup-all-telegram', async (req, res) => {
       fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     }
 
-    let targetFolderId = show.folderId;
-    if (!targetFolderId) {
-      const allFolders = db.getFolders();
-      const podcastsRoot = allFolders.find(f => !f.parentId && f.name.toLowerCase().includes('podcast'));
-      const newFolder = db.createFolder(`🎙️ ${show.title}`, podcastsRoot ? podcastsRoot.id : null);
-      targetFolderId = newFolder.id;
-      show.folderId = targetFolderId;
-    }
+    // Ensure podcast folder in "Meu Drive" exists
+    const targetFolder = db.getOrCreatePodcastFolder(show);
+    const targetFolderId = targetFolder.id;
 
     let backedUpCount = 0;
 
