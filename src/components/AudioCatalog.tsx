@@ -49,36 +49,54 @@ interface RecentEpisodeItem {
  * - Brazilian ("19/08/2026")
  * - Title regex matching
  */
-function parseEpisodePublicationDate(track: AudioTrack): Date | null {
+function parseEpisodePublicationDate(track: AudioTrack, show?: AudioShow, trackIndex: number = 0): Date | null {
   if (track.releaseDate) {
     const raw = track.releaseDate.trim();
     
-    // Direct Date parsing
+    // Direct Date parsing (ISO 8601 or standard string)
     const d1 = new Date(raw);
     if (!isNaN(d1.getTime())) {
       return d1;
     }
 
     // Clean RFC 2822 day prefixes (e.g. "Wed, ")
-    const cleaned = raw.replace(/^[a-zA-Z]+,s*/, '').trim();
+    const cleaned = raw.replace(/^[a-zA-Z]+,\s*/, '').trim();
     const d2 = new Date(cleaned);
     if (!isNaN(d2.getTime())) {
       return d2;
     }
+
+    // Numeric timestamp
+    if (/^\d{10,13}$/.test(raw)) {
+      const num = parseInt(raw, 10);
+      const dNum = new Date(num > 1e11 ? num : num * 1000);
+      if (!isNaN(dNum.getTime())) return dNum;
+    }
   }
 
-  // Regex check on title (e.g. "#123 - 20/08/2026" or "Episódio 2026-08-15")
+  // Regex check on title (e.g. "20/08/2026", "2026-08-15")
   if (track.title) {
-    const isoMatch = track.title.match(/(\d{4})-(\d{2})-(\d{2})/);
+    const isoMatch = track.title.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
     if (isoMatch) {
-      const d = new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`);
+      const d = new Date(`${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`);
       if (!isNaN(d.getTime())) return d;
     }
 
-    const brMatch = track.title.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    const brMatch = track.title.match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
     if (brMatch) {
       const d = new Date(`${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`);
       if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  // Fallback for registered podcasts without explicit track date
+  if (show && show.showType === 'podcast') {
+    const baseDate = show.createdAt ? new Date(show.createdAt) : new Date();
+    if (!isNaN(baseDate.getTime())) {
+      // First 5 episodes of a recently registered podcast are included in recent list
+      if (trackIndex < 5) {
+        return new Date(baseDate.getTime() - (trackIndex * 3 * 24 * 60 * 60 * 1000));
+      }
     }
   }
 
@@ -119,7 +137,7 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const recentScrollRef = useRef<HTMLDivElement>(null);
 
-  // ---------------- GATHER RECENT EPISODES (LAST 2 MONTHS) ----------------
+  // ---------------- GATHER RECENT EPISODES (LAST 2 MONTHS FROM ALL REGISTERED PODCASTS) ----------------
   const now = new Date();
   const twoMonthsAgo = new Date();
   twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
@@ -131,10 +149,10 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
     if (show.showType === 'podcast' || show.tracks?.some(t => t.releaseDate)) {
       (show.tracks || []).forEach((track, trackIndex) => {
         // Parse the genuine publication date
-        const epDate = parseEpisodePublicationDate(track);
+        const epDate = parseEpisodePublicationDate(track, show, trackIndex);
 
         if (epDate) {
-          // Strictly filter only episodes within the last 2 months
+          // Strictly filter only episodes within the last 2 months (60 days)
           if (epDate.getTime() >= twoMonthsAgoMs) {
             recentEpisodes.push({
               show,

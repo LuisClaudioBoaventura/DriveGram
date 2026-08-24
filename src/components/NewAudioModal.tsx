@@ -341,8 +341,10 @@ export const NewAudioModal: React.FC<NewAudioModalProps> = ({
                 const secs = durationSeconds % 60;
                 const durationStr = durationSeconds > 0 ? `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : '45:00';
 
+                const uniqueId = `ep-${index + 1}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+
                 return {
-                  id: `ep-${ep.trackId || Date.now() + '-' + index}`,
+                  id: uniqueId,
                   title: ep.trackName || `Episódio ${index + 1}`,
                   artist: podcast.host || podcast.artist,
                   duration: durationStr,
