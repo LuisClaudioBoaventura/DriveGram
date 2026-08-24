@@ -32,6 +32,7 @@ interface AudioCatalogProps {
   onOpenNewModal: () => void;
   onEditShow?: (show: AudioShow) => void;
   onDeleteShow?: (id: string) => void;
+  onRefreshPodcasts?: () => Promise<{ success: boolean; totalNewEpisodes: number; refreshedCount: number }>;
 }
 
 interface RecentEpisodeItem {
@@ -130,12 +131,66 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   onSelectShow,
   onOpenNewModal,
   onEditShow,
-  onDeleteShow
+  onDeleteShow,
+  onRefreshPodcasts
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'music_album' | 'podcast' | 'playlist'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [isRefreshingPodcasts, setIsRefreshingPodcasts] = useState(false);
+  const [syncFeedbackMessage, setSyncFeedbackMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
   const recentScrollRef = useRef<HTMLDivElement>(null);
+  const hasAutoSyncedRef = useRef(false);
+
+  const totalShows = audioShows.length;
+  const totalTracks = audioShows.reduce((acc, s) => acc + (s.tracks?.length || 0), 0);
+  const totalAlbums = audioShows.filter(s => s.showType === 'music_album').length;
+  const totalPodcasts = audioShows.filter(s => s.showType === 'podcast').length;
+
+  // ---------------- SILENT BACKGROUND AUTO-SYNC ON MOUNT ----------------
+  useEffect(() => {
+    if (hasAutoSyncedRef.current || !onRefreshPodcasts || totalPodcasts === 0) return;
+    hasAutoSyncedRef.current = true;
+
+    // Trigger auto-sync silently in the background
+    onRefreshPodcasts().then(res => {
+      if (res.success && res.totalNewEpisodes > 0) {
+        setSyncFeedbackMessage({
+          text: `🎉 Auto-Sync: ${res.totalNewEpisodes} novos episódios foram baixados e adicionados aos seus podcasts!`,
+          type: 'success'
+        });
+        setTimeout(() => setSyncFeedbackMessage(null), 8000);
+      }
+    }).catch(() => {});
+  }, [totalPodcasts, onRefreshPodcasts]);
+
+  const handleManualRefreshPodcasts = async () => {
+    if (isRefreshingPodcasts || !onRefreshPodcasts) return;
+    setIsRefreshingPodcasts(true);
+    setSyncFeedbackMessage(null);
+
+    try {
+      const res = await onRefreshPodcasts();
+      if (res.success) {
+        if (res.totalNewEpisodes > 0) {
+          setSyncFeedbackMessage({
+            text: `🎉 Sincronização concluída! ${res.totalNewEpisodes} novos episódios encontrados em ${res.refreshedCount} podcasts.`,
+            type: 'success'
+          });
+        } else {
+          setSyncFeedbackMessage({
+            text: `✅ Todos os ${res.refreshedCount} podcasts cadastrados já estão 100% atualizados.`,
+            type: 'info'
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Error refreshing podcasts:', e);
+    } finally {
+      setIsRefreshingPodcasts(false);
+      setTimeout(() => setSyncFeedbackMessage(null), 7000);
+    }
+  };
 
   // ---------------- GATHER RECENT EPISODES (LAST 2 MONTHS FROM ALL REGISTERED PODCASTS) ----------------
   const now = new Date();
@@ -190,13 +245,8 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
     return matchesSearch && matchesType && matchesCat;
   });
 
-  const totalShows = audioShows.length;
-  const totalTracks = audioShows.reduce((acc, s) => acc + (s.tracks?.length || 0), 0);
-  const totalAlbums = audioShows.filter(s => s.showType === 'music_album').length;
-  const totalPodcasts = audioShows.filter(s => s.showType === 'podcast').length;
-
   return (
-    <div className="w-full flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-4 sm:p-6 space-y-6">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 animate-in fade-in duration-200">
       {/* Standardized Hero Banner */}
       <div className="rounded-3xl bg-gradient-to-r from-emerald-800 via-teal-900 to-slate-900 p-6 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-emerald-700/40 shrink-0">
         <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
@@ -215,7 +265,7 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
           </h1>
 
           <p className="text-xs sm:text-sm text-emerald-200/90 leading-relaxed">
-            Ouça suas músicas, discografias completas e podcasts favoritos com reprodutor de áudio dedicado, streaming online e backup direto na nuvem Telegram.
+            Ouça suas músicas, discografias completas e podcasts favoritos com reprodutor de áudio dedicado, streaming online, atualização automática de episódios e backup direto no Telegram.
           </p>
 
           <div className="pt-2 flex flex-wrap items-center gap-3">
@@ -226,6 +276,18 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
               <Plus className="w-4 h-4 text-emerald-600" />
               <span>Adicionar Álbum / Podcast</span>
             </button>
+
+            {totalPodcasts > 0 && onRefreshPodcasts && (
+              <button
+                onClick={handleManualRefreshPodcasts}
+                disabled={isRefreshingPodcasts}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-700/50 hover:bg-emerald-600/70 text-white border border-emerald-500/40 text-xs font-bold shadow-md backdrop-blur-md transition-all active:scale-95 disabled:opacity-50"
+                title="Sincronizar e buscar novos episódios em todos os podcasts cadastrados"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingPodcasts ? 'animate-spin text-amber-300' : 'text-emerald-300'}`} />
+                <span>{isRefreshingPodcasts ? 'Sincronizando...' : 'Atualizar Podcasts'}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -257,31 +319,66 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
         </div>
       </div>
 
+      {/* Sync Feedback Notification Banner */}
+      {syncFeedbackMessage && (
+        <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${
+          syncFeedbackMessage.type === 'success' 
+            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/40 text-emerald-800 dark:text-emerald-300 shadow-sm'
+            : 'bg-blue-50 dark:bg-blue-950/40 border-blue-500/40 text-blue-800 dark:text-blue-300 shadow-sm'
+        }`}>
+          <div className="flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 shrink-0 text-emerald-500 animate-spin" />
+            <span>{syncFeedbackMessage.text}</span>
+          </div>
+          <button
+            onClick={() => setSyncFeedbackMessage(null)}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs font-bold px-2 py-1 rounded-lg"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ================= CARD: NOVOS EPISÓDIOS (ORDEM REAL DE PUBLICAÇÃO) ================= */}
       {recentEpisodes.length > 0 && (
         <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 via-emerald-500/5 to-transparent border border-amber-500/20 dark:border-amber-500/15 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center shadow-inner">
                 <Sparkles className="w-5 h-5 animate-pulse" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-sm sm:text-base font-black text-gray-900 dark:text-gray-100">
                     Novos Episódios
                   </h2>
                   <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 text-[10px] font-bold tracking-wider uppercase">
-                    Ordem Real de Publicação
+                    Últimos 2 Meses
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+                    Auto-Sync Ativo
                   </span>
                 </div>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  {recentEpisodes.length} {recentEpisodes.length === 1 ? 'episódio lançado nos últimos 2 meses' : 'episódios lançados nos últimos 2 meses'} em ordem cronológica de publicação
+                  {recentEpisodes.length} {recentEpisodes.length === 1 ? 'episódio lançado' : 'episódios lançados'} em ordem cronológica de publicação ({totalPodcasts} {totalPodcasts === 1 ? 'podcast monitorado' : 'podcasts monitorados'})
                 </p>
               </div>
             </div>
 
-            {/* Carousel Scroll Buttons */}
-            <div className="flex items-center gap-1.5">
+            {/* Carousel Scroll Buttons & Quick Refresh */}
+            <div className="flex items-center gap-2">
+              {onRefreshPodcasts && (
+                <button
+                  onClick={handleManualRefreshPodcasts}
+                  disabled={isRefreshingPodcasts}
+                  className="p-2 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:border-amber-500 text-gray-600 dark:text-gray-300 hover:text-amber-500 shadow-xs transition-all active:scale-95 disabled:opacity-50"
+                  title="Verificar novos episódios agora"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshingPodcasts ? 'animate-spin text-amber-500' : ''}`} />
+                </button>
+              )}
+
               <button
                 onClick={() => handleScrollRecent('left')}
                 className="p-2 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:border-amber-500 text-gray-600 dark:text-gray-300 hover:text-amber-500 shadow-xs transition-all active:scale-95"

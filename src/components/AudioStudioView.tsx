@@ -35,7 +35,8 @@ import {
   CloudDownload,
   CloudUpload,
   Loader2,
-  ShieldCheck
+  ShieldCheck,
+  RefreshCw
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem, VideoTimestamp } from '../types/index.js';
 
@@ -49,6 +50,7 @@ interface AudioStudioViewProps {
   onUpdateTrackProgress: (trackId: string, seconds: number, isCompleted?: boolean) => Promise<void>;
   onOpenEditModal?: () => void;
   initialTrackIndex?: number;
+  onRefreshSinglePodcast?: (showId: string) => Promise<{ success: boolean; newEpisodesCount: number; show?: any }>;
 }
 
 export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
@@ -60,7 +62,8 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   onToggleTrackCompletion,
   onUpdateTrackProgress,
   onOpenEditModal,
-  initialTrackIndex
+  initialTrackIndex,
+  onRefreshSinglePodcast
 }) => {
   const [currentTrackIndex, setCurrentTrackIndex] = useState(initialTrackIndex !== undefined ? initialTrackIndex : 0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -77,6 +80,9 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const [backingUpTrackIds, setBackingUpTrackIds] = useState<string[]>([]);
   const [isBackingUpAll, setIsBackingUpAll] = useState<boolean>(false);
   const [backupSuccessMessage, setBackupSuccessMessage] = useState<string | null>(null);
+
+  // Podcast Refresh State
+  const [isRefreshingPodcast, setIsRefreshingPodcast] = useState<boolean>(false);
 
   // Sleep Timer state
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
@@ -989,6 +995,30 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               </div>
               
               <div className="flex items-center gap-1">
+                {audioShow.showType === 'podcast' && onRefreshSinglePodcast && (
+                  <button
+                    onClick={async () => {
+                      if (isRefreshingPodcast) return;
+                      setIsRefreshingPodcast(true);
+                      try {
+                        const res = await onRefreshSinglePodcast(audioShow.id);
+                        if (res.success && res.newEpisodesCount > 0) {
+                          setBackupSuccessMessage(`🎉 ${res.newEpisodesCount} novos episódios encontrados!`);
+                          setTimeout(() => setBackupSuccessMessage(null), 5000);
+                        }
+                      } finally {
+                        setIsRefreshingPodcast(false);
+                      }
+                    }}
+                    disabled={isRefreshingPodcast}
+                    className="p-1 px-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center gap-1 transition-colors disabled:opacity-50"
+                    title="Atualizar episódios do podcast agora"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isRefreshingPodcast ? 'animate-spin text-amber-400' : ''}`} />
+                    <span>{isRefreshingPodcast ? 'Atualizando...' : 'Atualizar Feed'}</span>
+                  </button>
+                )}
+
                 {hasUnsavedTracks && (
                   <button
                     onClick={handleBackupAllToTelegram}

@@ -1925,6 +1925,9 @@ class Database {
       category: audioData.category || 'Álbuns de Música',
       genre: audioData.genre,
       folderId: audioData.folderId,
+      feedUrl: audioData.feedUrl,
+      podcastId: audioData.podcastId,
+      lastSyncedAt: audioData.lastSyncedAt || new Date().toISOString(),
       tracks: audioData.tracks || [],
       createdAt: audioData.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()

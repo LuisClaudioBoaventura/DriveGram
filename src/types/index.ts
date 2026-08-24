@@ -378,6 +378,9 @@ export interface AudioShow {
   category?: string; // Rock, Pop, Tecnologia, Notícias, etc.
   genre?: string;
   folderId?: string;
+  feedUrl?: string; // RSS Feed URL para sincronização automática
+  podcastId?: string; // iTunes ID para busca e atualização
+  lastSyncedAt?: string; // Data/Hora da última sincronização de episódios
   tracks: AudioTrack[];
   createdAt: string;
   updatedAt: string;

@@ -1653,6 +1653,9 @@ app.post('/api/audio-shows/import-podcast', async (req, res) => {
       description: description || '',
       coverImage: coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
       folderId: finalFolderId,
+      feedUrl: feedUrl || undefined,
+      podcastId: podcastId ? String(podcastId) : undefined,
+      lastSyncedAt: new Date().toISOString(),
       tracks: episodes
     });
 
@@ -1662,6 +1665,217 @@ app.post('/api/audio-shows/import-podcast', async (req, res) => {
     res.status(500).json({ error: error.message || 'Erro ao importar podcast' });
   }
 });
+
+// ---------------- ATUALIZAÇÃO AUTOMÁTICA DE PODCASTS ----------------
+async function refreshSinglePodcastInternal(show: any): Promise<{ show: any; newEpisodesCount: number }> {
+  if (show.showType !== 'podcast') return { show, newEpisodesCount: 0 };
+
+  let fetchedEpisodes: any[] = [];
+  let feedUrlToUse = show.feedUrl;
+
+  // Strategy 1: If show has feedUrl, fetch latest RSS directly
+  if (feedUrlToUse) {
+    try {
+      const feedRes = await fetch(feedUrlToUse, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
+          'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+        }
+      });
+      if (feedRes.ok) {
+        const xml = await feedRes.text();
+        const parsed = parsePodcastRssXml(xml);
+        if (parsed.episodes && parsed.episodes.length > 0) {
+          fetchedEpisodes = parsed.episodes;
+          if (parsed.coverImage && (!show.coverImage || show.coverImage.includes('unsplash'))) {
+            show.coverImage = parsed.coverImage;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[AutoSync] RSS fetch failed for podcast "${show.title}":`, e);
+    }
+  }
+
+  // Strategy 2: If no feedUrl or RSS failed, try iTunes lookup
+  if (fetchedEpisodes.length === 0) {
+    let cleanItunesId = show.podcastId || (/^\d+$/.test(show.id.replace(/^itunes-/, '')) ? show.id.replace(/^itunes-/, '') : null);
+
+    if (!cleanItunesId && show.title) {
+      try {
+        const searchRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(show.title)}&media=podcast&entity=podcast&limit=1`);
+        if (searchRes.ok) {
+          const sData: any = await searchRes.json();
+          if (sData.results && sData.results.length > 0) {
+            cleanItunesId = sData.results[0].collectionId ? String(sData.results[0].collectionId) : null;
+            if (sData.results[0].feedUrl && !show.feedUrl) {
+              show.feedUrl = sData.results[0].feedUrl;
+              feedUrlToUse = sData.results[0].feedUrl;
+            }
+          }
+        }
+      } catch (searchErr) {
+        console.warn(`[AutoSync] iTunes search failed for podcast "${show.title}":`, searchErr);
+      }
+    }
+
+    if (cleanItunesId) {
+      try {
+        const lookupUrl = `https://itunes.apple.com/lookup?id=${cleanItunesId}&entity=podcastEpisode&limit=100`;
+        const res = await fetch(lookupUrl);
+        if (res.ok) {
+          const data: any = await res.json();
+          if (data.results && data.results.length > 1) {
+            if (data.results[0]?.feedUrl && !show.feedUrl) {
+              show.feedUrl = data.results[0].feedUrl;
+            }
+            fetchedEpisodes = data.results.slice(1).map((ep: any, index: number) => {
+              const durationSeconds = ep.trackTimeMillis ? Math.round(ep.trackTimeMillis / 1000) : 0;
+              const mins = Math.floor(durationSeconds / 60);
+              const secs = durationSeconds % 60;
+              const durationStr = durationSeconds > 0 ? `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : '45:00';
+              const uniqueId = `ep-${index + 1}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+
+              return {
+                id: uniqueId,
+                title: ep.trackName || `Episódio ${index + 1}`,
+                artist: show.host || show.artist,
+                duration: durationStr,
+                durationSeconds,
+                audioUrl: ep.episodeUrl || ep.previewUrl,
+                order: index + 1,
+                trackNumber: index + 1,
+                releaseDate: ep.releaseDate || ep.pubDate,
+                description: ep.description || ''
+              };
+            });
+          }
+        }
+      } catch (lookupErr) {
+        console.warn(`[AutoSync] iTunes lookup failed for podcast "${show.title}":`, lookupErr);
+      }
+    }
+  }
+
+  if (fetchedEpisodes.length === 0) {
+    show.lastSyncedAt = new Date().toISOString();
+    return { show: db.saveAudioShow(show), newEpisodesCount: 0 };
+  }
+
+  // Merge new episodes with existing tracks without losing saved metadata/completion/telegram backups
+  const existingTracks = show.tracks || [];
+  const existingTrackKeys = new Set(
+    existingTracks.map((t: any) => (t.audioUrl || t.title.toLowerCase().trim()))
+  );
+
+  let newEpisodesCount = 0;
+  const newTracksToAdd: any[] = [];
+
+  for (const ep of fetchedEpisodes) {
+    const key = (ep.audioUrl || ep.title.toLowerCase().trim());
+    if (!existingTrackKeys.has(key)) {
+      newTracksToAdd.push({
+        id: ep.id || `ep-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        title: ep.title,
+        artist: ep.artist || show.artist || show.host,
+        duration: ep.duration,
+        durationSeconds: ep.durationSeconds,
+        audioUrl: ep.audioUrl,
+        order: 0,
+        trackNumber: 0,
+        releaseDate: ep.releaseDate,
+        description: ep.description
+      });
+      existingTrackKeys.add(key);
+      newEpisodesCount++;
+    } else {
+      // Update releaseDate or duration if it was missing in existing track
+      const existing = existingTracks.find((t: any) => (t.audioUrl && t.audioUrl === ep.audioUrl) || t.title.toLowerCase().trim() === ep.title.toLowerCase().trim());
+      if (existing) {
+        if (!existing.releaseDate && ep.releaseDate) existing.releaseDate = ep.releaseDate;
+        if (!existing.duration && ep.duration) existing.duration = ep.duration;
+        if (!existing.durationSeconds && ep.durationSeconds) existing.durationSeconds = ep.durationSeconds;
+      }
+    }
+  }
+
+  // Combine: newly fetched episodes first, then existing tracks
+  const combinedTracks = [...newTracksToAdd, ...existingTracks].map((t: any, idx: number) => ({
+    ...t,
+    order: idx + 1,
+    trackNumber: idx + 1
+  }));
+
+  show.tracks = combinedTracks;
+  show.lastSyncedAt = new Date().toISOString();
+  const savedShow = db.saveAudioShow(show);
+
+  return { show: savedShow, newEpisodesCount };
+}
+
+app.post('/api/podcasts/refresh-all', async (_req, res) => {
+  try {
+    const shows = db.getAudioShows().filter((s: any) => s.showType === 'podcast');
+    let totalNewEpisodes = 0;
+    const updatedShows: any[] = [];
+
+    for (const show of shows) {
+      try {
+        const result = await refreshSinglePodcastInternal(show);
+        totalNewEpisodes += result.newEpisodesCount;
+        updatedShows.push(result.show);
+      } catch (err) {
+        console.warn(`[AutoSync] Could not refresh podcast "${show.title}":`, err);
+        updatedShows.push(show);
+      }
+    }
+
+    res.json({
+      success: true,
+      refreshedCount: shows.length,
+      totalNewEpisodes,
+      updatedShows: db.getAudioShows(),
+      lastSyncedAt: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error refreshing podcasts:', error);
+    res.status(500).json({ error: error.message || 'Erro ao sincronizar podcasts' });
+  }
+});
+
+app.post('/api/podcasts/:id/refresh', async (req, res) => {
+  try {
+    const show = db.getAudioShowById(req.params.id);
+    if (!show) {
+      return res.status(404).json({ error: 'Podcast não encontrado' });
+    }
+    const result = await refreshSinglePodcastInternal(show);
+    res.json({
+      success: true,
+      show: result.show,
+      newEpisodesCount: result.newEpisodesCount,
+      lastSyncedAt: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error refreshing single podcast:', error);
+    res.status(500).json({ error: error.message || 'Erro ao sincronizar podcast' });
+  }
+});
+
+// Periodic Automatic Background Refresh (Runs every 2 hours)
+setInterval(async () => {
+  try {
+    const shows = db.getAudioShows().filter((s: any) => s.showType === 'podcast');
+    if (shows.length > 0) {
+      console.log(`[AutoSync] Background checking ${shows.length} podcasts for new episodes...`);
+      for (const show of shows) {
+        await refreshSinglePodcastInternal(show).catch(() => {});
+      }
+    }
+  } catch (bgErr) {
+    console.warn('[AutoSync] Background update error:', bgErr);
+  }
+}, 1000 * 60 * 60 * 2);
 
 // ---------------- BACKUP DE EPISÓDIOS NO TELEGRAM ----------------
 app.post('/api/podcasts/backup-telegram', async (req, res) => {

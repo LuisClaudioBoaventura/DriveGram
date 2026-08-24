@@ -624,6 +624,7 @@ export function App() {
               onToggleTrackCompletion={audioShows.toggleTrackCompletion}
               onUpdateTrackProgress={audioShows.updateTrackProgress}
               onOpenEditModal={() => setEditingAudioShow(selectedAudioForView)}
+              onRefreshSinglePodcast={audioShows.refreshSinglePodcast}
             />
           ) : selectedAdultVideoForView ? (
             /* Active Adult Cinema Video Player */
@@ -794,6 +795,7 @@ export function App() {
                 audioShows.deleteAudioShow(id);
                 fs.refresh();
               }}
+              onRefreshPodcasts={audioShows.refreshAllPodcasts}
             />
           ) : fs.activeTab === 'adult' ? (
             /* Adult +18 Content Catalog / Lock Screen */

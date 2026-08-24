@@ -293,6 +293,9 @@ export function useAudioShows() {
         description: podcastData.description || '',
         coverImage: podcastData.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
         folderId: podcastData.folderId || undefined,
+        feedUrl: podcastData.feedUrl || undefined,
+        podcastId: podcastData.podcastId ? String(podcastData.podcastId) : undefined,
+        lastSyncedAt: new Date().toISOString(),
         tracks: fallbackTracks
       };
 
@@ -318,6 +321,61 @@ export function useAudioShows() {
     return null;
   };
 
+  const refreshAllPodcasts = async () => {
+    try {
+      const res = await fetch('/api/podcasts/refresh-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.updatedShows) {
+          setAudioShows(data.updatedShows);
+          if (activeShow) {
+            const updatedActive = data.updatedShows.find((s: AudioShow) => s.id === activeShow.id);
+            if (updatedActive) setActiveShow(updatedActive);
+          }
+        } else {
+          await fetchAudioShows();
+        }
+        return {
+          success: true,
+          totalNewEpisodes: data.totalNewEpisodes || 0,
+          refreshedCount: data.refreshedCount || 0
+        };
+      }
+    } catch (e) {
+      console.warn('Error refreshing all podcasts:', e);
+    }
+    return { success: false, totalNewEpisodes: 0, refreshedCount: 0 };
+  };
+
+  const refreshSinglePodcast = async (showId: string) => {
+    try {
+      const res = await fetch(`/api/podcasts/${showId}/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.show) {
+          setAudioShows(prev => prev.map(s => s.id === showId ? data.show : s));
+          if (activeShow && activeShow.id === showId) {
+            setActiveShow(data.show);
+          }
+        }
+        return {
+          success: true,
+          newEpisodesCount: data.newEpisodesCount || 0,
+          show: data.show
+        };
+      }
+    } catch (e) {
+      console.warn('Error refreshing single podcast:', e);
+    }
+    return { success: false, newEpisodesCount: 0 };
+  };
+
   return {
     audioShows,
     categories,
@@ -336,6 +394,8 @@ export function useAudioShows() {
     updateTrackProgress,
     addCategory,
     updateCategory,
-    deleteCategory
+    deleteCategory,
+    refreshAllPodcasts,
+    refreshSinglePodcast
   };
 }
