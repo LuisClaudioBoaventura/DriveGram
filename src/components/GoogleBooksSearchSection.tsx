@@ -146,12 +146,18 @@ export const GoogleBooksSearchSection: React.FC<GoogleBooksSearchSectionProps> =
       {isOpen && (
         <div className="p-4 pt-1 space-y-3 border-t border-purple-100 dark:border-purple-900/30">
           {/* Search Inputs */}
-          <form onSubmit={handleSearch} className="flex gap-2">
+          <div className="flex gap-2">
             <div className="relative flex-1">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSearch();
+                  }
+                }}
                 placeholder="Ex: Hábitos Atômicos, James Clear ou ISBN..."
                 className="w-full pl-8 pr-3.5 py-2 text-xs rounded-xl bg-white dark:bg-drive-darkBg border border-purple-200 dark:border-purple-900/60 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
               />
@@ -159,14 +165,15 @@ export const GoogleBooksSearchSection: React.FC<GoogleBooksSearchSectionProps> =
             </div>
 
             <button
-              type="submit"
+              type="button"
+              onClick={() => handleSearch()}
               disabled={loading}
               className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-purple-600/20 disabled:opacity-50 transition-all shrink-0 active:scale-95"
             >
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
               <span>{loading ? 'Buscando...' : 'Buscar'}</span>
             </button>
-          </form>
+          </div>
 
           {/* Error message */}
           {error && (
