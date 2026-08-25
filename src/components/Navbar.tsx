@@ -34,6 +34,7 @@ interface NavbarProps {
   telegramState: TelegramAuthState;
   onOpenAuth: () => void;
   onOpenSync: () => void;
+  onOpenApiKeysModal?: () => void;
   onOpenOmdbKeyModal?: () => void;
   onOpenYouTubeModal?: (type?: YouTubeTargetType) => void;
   onSyncNow: () => void;
@@ -51,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   telegramState,
   onOpenAuth,
   onOpenSync,
+  onOpenApiKeysModal,
   onOpenOmdbKeyModal,
   onOpenYouTubeModal,
   onSyncNow,
@@ -163,12 +165,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             <HardDrive className="w-4 h-4 text-emerald-500" />
           </button>
 
-          {/* OMDb API Key Modal Trigger */}
-          {onOpenOmdbKeyModal && (
+          {/* Central de Chaves de API Modal Trigger */}
+          {(onOpenApiKeysModal || onOpenOmdbKeyModal) && (
             <button
-              onClick={onOpenOmdbKeyModal}
-              title="Configurar Chave da API OMDb (Filmes & Cinema)"
-              className="hidden lg:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all"
+              onClick={onOpenApiKeysModal || onOpenOmdbKeyModal}
+              title="Central de Chaves de API (OMDb, Google Books, YouTube, TMDb)"
+              className="inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all active:scale-95"
             >
               <Key className="w-4 h-4 text-amber-500" />
             </button>

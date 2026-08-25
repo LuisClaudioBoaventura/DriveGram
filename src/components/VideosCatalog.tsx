@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Film, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, Clock, Video, Star, Key } from 'lucide-react';
+import { Film, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, Clock, Video, Star } from 'lucide-react';
 import { MovieVideo, FolderItem } from '../types/index.js';
-import { getStoredOmdbApiKey } from '../services/omdbService.js';
 
 interface VideosCatalogProps {
   videos: MovieVideo[];
@@ -11,7 +10,6 @@ interface VideosCatalogProps {
   onOpenNewModal: () => void;
   onEditVideo?: (video: MovieVideo) => void;
   onDeleteVideo?: (id: string) => void;
-  onOpenOmdbKeyModal?: () => void;
 }
 
 export const VideosCatalog: React.FC<VideosCatalogProps> = ({
@@ -20,13 +18,11 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
   onSelectVideo,
   onOpenNewModal,
   onEditVideo,
-  onDeleteVideo,
-  onOpenOmdbKeyModal
+  onDeleteVideo
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'watching' | 'completed'>('all');
-  const hasOmdbKey = Boolean(getStoredOmdbApiKey());
 
   const filteredVideos = videos.filter(video => {
     const matchesSearch =
@@ -122,21 +118,6 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                     <Plus className="w-4 h-4" />
                     <span>Adicionar Filme / Vídeo</span>
                   </button>
-
-                  {onOpenOmdbKeyModal && (
-                    <button
-                      onClick={onOpenOmdbKeyModal}
-                      className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all border shadow-sm ${
-                        hasOmdbKey 
-                          ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border-amber-500/40' 
-                          : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-amber-500/20'
-                      }`}
-                      title="Configurar Chave da API OMDb para puxar capas, notas IMDb e metadados automáticos"
-                    >
-                      <Key className="w-3.5 h-3.5" />
-                      <span>{hasOmdbKey ? 'Chave OMDb Ativa' : 'Configurar Chave OMDb'}</span>
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -163,21 +144,6 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                   <Plus className="w-4 h-4 text-red-600" />
                   <span>Adicionar Filme / Vídeo</span>
                 </button>
-
-                {onOpenOmdbKeyModal && (
-                  <button
-                    onClick={onOpenOmdbKeyModal}
-                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all border shadow-sm ${
-                      hasOmdbKey 
-                        ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border-amber-500/40' 
-                        : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-amber-500/20'
-                    }`}
-                    title="Configurar Chave da API OMDb para puxar capas, notas IMDb e metadados automáticos"
-                  >
-                    <Key className="w-3.5 h-3.5" />
-                    <span>{hasOmdbKey ? 'Chave OMDb Ativa' : 'Configurar Chave OMDb'}</span>
-                  </button>
-                )}
               </div>
             </div>
           )}

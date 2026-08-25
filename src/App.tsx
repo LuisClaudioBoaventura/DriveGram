@@ -19,7 +19,7 @@ import { VideosCatalog } from './components/VideosCatalog.js';
 import { VideoPlayerView } from './components/VideoPlayerView.js';
 import { NewVideoModal } from './components/NewVideoModal.js';
 import { EditVideoModal } from './components/EditVideoModal.js';
-import { OmdbKeyModal } from './components/OmdbKeyModal.js';
+import { ApiKeysManagerModal } from './components/ApiKeysManagerModal.js';
 import { PersonalVideosCatalog } from './components/PersonalVideosCatalog.js';
 import { NewPersonalVideoModal } from './components/NewPersonalVideoModal.js';
 import { EditPersonalVideoModal } from './components/EditPersonalVideoModal.js';
@@ -124,7 +124,7 @@ export function App() {
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const [isComicModalOpen, setIsComicModalOpen] = useState(false);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
-  const [isOmdbKeyModalOpen, setIsOmdbKeyModalOpen] = useState(false);
+  const [isApiKeysModalOpen, setIsApiKeysModalOpen] = useState(false);
   const [isPersonalVideoModalOpen, setIsPersonalVideoModalOpen] = useState(false);
   const [isSeriesModalOpen, setIsSeriesModalOpen] = useState(false);
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
@@ -415,7 +415,7 @@ export function App() {
             setIsSyncModalOpen(true);
           }
         }}
-        onOpenOmdbKeyModal={() => setIsOmdbKeyModalOpen(true)}
+        onOpenApiKeysModal={() => setIsApiKeysModalOpen(true)}
         onOpenYouTubeModal={() => handleOpenYouTubeModal()}
         onSyncNow={async () => {
           if (!tg.authState.isConnected) {
@@ -801,7 +801,6 @@ export function App() {
                 setSelectedVideoForView(v);
               }}
               onOpenNewModal={() => setIsVideoModalOpen(true)}
-              onOpenOmdbKeyModal={() => setIsOmdbKeyModalOpen(true)}
               onEditVideo={(v) => setEditingVideo(v)}
               onDeleteVideo={(id) => {
                 videos.deleteVideo(id);
@@ -1231,10 +1230,12 @@ export function App() {
         }}
       />
 
-      {/* OMDb API Key Manager Modal */}
-      <OmdbKeyModal
-        isOpen={isOmdbKeyModalOpen}
-        onClose={() => setIsOmdbKeyModalOpen(false)}
+      {/* Central de Chaves de API Manager Modal */}
+      <ApiKeysManagerModal
+        isOpen={isApiKeysModalOpen}
+        onClose={() => setIsApiKeysModalOpen(false)}
+        telegramState={tg.authState}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
       />
 
       {/* Personal Video Creation Modal */}

@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, 
   Sparkles, 
-  Key, 
-  ExternalLink, 
   Loader2, 
   ChevronDown, 
   ChevronUp, 
@@ -12,15 +10,10 @@ import {
   User, 
   Calendar, 
   Layers, 
-  Info,
-  Globe
+  Info
 } from 'lucide-react';
 import { GoogleBookSearchResultItem } from '../types/index.js';
-import { 
-  searchGoogleBooks, 
-  getStoredGoogleBooksApiKey, 
-  setStoredGoogleBooksApiKey 
-} from '../services/googleBooksService.js';
+import { searchGoogleBooks } from '../services/googleBooksService.js';
 
 interface GoogleBooksSearchSectionProps {
   initialQuery?: string;
@@ -46,8 +39,6 @@ export const GoogleBooksSearchSection: React.FC<GoogleBooksSearchSectionProps> =
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [apiKey, setApiKey] = useState(getStoredGoogleBooksApiKey());
-  const [isEditingApiKey, setIsEditingApiKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<GoogleBookSearchResultItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -74,8 +65,7 @@ export const GoogleBooksSearchSection: React.FC<GoogleBooksSearchSectionProps> =
 
     try {
       const res = await searchGoogleBooks({
-        query,
-        apiKey: apiKey.trim() || undefined
+        query
       });
 
       if (res.results && res.results.length > 0) {
@@ -88,11 +78,6 @@ export const GoogleBooksSearchSection: React.FC<GoogleBooksSearchSectionProps> =
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSaveApiKey = () => {
-    setStoredGoogleBooksApiKey(apiKey);
-    setIsEditingApiKey(false);
   };
 
   const handleSelectBook = (book: GoogleBookSearchResultItem) => {
@@ -181,59 +166,7 @@ export const GoogleBooksSearchSection: React.FC<GoogleBooksSearchSectionProps> =
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
               <span>{loading ? 'Buscando...' : 'Buscar'}</span>
             </button>
-
-            <button
-              type="button"
-              onClick={() => setIsEditingApiKey(!isEditingApiKey)}
-              title="Configurar Chave Google Books API"
-              className={`p-2 rounded-xl border text-xs font-medium flex items-center justify-center transition-all shrink-0 ${
-                apiKey 
-                  ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' 
-                  : 'border-purple-200 dark:border-purple-900/60 bg-white dark:bg-drive-darkBg text-gray-500 hover:text-purple-600'
-              }`}
-            >
-              <Key className="w-3.5 h-3.5" />
-            </button>
           </form>
-
-          {/* API Key Drawer */}
-          {isEditingApiKey && (
-            <div className="p-3 rounded-xl bg-white dark:bg-drive-darkBg border border-purple-200 dark:border-purple-900/60 space-y-2 text-xs animate-in slide-in-from-top-2 duration-150">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-purple-600" />
-                  Chave de API do Google Cloud (Opcional)
-                </span>
-                <a
-                  href="https://developers.google.com/books/docs/v1/using#APIKey"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[10px] text-purple-600 hover:underline flex items-center gap-1"
-                >
-                  Como obter gratuitamente <ExternalLink className="w-2.5 h-2.5" />
-                </a>
-              </div>
-              <p className="text-[11px] text-gray-500 leading-tight">
-                A busca funciona sem chave usando Open Library e fallback do Google. Para cota própria e ilimitada do Google Books, insira sua chave gratuita:
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Cole sua API Key do Google Cloud..."
-                  className="flex-1 px-3 py-1.5 text-xs font-mono rounded-lg bg-gray-50 dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveApiKey}
-                  className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shrink-0"
-                >
-                  Salvar
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Error message */}
           {error && (

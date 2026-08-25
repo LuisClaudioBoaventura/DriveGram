@@ -216,11 +216,6 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
     setOmdbResults([]); // Collapse results list
   };
 
-  const handleSaveOmdbKey = () => {
-    setStoredOmdbApiKey(omdbApiKey);
-    setIsEditingOmdbKey(false);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !selectedFolderId) return;
@@ -313,58 +308,14 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
                   Buscar Metadados no OMDb (Opcional)
                 </h4>
               </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setIsEditingOmdbKey(!isEditingOmdbKey)}
-                  className="p-1 rounded-lg text-gray-500 hover:text-amber-500 transition-colors"
-                  title="Configurar chave de API do OMDb"
-                >
-                  <Key className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsOmdbOpen(!isOmdbOpen)}
-                  className="p-1 rounded-lg text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-                >
-                  {isOmdbOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsOmdbOpen(!isOmdbOpen)}
+                className="p-1 rounded-lg text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              >
+                {isOmdbOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
             </div>
-
-            {/* Expandable API Key Settings */}
-            {isEditingOmdbKey && (
-              <div className="p-2.5 rounded-xl bg-white/80 dark:bg-gray-900/80 border border-amber-500/30 space-y-2 animate-in fade-in duration-150">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-bold text-gray-700 dark:text-gray-300">Chave de API do OMDb:</span>
-                  <a
-                    href="https://www.omdbapi.com/apikey.aspx"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-amber-500 hover:underline"
-                  >
-                    <span>Obter chave gratuita</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={omdbApiKey}
-                    onChange={(e) => setOmdbApiKey(e.target.value)}
-                    placeholder="Ex: 8a4c12ef (Opcional - chave padrão pré-configurada)"
-                    className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-xs font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveOmdbKey}
-                    className="px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition-colors"
-                  >
-                    Salvar
-                  </button>
-                </div>
-              </div>
-            )}
 
             {isOmdbOpen && (
               <div className="space-y-2.5">
