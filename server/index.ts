@@ -5,7 +5,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { db } from './database.js';
+import { db, fixUtf8Encoding } from './database.js';
 import { telegramService } from './telegram.js';
 import { castService } from './cast.js';
 import { comicService } from './comicService.js';
@@ -34,7 +34,8 @@ export function getSafeUploadPath(fileName: string): string {
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
-    const cleanOriginalName = path.basename(file.originalname).replace(/[^a-zA-Z0-9._\-]/g, '_');
+    const originalClean = fixUtf8Encoding(file.originalname);
+    const cleanOriginalName = path.basename(originalClean).replace(/[^a-zA-Z0-9._\-]/g, '_');
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + '-' + cleanOriginalName);
   }
@@ -78,12 +79,15 @@ app.get('/api/folders', (req, res) => {
 app.post('/api/folders', (req, res) => {
   const { name, parentId, color } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome da pasta é obrigatório' });
-  const folder = db.createFolder(name, parentId || null, color);
+  const cleanName = fixUtf8Encoding(name);
+  const folder = db.createFolder(cleanName, parentId || null, color);
   res.status(201).json(folder);
 });
 
 app.patch('/api/folders/:id', (req, res) => {
-  const folder = db.updateFolder(req.params.id, req.body);
+  const body = { ...req.body };
+  if (body.name) body.name = fixUtf8Encoding(body.name);
+  const folder = db.updateFolder(req.params.id, body);
   if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' });
   res.json(folder);
 });
@@ -150,9 +154,10 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    const { originalname, size, mimetype, path: tempFilePath } = req.file;
+    const originalname = fixUtf8Encoding(req.file.originalname);
+    const { size, mimetype, path: tempFilePath } = req.file;
     let parentId = req.body.parentId || null;
-    const relativePath = req.body.relativePath as string; // e.g. "Modulo 1/Aula 1/video.mp4"
+    const relativePath = req.body.relativePath ? fixUtf8Encoding(req.body.relativePath as string) : undefined;
     const courseId = req.body.courseId || undefined;
     const moduleId = req.body.moduleId || undefined;
     const lessonId = req.body.lessonId || undefined;

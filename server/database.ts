@@ -384,6 +384,57 @@ const initialDemoData: DatabaseSchema = {
   }
 };
 
+export function fixUtf8Encoding(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  
+  // 1. Decode HTML / XML numeric and named entities
+  let clean = text
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const code = parseInt(dec, 10);
+      return !isNaN(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return !isNaN(code) ? String.fromCharCode(code) : '';
+    });
+
+  // 2. Fix double UTF-8 / latin1 mojibake (e.g. Ã§ -> ç, Ã£ -> ã, Ã© -> é, Ã´ -> ô, etc.)
+  if (/[\u00C0-\u00FF]/.test(clean)) {
+    try {
+      const fixed = Buffer.from(clean, 'latin1').toString('utf8');
+      if (!fixed.includes('\ufffd') && fixed !== clean) {
+        clean = fixed;
+      }
+    } catch (e) {}
+  }
+  
+  return clean;
+}
+
+export function deepSanitizeUtf8<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'string') {
+    return fixUtf8Encoding(obj) as any;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => deepSanitizeUtf8(item)) as any;
+  }
+  if (typeof obj === 'object') {
+    const res: any = {};
+    for (const key of Object.keys(obj)) {
+      res[key] = deepSanitizeUtf8((obj as any)[key]);
+    }
+    return res;
+  }
+  return obj;
+}
+
 class Database {
   private data: DatabaseSchema;
 
@@ -449,13 +500,15 @@ class Database {
         if (!parsed.adultVaultSettings) {
           parsed.adultVaultSettings = { isConfigured: false };
         }
-        return parsed;
+        const sanitized = deepSanitizeUtf8(parsed);
+        return sanitized;
       }
     } catch (e) {
       console.error('Error loading database, initializing with default data:', e);
     }
-    this.save(initialDemoData);
-    return initialDemoData;
+    const sanitizedDemo = deepSanitizeUtf8(initialDemoData);
+    this.save(sanitizedDemo);
+    return sanitizedDemo;
   }
 
   public ensureDefaultLibraryFolders(): void {
