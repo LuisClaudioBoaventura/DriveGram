@@ -115,9 +115,10 @@ export const ApiKeysManagerModal: React.FC<ApiKeysManagerModalProps> = ({
   const getServiceIcon = (id: string) => {
     switch (id) {
       case 'omdb': return <Film className="w-5 h-5 text-amber-500" />;
+      case 'thetvdb': return <Tv className="w-5 h-5 text-emerald-500" />;
+      case 'tmdb': return <Tv className="w-5 h-5 text-sky-500" />;
       case 'google_books': return <BookOpen className="w-5 h-5 text-purple-500" />;
       case 'youtube': return <Youtube className="w-5 h-5 text-red-500" />;
-      case 'tmdb': return <Tv className="w-5 h-5 text-sky-500" />;
       default: return <Key className="w-5 h-5 text-blue-500" />;
     }
   };

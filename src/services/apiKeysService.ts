@@ -2,7 +2,7 @@ import { searchOmdbMovies } from './omdbService.js';
 import { searchGoogleBooks } from './googleBooksService.js';
 
 export interface ApiKeyItem {
-  id: 'omdb' | 'google_books' | 'youtube' | 'tmdb';
+  id: 'omdb' | 'google_books' | 'youtube' | 'tmdb' | 'thetvdb';
   name: string;
   category: string;
   description: string;
@@ -26,6 +26,28 @@ export const API_SERVICES: ApiKeyItem[] = [
     tag: 'Filmes'
   },
   {
+    id: 'thetvdb',
+    name: 'TheTVDB API (The TV Database)',
+    category: 'Séries, Animes & TV',
+    description: 'Metadados aprofundados para episódios, temporadas, sinopses em português, cartazes de séries e animes (v4).',
+    storageKey: 'drivegram_thetvdb_api_key',
+    placeholder: 'Ex: a1b2c3d4-e5f6-7890-abcd-ef1234567890 (Project API Key)',
+    docsUrl: 'https://thetvdb.com/dashboard/account/apikeys',
+    isOptional: true,
+    tag: 'TheTVDB'
+  },
+  {
+    id: 'tmdb',
+    name: 'The Movie Database (TMDb)',
+    category: 'Filmes, Séries & Animes',
+    description: 'Metadados aprofundados para episódios, temporadas, sinopses em português e cartazes de filmes e séries.',
+    storageKey: 'drivegram_tmdb_api_key',
+    placeholder: 'Ex: 4f8b2c...',
+    docsUrl: 'https://www.themoviedb.org/settings/api',
+    isOptional: true,
+    tag: 'TMDb'
+  },
+  {
     id: 'google_books',
     name: 'Google Books API',
     category: 'Livros & Audiolivros',
@@ -46,17 +68,6 @@ export const API_SERVICES: ApiKeyItem[] = [
     docsUrl: 'https://console.cloud.google.com/apis/credentials',
     isOptional: true,
     tag: 'YouTube'
-  },
-  {
-    id: 'tmdb',
-    name: 'The Movie Database (TMDb)',
-    category: 'Séries & Animes',
-    description: 'Metadados aprofundados para episódios, temporadas, sinopses em português e cartazes de séries.',
-    storageKey: 'drivegram_tmdb_api_key',
-    placeholder: 'Ex: 4f8b2c...',
-    docsUrl: 'https://www.themoviedb.org/settings/api',
-    isOptional: true,
-    tag: 'Séries'
   }
 ];
 
@@ -86,7 +97,7 @@ export function getAllStoredApiKeys(): Record<string, string> {
   return result;
 }
 
-export async function testApiKey(serviceId: 'omdb' | 'google_books' | 'youtube' | 'tmdb', key: string): Promise<{ success: boolean; message: string }> {
+export async function testApiKey(serviceId: 'omdb' | 'google_books' | 'youtube' | 'tmdb' | 'thetvdb', key: string): Promise<{ success: boolean; message: string }> {
   const trimmed = key.trim();
   if (!trimmed) {
     return { success: false, message: 'Insira uma chave antes de testar a conexão.' };
@@ -97,6 +108,20 @@ export async function testApiKey(serviceId: 'omdb' | 'google_books' | 'youtube' 
       const res = await searchOmdbMovies({ query: 'Inception', apiKey: trimmed });
       if (res.error) return { success: false, message: `Erro OMDb: ${res.error}` };
       return { success: true, message: 'Chave OMDb válida! Conexão estabelecida com sucesso.' };
+    }
+
+    if (serviceId === 'thetvdb') {
+      const loginRes = await fetch('https://api4.thetvdb.com/v4/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apikey: trimmed })
+      });
+      if (loginRes.ok) {
+        return { success: true, message: 'Chave TheTVDB v4 válida e autenticada com sucesso!' };
+      } else {
+        const err = await loginRes.json().catch(() => ({}));
+        return { success: false, message: err?.message || 'Chave TheTVDB inválida. Verifique sua Project API Key no painel TheTVDB.' };
+      }
     }
 
     if (serviceId === 'google_books') {
