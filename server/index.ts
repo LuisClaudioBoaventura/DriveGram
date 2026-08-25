@@ -941,6 +941,200 @@ app.delete('/api/books/:id', (req, res) => {
   res.status(204).end();
 });
 
+// ---------------- GOOGLE BOOKS API INTEGRATION ----------------
+app.get('/api/google-books/search', async (req, res) => {
+  try {
+    const query = req.query.query as string;
+    const apiKey = (req.query.apiKey as string) || process.env.GOOGLE_BOOKS_API_KEY || '';
+    const lang = (req.query.lang as string) || '';
+
+    if (!query || !query.trim()) {
+      return res.status(400).json({ error: 'Query de busca é obrigatória' });
+    }
+
+    let results: any[] = [];
+    let isGoogleSuccess = false;
+
+    // Strategy 1: Google Books API
+    try {
+      const gBooksUrl = new URL('https://www.googleapis.com/books/v1/volumes');
+      gBooksUrl.searchParams.set('q', query.trim());
+      gBooksUrl.searchParams.set('maxResults', '15');
+      if (lang && lang.trim()) {
+        gBooksUrl.searchParams.set('langRestrict', lang.trim());
+      }
+      if (apiKey && apiKey.trim()) {
+        gBooksUrl.searchParams.set('key', apiKey.trim());
+      }
+
+      const response = await fetch(gBooksUrl.toString(), {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGram/1.0'
+        }
+      });
+
+      if (response.ok) {
+        const data: any = await response.json();
+        if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+          isGoogleSuccess = true;
+          results = data.items.map((item: any) => {
+            const info = item.volumeInfo || {};
+            const isbns = info.industryIdentifiers || [];
+            const isbnObj = isbns.find((x: any) => x.type === 'ISBN_13') || isbns.find((x: any) => x.type === 'ISBN_10') || isbns[0];
+            
+            let coverImage = '';
+            if (info.imageLinks) {
+              const rawImg = info.imageLinks.extraLarge || info.imageLinks.large || info.imageLinks.medium || info.imageLinks.thumbnail || info.imageLinks.smallThumbnail || '';
+              if (rawImg) {
+                coverImage = rawImg.replace(/^http:\/\//i, 'https://').replace('&edge=curl', '');
+              }
+            }
+
+            // Fallback cover via OpenLibrary if ISBN is present and Google has no cover
+            if (!coverImage && isbnObj?.identifier) {
+              coverImage = `https://covers.openlibrary.org/b/isbn/${isbnObj.identifier}-L.jpg?default=false`;
+            }
+
+            return {
+              id: item.id,
+              title: fixUtf8Encoding(info.title || ''),
+              subtitle: fixUtf8Encoding(info.subtitle || ''),
+              authors: Array.isArray(info.authors) ? info.authors.map(fixUtf8Encoding) : [],
+              publisher: fixUtf8Encoding(info.publisher || ''),
+              publishedDate: info.publishedDate || '',
+              year: info.publishedDate ? info.publishedDate.split('-')[0] : '',
+              description: fixUtf8Encoding(info.description || ''),
+              pageCount: info.pageCount || undefined,
+              categories: Array.isArray(info.categories) ? info.categories.map(fixUtf8Encoding) : [],
+              language: info.language || 'pt',
+              coverImage: coverImage || undefined,
+              isbn: isbnObj?.identifier || undefined,
+              previewLink: info.previewLink,
+              infoLink: info.infoLink,
+              source: 'google_books'
+            };
+          });
+        }
+      }
+    } catch (gErr: any) {
+      console.warn('[Google Books API] Request failed, trying OpenLibrary fallback:', gErr.message);
+    }
+
+    // Strategy 2: Open Library API (Seamless Fallback if Google is rate limited)
+    if (!isGoogleSuccess || results.length === 0) {
+      try {
+        const olUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(query.trim())}&limit=15`;
+        const olRes = await fetch(olUrl, {
+          headers: {
+            'User-Agent': 'DriveGram/1.0 (https://github.com/LuisClaudioBoaventura/DriveGram)'
+          }
+        });
+
+        if (olRes.ok) {
+          const olData: any = await olRes.json();
+          if (olData.docs && Array.isArray(olData.docs) && olData.docs.length > 0) {
+            results = olData.docs.map((doc: any) => {
+              const coverId = doc.cover_i;
+              const isbn = Array.isArray(doc.isbn) ? doc.isbn[0] : undefined;
+              let coverImage = '';
+              if (coverId) {
+                coverImage = `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`;
+              } else if (isbn) {
+                coverImage = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+              }
+
+              return {
+                id: doc.key ? doc.key.replace('/works/', '') : `ol-${Date.now()}-${Math.random()}`,
+                title: fixUtf8Encoding(doc.title || ''),
+                subtitle: fixUtf8Encoding(doc.subtitle || ''),
+                authors: Array.isArray(doc.author_name) ? doc.author_name.map(fixUtf8Encoding) : [],
+                publisher: Array.isArray(doc.publisher) ? fixUtf8Encoding(doc.publisher[0]) : undefined,
+                publishedDate: doc.first_publish_year ? String(doc.first_publish_year) : '',
+                year: doc.first_publish_year ? String(doc.first_publish_year) : '',
+                description: fixUtf8Encoding(doc.first_sentence?.[0] || ''),
+                pageCount: doc.number_of_pages_median || undefined,
+                categories: Array.isArray(doc.subject) ? doc.subject.slice(0, 3).map(fixUtf8Encoding) : [],
+                language: Array.isArray(doc.language) ? doc.language[0] : 'por',
+                coverImage: coverImage || undefined,
+                isbn,
+                source: 'open_library'
+              };
+            });
+          }
+        }
+      } catch (olErr: any) {
+        console.warn('[OpenLibrary API] Request failed:', olErr.message);
+      }
+    }
+
+    res.json({ results });
+  } catch (error: any) {
+    console.error('Error in Google Books search route:', error);
+    res.status(500).json({ error: error.message || 'Erro ao buscar livros' });
+  }
+});
+
+app.get('/api/google-books/volume', async (req, res) => {
+  try {
+    const id = req.query.id as string;
+    const apiKey = (req.query.apiKey as string) || process.env.GOOGLE_BOOKS_API_KEY || '';
+
+    if (!id || !id.trim()) {
+      return res.status(400).json({ error: 'ID do livro é obrigatório' });
+    }
+
+    const gBooksUrl = new URL(`https://www.googleapis.com/books/v1/volumes/${id.trim()}`);
+    if (apiKey && apiKey.trim()) {
+      gBooksUrl.searchParams.set('key', apiKey.trim());
+    }
+
+    const response = await fetch(gBooksUrl.toString(), {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGram/1.0'
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Livro não encontrado' });
+    }
+
+    const item: any = await response.json();
+    const info = item.volumeInfo || {};
+    const isbns = info.industryIdentifiers || [];
+    const isbnObj = isbns.find((x: any) => x.type === 'ISBN_13') || isbns.find((x: any) => x.type === 'ISBN_10') || isbns[0];
+    
+    let coverImage = '';
+    if (info.imageLinks) {
+      const rawImg = info.imageLinks.extraLarge || info.imageLinks.large || info.imageLinks.medium || info.imageLinks.thumbnail || info.imageLinks.smallThumbnail || '';
+      if (rawImg) {
+        coverImage = rawImg.replace(/^http:\/\//i, 'https://').replace('&edge=curl', '');
+      }
+    }
+
+    res.json({
+      id: item.id,
+      title: fixUtf8Encoding(info.title || ''),
+      subtitle: fixUtf8Encoding(info.subtitle || ''),
+      authors: Array.isArray(info.authors) ? info.authors.map(fixUtf8Encoding) : [],
+      publisher: fixUtf8Encoding(info.publisher || ''),
+      publishedDate: info.publishedDate || '',
+      year: info.publishedDate ? info.publishedDate.split('-')[0] : '',
+      description: fixUtf8Encoding(info.description || ''),
+      pageCount: info.pageCount || undefined,
+      categories: Array.isArray(info.categories) ? info.categories.map(fixUtf8Encoding) : [],
+      language: info.language || 'pt',
+      coverImage: coverImage || undefined,
+      isbn: isbnObj?.identifier || undefined,
+      previewLink: info.previewLink,
+      infoLink: info.infoLink,
+      source: 'google_books'
+    });
+  } catch (error: any) {
+    console.error('Error fetching Google Books volume details:', error);
+    res.status(500).json({ error: error.message || 'Erro ao carregar detalhes do livro' });
+  }
+});
+
 // ---------------- COMICS & MANGAS ----------------
 app.get('/api/comics', (_req, res) => {
   res.json(db.getComics());

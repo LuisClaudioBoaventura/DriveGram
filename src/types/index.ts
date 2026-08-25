@@ -289,6 +289,28 @@ export interface OMDbMovieDetail {
   Error?: string;
 }
 
+// ---------------- GOOGLE BOOKS API METADATA ----------------
+export interface GoogleBookSearchResultItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  authors?: string[];
+  publisher?: string;
+  publishedDate?: string;
+  year?: string;
+  description?: string;
+  pageCount?: number;
+  categories?: string[];
+  language?: string;
+  coverImage?: string;
+  isbn?: string;
+  previewLink?: string;
+  infoLink?: string;
+  source?: 'google_books' | 'open_library';
+}
+
+export interface GoogleBookDetail extends GoogleBookSearchResultItem {}
+
 // ---------------- VÍDEOS & MÍDIAS PESSOAIS ----------------
 export interface PersonalVideo {
   id: string;

@@ -16,6 +16,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { Book } from '../types/index.js';
+import { GoogleBooksSearchSection } from './GoogleBooksSearchSection.js';
 
 interface EditBookModalProps {
   isOpen: boolean;
@@ -126,6 +127,21 @@ export const EditBookModal: React.FC<EditBookModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
+          {/* Google Books Metadata Search (Optional Autofill) */}
+          <GoogleBooksSearchSection
+            initialQuery={title}
+            categories={categories}
+            onApplyMetadata={(meta) => {
+              if (meta.title) setTitle(meta.title);
+              if (meta.author) setAuthor(meta.author);
+              if (meta.description) setDescription(meta.description);
+              if (meta.coverImage) setCoverImage(meta.coverImage);
+              if (meta.category) setCategory(meta.category);
+              if (meta.genre) setGenre(meta.genre);
+              if (meta.language) setLanguage(meta.language);
+            }}
+          />
+
           {/* Título & Autor */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>

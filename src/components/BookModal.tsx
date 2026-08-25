@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, BookOpen, Headphones, Folder, Sparkles, Plus, Layers, User, Mic, Tag, Clock, HardDrive, Globe } from 'lucide-react';
 import { FolderItem, DriveItem, Book } from '../types/index.js';
 import { getLibraryEligibleFolders } from '../utils/libraryFolderUtils.js';
+import { GoogleBooksSearchSection } from './GoogleBooksSearchSection.js';
 
 interface BookModalProps {
   isOpen: boolean;
@@ -232,6 +233,21 @@ export const BookModal: React.FC<BookModalProps> = ({
               )}
             </div>
           )}
+
+          {/* Google Books Metadata Search (Optional Autofill) */}
+          <GoogleBooksSearchSection
+            initialQuery={title}
+            categories={categories}
+            onApplyMetadata={(meta) => {
+              if (meta.title) setTitle(meta.title);
+              if (meta.author) setAuthor(meta.author);
+              if (meta.description) setDescription(meta.description);
+              if (meta.coverImage) setCoverImage(meta.coverImage);
+              if (meta.category) setCategory(meta.category);
+              if (meta.genre) setGenre(meta.genre);
+              if (meta.language) setLanguage(meta.language);
+            }}
+          />
 
           {/* 1. Título & Autor */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
