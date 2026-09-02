@@ -49,3 +49,20 @@ Thumbs.db
 .eslintcache
 .stylelintcache
 .turbo/
+_tmp_server_bundle.*
+
+# Android build outputs & binaries
+*.apk
+*.aab
+*.lnk
+www/
+android/app/build/
+android/build/
+android/.gradle/
+android/.cxx/
+android/app/.cxx/
+android/local.properties
+android/app/src/main/jniLibs/
+android/app/src/main/assets/nodejs-project/
+android/app/src/main/assets/www/
+

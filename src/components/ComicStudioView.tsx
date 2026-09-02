@@ -79,6 +79,10 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
       return i;
     });
 
+    if (readingIssue && readingIssue.id === issueId && isCompleted) {
+      setReadingIssue(prev => prev ? { ...prev, currentPage: pageIndex, totalPages, isCompleted: true } : null);
+    }
+
     const allCompleted = updatedIssues.length > 0 && updatedIssues.every(i => i.isCompleted);
     const updatedComic = {
       ...comic,
@@ -87,6 +91,31 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
     };
 
     await onUpdateComic(updatedComic);
+  };
+
+  const handleToggleIssue = async (issueId: string) => {
+    await onToggleIssueCompletion(issueId);
+    if (readingIssue && readingIssue.id === issueId) {
+      setReadingIssue(prev => prev ? { ...prev, isCompleted: !prev.isCompleted } : null);
+    }
+  };
+
+  const handleToggleAllIssues = async () => {
+    const nextCompleted = progressPercent !== 100;
+    const updatedIssues = (comic.issues || []).map(i => ({
+      ...i,
+      isCompleted: nextCompleted,
+      lastReadAt: new Date().toISOString()
+    }));
+    const updatedComic = {
+      ...comic,
+      issues: updatedIssues,
+      status: nextCompleted ? 'completed' as const : 'reading' as const
+    };
+    await onUpdateComic(updatedComic);
+    if (readingIssue) {
+      setReadingIssue(prev => prev ? { ...prev, isCompleted: nextCompleted } : null);
+    }
   };
 
   return (
@@ -210,6 +239,20 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
                 <BookOpen className="w-4 h-4" />
                 <span>{completedIssues === 0 ? 'Começar a Ler #01' : 'Continuar Leitura'}</span>
               </button>
+
+              <button
+                onClick={handleToggleAllIssues}
+                disabled={totalIssues === 0}
+                className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-xs font-bold transition-all border disabled:opacity-50 ${
+                  progressPercent === 100
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-lg shadow-emerald-950/40'
+                    : 'bg-black/40 hover:bg-emerald-600 text-gray-200 hover:text-white border-white/20 hover:border-emerald-500 shadow-md'
+                }`}
+                title={progressPercent === 100 ? 'Marcar coleção como não lida' : 'Marcar coleção como lida'}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{progressPercent === 100 ? '✓ Coleção Lida' : 'Marcar como Lida'}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -240,7 +283,7 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
                   >
                     <div className="flex items-center gap-3 overflow-hidden flex-1 mr-2">
                       <button
-                        onClick={() => onToggleIssueCompletion(issue.id)}
+                        onClick={() => handleToggleIssue(issue.id)}
                         className="shrink-0 text-gray-400 hover:text-emerald-500 transition-colors"
                         title={issue.isCompleted ? 'Marcar como não lida' : 'Marcar como lida'}
                       >
@@ -328,15 +371,16 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => onToggleIssueCompletion(readingIssue.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                  onClick={() => handleToggleIssue(readingIssue.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
                     readingIssue.isCompleted 
-                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
-                      : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-500/25 ring-2 ring-emerald-500/30' 
+                      : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-emerald-600/90 hover:text-white hover:border-emerald-500'
                   }`}
+                  title={readingIssue.isCompleted ? 'Marcar como não lida' : 'Marcar como lida'}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{readingIssue.isCompleted ? 'Lida' : 'Marcar Lida'}</span>
+                  <span>{readingIssue.isCompleted ? 'Lida' : 'Marcar como lida'}</span>
                 </button>
 
                 <button

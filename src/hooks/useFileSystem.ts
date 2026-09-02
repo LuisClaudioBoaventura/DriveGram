@@ -589,6 +589,73 @@ export function useFileSystem() {
     }
   };
 
+  // Track any asynchronous background download/backup/upload task in real time
+  const trackRemoteTask = useCallback((
+    uploadId: string, 
+    fileName: string, 
+    initialStageLabel = 'Iniciando processamento...',
+    initialSize: number = 0
+  ) => {
+    const newUpload: UploadProgress = {
+      id: uploadId,
+      fileName,
+      size: initialSize,
+      transferred: 0,
+      progress: 5,
+      speed: 'Iniciando...',
+      status: 'uploading',
+      stage: 'local',
+      stageLabel: initialStageLabel,
+      targetFolderId: null
+    };
+
+    setUploads(prev => [newUpload, ...prev.filter(u => u.id !== uploadId)]);
+
+    const pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/uploads/progress/${uploadId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.progress !== undefined) {
+            setUploads(prev => prev.map(u => u.id === uploadId && u.status === 'uploading' ? {
+              ...u,
+              size: data.size !== undefined && data.size > 0 ? data.size : u.size,
+              transferred: data.transferred !== undefined ? data.transferred : u.transferred,
+              progress: data.progress,
+              speed: data.speed || u.speed,
+              stage: data.stage || u.stage,
+              stageLabel: data.stageLabel || u.stageLabel,
+              status: data.stage === 'completed' ? 'completed' : data.stage === 'error' ? 'error' : 'uploading'
+            } : u));
+
+            if (data.stage === 'completed' || data.stage === 'error' || data.progress === 100) {
+              clearInterval(pollTimer);
+              fetchItems();
+            }
+          }
+        }
+      } catch (e) {}
+    }, 250);
+
+    return {
+      finish: (success: boolean, errorMsg?: string) => {
+        clearInterval(pollTimer);
+        setUploads(prev => prev.map(u => u.id === uploadId ? {
+          ...u,
+          progress: success ? 100 : u.progress,
+          status: success ? 'completed' : 'error',
+          stage: success ? 'completed' : 'error',
+          stageLabel: success ? 'Concluído com sucesso!' : (errorMsg || 'Falha no processo'),
+          speed: success ? 'Concluído' : 'Erro'
+        } : u));
+        fetchItems();
+      },
+      cancel: () => {
+        clearInterval(pollTimer);
+      }
+    };
+  }, [fetchItems]);
+
   return {
     currentFolderId,
     setCurrentFolderId,
@@ -615,6 +682,7 @@ export function useFileSystem() {
     setActiveTab,
     uploads,
     setUploads,
+    trackRemoteTask,
     selectedItemIds,
     setSelectedItemIds,
     getBreadcrumbPath,

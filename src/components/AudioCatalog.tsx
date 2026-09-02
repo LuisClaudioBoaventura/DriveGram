@@ -22,7 +22,8 @@ import {
   RefreshCw,
   CloudUpload,
   Loader2,
-  Youtube
+  Youtube,
+  Download
 } from 'lucide-react';
 import { AudioShow, AudioTrack, FolderItem } from '../types/index.js';
 import { fetchAndParsePodcastRss } from '../utils/podcastRssParser.js';
@@ -255,16 +256,51 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   const twoMonthsAgoMs = twoMonthsAgo.getTime();
 
   const recentEpisodes: RecentEpisodeItem[] = [];
+  const seenEpisodeKeys = new Set<string>();
+  const seenShowIds = new Set<string>();
 
-  audioShows.forEach(show => {
+  // Deduplicate shows first
+  const uniqueShows = audioShows.filter(show => {
+    if (!show || !show.id) return false;
+    if (seenShowIds.has(show.id)) return false;
+    seenShowIds.add(show.id);
+    return true;
+  });
+
+  uniqueShows.forEach(show => {
     if (show.showType === 'podcast' || show.tracks?.some(t => t.releaseDate)) {
+      const showTrackKeys = new Set<string>();
+
       (show.tracks || []).forEach((track, trackIndex) => {
-        // Parse the genuine publication date
+        if (!track || !track.title) return;
+
+        // Normalized track signatures
+        const cleanTitleKey = track.title.toLowerCase().replace(/[/\\?%*:|"<>_.\-\s]/g, '').trim();
+        const urlKey = track.audioUrl ? track.audioUrl.trim().toLowerCase() : '';
+        const epSignature = urlKey || `${show.id}_${cleanTitleKey}`;
+        const globalShowTitleKey = `${(show.title || '').toLowerCase().trim()}_${cleanTitleKey}`;
+
+        // Skip duplicates within the same show
+        if (showTrackKeys.has(epSignature) || (cleanTitleKey && showTrackKeys.has(cleanTitleKey))) {
+          return;
+        }
+        showTrackKeys.add(epSignature);
+        if (cleanTitleKey) showTrackKeys.add(cleanTitleKey);
+
+        // Skip duplicates across all recent episodes
+        if (seenEpisodeKeys.has(epSignature) || (cleanTitleKey && seenEpisodeKeys.has(globalShowTitleKey))) {
+          return;
+        }
+
+        // Parse genuine publication date
         const epDate = parseEpisodePublicationDate(track, show, trackIndex);
 
         if (epDate) {
           // Strictly filter only episodes within the last 2 months (60 days)
           if (epDate.getTime() >= twoMonthsAgoMs) {
+            seenEpisodeKeys.add(epSignature);
+            if (cleanTitleKey) seenEpisodeKeys.add(globalShowTitleKey);
+
             recentEpisodes.push({
               show,
               track,
@@ -280,6 +316,32 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
 
   // Sort STRICTLY by real publication date descending (newest to oldest across all podcasts)
   recentEpisodes.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+
+  const handlePlayRecentSequentially = (startIndex = 0) => {
+    if (recentEpisodes.length === 0) return;
+
+    const recentPlaylistShow: AudioShow = {
+      id: 'recent-episodes-playlist',
+      title: 'Novos Episódios (Ordem de Lançamento)',
+      artist: 'DriveGram Podcasts',
+      host: `${recentEpisodes.length} episódios recentes`,
+      genre: 'Podcast',
+      category: 'Novos Episódios',
+      description: `Playlist dinâmica com os ${recentEpisodes.length} episódios mais recentes de todos os podcasts cadastrados em ordem cronológica de publicação.`,
+      coverImage: recentEpisodes[startIndex]?.show?.coverImage || recentEpisodes[0]?.show?.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
+      showType: 'podcast',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      tracks: recentEpisodes.map((item, idx) => ({
+        ...item.track,
+        id: item.track.id || `recent-${item.show.id}-${idx}`,
+        trackNumber: idx + 1,
+        artist: item.show.title || item.track.artist || 'Podcast'
+      }))
+    };
+
+    onSelectShow(recentPlaylistShow, startIndex);
+  };
 
   const handleScrollRecent = (direction: 'left' | 'right') => {
     if (recentScrollRef.current) {
@@ -432,8 +494,21 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
               </div>
             </div>
 
-            {/* Carousel Scroll Buttons & Quick Refresh */}
-            <div className="flex items-center gap-2">
+            {/* Sequential Play Button, Carousel Scroll Buttons & Quick Refresh */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Main Sequential Play Button */}
+              <button
+                onClick={() => handlePlayRecentSequentially(0)}
+                className="flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/25 transition-all active:scale-95 shrink-0 group cursor-pointer"
+                title="Tocar sequencialmente todos os novos episódios em ordem de lançamento"
+              >
+                <Play className="w-3.5 h-3.5 fill-current group-hover:scale-110 transition-transform" />
+                <span>Tocar Sequencialmente</span>
+                <span className="bg-black/20 text-slate-950 px-1.5 py-0.2 rounded-md text-[10px] font-mono">
+                  {recentEpisodes.length}
+                </span>
+              </button>
+
               {onRefreshPodcasts && (
                 <button
                   onClick={handleManualRefreshPodcasts}
@@ -472,7 +547,7 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
               return (
                 <div
                   key={`ep-card-${item.show.id}-${item.track.id || 'idx'}-${idx}`}
-                  onClick={() => onSelectShow(item.show, item.trackIndex)}
+                  onClick={() => handlePlayRecentSequentially(idx)}
                   className="w-72 sm:w-80 p-3.5 rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200/80 dark:border-drive-darkBorder hover:border-amber-500/60 shadow-sm hover:shadow-lg transition-all duration-200 flex flex-col justify-between shrink-0 snap-start cursor-pointer group"
                 >
                   <div className="flex items-start gap-3">
@@ -517,10 +592,21 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
                       </span>
 
                       {item.track.fileId ? (
-                        <span className="flex items-center gap-1 text-sky-500 font-bold text-[10px]" title="Salvo no Telegram e no Meu Drive">
-                          <Send className="w-3 h-3" />
-                          <span className="hidden sm:inline">Salvo</span>
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="flex items-center gap-1 text-sky-500 font-bold text-[10px]" title="Salvo no Telegram e no Meu Drive">
+                            <Send className="w-3 h-3" />
+                            <span className="hidden sm:inline">Salvo</span>
+                          </span>
+                          <a
+                            href={`/api/stream/${item.track.fileId}?download=true`}
+                            download={`${item.track.title}.mp3`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1 rounded-md text-gray-400 hover:text-sky-500 hover:bg-sky-500/10 transition-colors"
+                            title="Baixar episódio do Telegram para o seu dispositivo"
+                          >
+                            <Download className="w-3 h-3" />
+                          </a>
+                        </div>
                       ) : item.track.audioUrl ? (
                         <button
                           onClick={(e) => handleBackupRecentEpisode(item, e)}

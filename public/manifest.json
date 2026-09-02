@@ -1,0 +1,55 @@
+{
+  "short_name": "DriveGram",
+  "name": "DriveGram - Cloud Storage & Streaming",
+  "description": "Nuvem ilimitada de arquivos, streaming de filmes, séries, animes, cursos, livros e quadrinhos.",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#1a73e8",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "pt-BR",
+  "shortcuts": [
+    {
+      "name": "Meu Drive",
+      "short_name": "Drive",
+      "description": "Acessar arquivos da nuvem",
+      "url": "/#drive",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Cursos",
+      "short_name": "Cursos",
+      "description": "Acessar Cursos e Aulas",
+      "url": "/#courses",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Cinema & Filmes",
+      "short_name": "Cinema",
+      "description": "Assistir Filmes e Séries",
+      "url": "/#videos",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

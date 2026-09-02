@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
+import bigInt from 'big-integer';
 import QRCode from 'qrcode';
 import { TelegramAuthState, DriveGramSyncManifest } from '../src/types/index.js';
 import { db } from './database.js';
@@ -411,35 +412,169 @@ class TelegramService {
     }
   }
 
+  private inFlightDownloads = new Map<string, Promise<Buffer | null>>();
+  private inFlightCallbacks = new Map<string, Set<(progressPct: number, transferred: number, total: number) => void>>();
+
   /**
-   * Download media on demand directly to disk without loading full file into memory
+   * Download media on demand directly to disk with real-time byte tracking.
+   * Uses downloadFileV2 with the properly-typed InputDocumentFileLocation so
+   * the GramJS internal iterator works without "Cannot cast" errors.
    */
-  public async downloadMediaByMessageId(messageId: number, targetPath?: string): Promise<Buffer | null> {
-    if (!this.client || !this.authState.isConnected) return null;
+  public async downloadMediaByMessageId(
+    messageId: number,
+    targetPath?: string,
+    progressCallback?: (progressPct: number, transferred: number, total: number) => void,
+    expectedTotalSize?: number
+  ): Promise<Buffer | null> {
+    if (!this.client || !this.authState.isConnected) {
+      throw new Error('Telegram desconectado. Verifique sua conexão com a internet.');
+    }
 
-    try {
-      const messages = await this.client.getMessages('me', { ids: [messageId] });
-      if (!messages || messages.length === 0 || !messages[0].media) {
-        return null;
+    const lockKey = `${messageId}_${targetPath || 'mem'}`;
+
+    if (progressCallback) {
+      if (!this.inFlightCallbacks.has(lockKey)) {
+        this.inFlightCallbacks.set(lockKey, new Set());
       }
+      this.inFlightCallbacks.get(lockKey)!.add(progressCallback);
+    }
 
-      if (targetPath) {
-        const dir = path.dirname(targetPath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
+    if (this.inFlightDownloads.has(lockKey)) {
+      return this.inFlightDownloads.get(lockKey)!;
+    }
+
+    const downloadTask = (async (): Promise<Buffer | null> => {
+      let tempPath: string | null = null;
+
+      try {
+        const messages = await this.client!.getMessages('me', { ids: [messageId] });
+        if (!messages || messages.length === 0 || !messages[0].media) {
+          throw new Error('Mensagem de mídia não encontrada no Telegram');
         }
-        // Direct stream to disk (Zero memory overhead)
-        await (this.client as any).downloadMedia(messages[0], {
-          outputFile: targetPath
-        });
-        return fs.existsSync(targetPath) ? Buffer.from('') : null;
-      }
 
-      const buffer = await this.client.downloadMedia(messages[0]) as Buffer;
-      return buffer || null;
-    } catch (e: any) {
-      console.error(`Error downloading media for messageId ${messageId} from Telegram:`, e);
-      return null;
+        const msg = messages[0];
+        const media = msg.media as any;
+
+        // Helper to broadcast progress to all listeners for this download
+        const notifyProgress = (trans: number, tot: number) => {
+          const total = tot > 0 ? tot : (trans || 1);
+          const pct = Math.min(99, Math.max(1, Math.round((trans / total) * 100)));
+          const callbacks = this.inFlightCallbacks.get(lockKey);
+          if (callbacks) {
+            for (const cb of callbacks) {
+              try { cb(pct, trans, total); } catch (_) {}
+            }
+          }
+        };
+
+        if (targetPath) {
+          const dir = path.dirname(targetPath);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+          tempPath = `${targetPath}.${Date.now()}.downloading`;
+
+          // Extract doc/photo info to build proper InputFileLocation
+          const { Api } = await import('telegram');
+
+          let fileLocation: any = null;
+          let fileSize: number = expectedTotalSize || 0;
+
+          if (media?.document || media?.className === 'MessageMediaDocument') {
+            const doc = media.document || media;
+            // Build proper InputDocumentFileLocation
+            fileLocation = new Api.InputDocumentFileLocation({
+              id: doc.id,
+              accessHash: doc.accessHash,
+              fileReference: doc.fileReference,
+              thumbSize: ''
+            });
+            if (doc.size && fileSize === 0) {
+              const sz = doc.size;
+              fileSize = typeof sz === 'object' && sz?.toJSNumber ? sz.toJSNumber() : Number(sz?.toString() || 0);
+            }
+          } else if (media?.photo || media?.className === 'MessageMediaPhoto') {
+            const photo = media.photo || media;
+            const lastSize = (photo.sizes || []).at(-1);
+            fileLocation = new Api.InputPhotoFileLocation({
+              id: photo.id,
+              accessHash: photo.accessHash,
+              fileReference: photo.fileReference,
+              thumbSize: lastSize?.type || 's'
+            });
+          }
+
+          if (!fileLocation) {
+            // Last resort: let downloadMedia handle it (writes to path, no per-chunk progress)
+            await (this.client as any).downloadMedia(msg, { outputFile: tempPath });
+            if (fs.existsSync(tempPath)) {
+              const finalSize = fs.statSync(tempPath).size;
+              if (finalSize > 0) {
+                if (fs.existsSync(targetPath)) try { fs.unlinkSync(targetPath); } catch (_) {}
+                fs.renameSync(tempPath, targetPath);
+                const callbacks = this.inFlightCallbacks.get(lockKey);
+                if (callbacks) for (const cb of callbacks) { try { cb(100, finalSize, finalSize); } catch (_) {} }
+                return Buffer.from('');
+              }
+            }
+            throw new Error('Arquivo baixado está vazio ou corrompido');
+          }
+
+          // Use downloadFileV2 which internally uses the iterator correctly
+          // Write to a temp WriteStream and count bytes per chunk via progressCallback
+          let transferred = 0;
+          const bigIntLib = bigInt;
+
+          await (this.client as any).downloadFile(
+            fileLocation,
+            {
+              outputFile: tempPath,
+              fileSize: fileSize > 0 ? bigIntLib(fileSize) : undefined,
+              progressCallback: async (dl: any, total: any) => {
+                try {
+                  const t = typeof dl === 'object' && dl?.toJSNumber ? dl.toJSNumber() : Number(dl?.toString() || 0);
+                  const tot = typeof total === 'object' && total?.toJSNumber ? total.toJSNumber() : Number(total?.toString() || 0);
+                  if (t > 0) {
+                    transferred = t;
+                    notifyProgress(t, tot > 0 ? tot : fileSize);
+                  }
+                } catch (_) {}
+              },
+              dcId: media?.document?.dcId || media?.photo?.dcId || undefined
+            }
+          );
+
+          if (fs.existsSync(tempPath)) {
+            const finalSize = fs.statSync(tempPath).size;
+            if (finalSize > 0) {
+              if (fs.existsSync(targetPath)) try { fs.unlinkSync(targetPath); } catch (_) {}
+              fs.renameSync(tempPath, targetPath);
+              const callbacks = this.inFlightCallbacks.get(lockKey);
+              if (callbacks) for (const cb of callbacks) { try { cb(100, finalSize, finalSize); } catch (_) {} }
+              return Buffer.from('');
+            }
+          }
+          throw new Error('Arquivo baixado está vazio ou corrompido');
+        }
+
+        // In-memory download (no targetPath)
+        const buffer = await this.client!.downloadMedia(msg) as Buffer;
+        return buffer || null;
+
+      } catch (e: any) {
+        console.error(`[Telegram Download] Error for messageId ${messageId}:`, e.message || e);
+        if (tempPath && fs.existsSync(tempPath)) {
+          try { fs.unlinkSync(tempPath); } catch (_) {}
+        }
+        throw e;
+      }
+    })();
+
+    this.inFlightDownloads.set(lockKey, downloadTask);
+    try {
+      return await downloadTask;
+    } finally {
+      this.inFlightDownloads.delete(lockKey);
+      this.inFlightCallbacks.delete(lockKey);
     }
   }
 
@@ -581,7 +716,8 @@ class TelegramService {
         return false;
       }
 
-      const message = messages[0];
+      const msg = messages[0];
+      const media = msg.media as any;
       const contentLength = (end - start) + 1;
 
       if (!res.headersSent) {
@@ -595,18 +731,44 @@ class TelegramService {
         });
       }
 
-      // Safe chunk-based streaming
+      // Build proper InputFileLocation from document or photo
       try {
+        const { Api } = await import('telegram');
+        let fileLocation: any = null;
+
+        if (media?.document || media?.className === 'MessageMediaDocument') {
+          const doc = media.document || media;
+          fileLocation = new Api.InputDocumentFileLocation({
+            id: doc.id,
+            accessHash: doc.accessHash,
+            fileReference: doc.fileReference,
+            thumbSize: ''
+          });
+        } else if (media?.photo || media?.className === 'MessageMediaPhoto') {
+          const photo = media.photo || media;
+          const lastSize = (photo.sizes || []).at(-1);
+          fileLocation = new Api.InputPhotoFileLocation({
+            id: photo.id,
+            accessHash: photo.accessHash,
+            fileReference: photo.fileReference,
+            thumbSize: lastSize?.type || 's'
+          });
+        }
+
+        if (!fileLocation) {
+          if (!res.writableEnded && !res.destroyed) try { res.end(); } catch (_) {}
+          return false;
+        }
+
         const iter = (this.client as any).iterDownload({
-          file: message.media,
-          offset: start as any,
-          limit: contentLength,
+          file: fileLocation,
+          offset: bigInt(start || 0),
           requestSize: 256 * 1024
         });
 
         let bytesSent = 0;
         for await (const chunk of iter) {
-          if (res.destroyed || res.closed || res.writableEnded) break;
+          if (res.destroyed || (res as any).closed || res.writableEnded) break;
           const remaining = contentLength - bytesSent;
           if (remaining <= 0) break;
           const chunkToSend = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
@@ -614,22 +776,16 @@ class TelegramService {
           bytesSent += chunkToSend.length;
           if (bytesSent >= contentLength) break;
         }
-        if (!res.writableEnded && !res.closed && !res.destroyed) {
-          res.end();
-        }
+        if (!res.writableEnded && !res.destroyed) res.end();
         return true;
       } catch (iterErr: any) {
-        console.warn(`[DriveGram Direct Stream] iterDownload error for msg ${messageId}:`, iterErr?.message);
-        if (!res.writableEnded && !res.closed && !res.destroyed) {
-          try { res.end(); } catch (err) {}
-        }
+        console.warn(`[DriveGram Direct Stream] error for msg ${messageId}:`, iterErr?.message);
+        if (!res.writableEnded && !res.destroyed) try { res.end(); } catch (_) {}
         return false;
       }
     } catch (e: any) {
       console.error(`[DriveGram] Error in streamMediaDirect for message ${messageId}:`, e);
-      if (!res.writableEnded && !res.closed && !res.destroyed) {
-        try { res.end(); } catch (err) {}
-      }
+      if (!res.writableEnded && !res.destroyed) try { res.end(); } catch (_) {}
       return false;
     }
   }

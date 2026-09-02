@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { AdultVideo, AdultPerformer, DriveItem } from '../types/index.js';
 import { PerformerDetailModal } from './PerformerDetailModal.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface AdultPlayerViewProps {
   video: AdultVideo;
@@ -78,6 +79,7 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
   const [newPerformerInput, setNewPerformerInput] = useState<string>('');
   const [selectedPerformerForDetail, setSelectedPerformerForDetail] = useState<AdultPerformer | null>(null);
   const [justCapturedCover, setJustCapturedCover] = useState<boolean>(false);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
 
   const [localPerformers, setLocalPerformers] = useState<string[]>(() => {
     return video.performers ? video.performers.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -265,14 +267,13 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
 
           {/* Download Button (Icon Only) */}
           {videoFile && (
-            <a
-              href={`/api/stream/${videoFile.id}?download=true`}
-              download={videoFile.name}
+            <button
+              onClick={() => setIsDownloadModalOpen(true)}
               className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
-              title="Baixar Arquivo Original"
+              title="Baixar Vídeo para Cache Local"
             >
               <Download className="w-4 h-4" />
-            </a>
+            </button>
           )}
 
           {/* Edit Button (Icon Only) */}
@@ -653,7 +654,7 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
           isOpen={selectedPerformerForDetail !== null}
           onClose={() => setSelectedPerformerForDetail(null)}
           performer={selectedPerformerForDetail}
-          videos={allVideos.length > 0 ? allVideos : playlist}
+          videos={allVideos?.length ? allVideos : (playlist || [])}
           onSelectVideo={(v) => {
             if (onSelectVideoInPlaylist) {
               handlePauseOrEnded(false);
@@ -661,6 +662,16 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
             }
           }}
           onToggleFavorite={onTogglePerformerFavorite}
+        />
+      )}
+
+      {/* Video Download & Cache Progress Modal */}
+      {videoFile && (
+        <VideoDownloadModal
+          file={videoFile}
+          isOpen={isDownloadModalOpen}
+          onClose={() => setIsDownloadModalOpen(false)}
+          customTitle={video.title}
         />
       )}
     </div>

@@ -195,9 +195,15 @@ export function useComics() {
     }
   };
 
-  const toggleIssueCompletion = async (issueId: string): Promise<void> => {
-    if (!activeComic) return;
-    const updatedIssues = (activeComic.issues || []).map(issue => {
+  const toggleIssueCompletion = async (issueId: string, comicId?: string): Promise<void> => {
+    const targetComic = (comicId ? comics.find(c => c.id === comicId) : null)
+      || comics.find(c => c.issues?.some(i => i.id === issueId))
+      || (activeComic?.issues?.some(i => i.id === issueId) ? activeComic : null)
+      || activeComic;
+
+    if (!targetComic) return;
+
+    const updatedIssues = (targetComic.issues || []).map(issue => {
       if (issue.id === issueId) {
         const isCompleted = !issue.isCompleted;
         return {
@@ -211,9 +217,33 @@ export function useComics() {
 
     const allCompleted = updatedIssues.length > 0 && updatedIssues.every(i => i.isCompleted);
     const updatedComic: ComicBook = {
-      ...activeComic,
+      ...targetComic,
       issues: updatedIssues,
       status: allCompleted ? 'completed' : 'reading'
+    };
+
+    await updateComic(updatedComic);
+  };
+
+  const toggleComicCompletion = async (comicId: string): Promise<void> => {
+    const targetComic = comics.find(c => c.id === comicId) || (activeComic?.id === comicId ? activeComic : null);
+    if (!targetComic) return;
+
+    const total = targetComic.issues?.length || 0;
+    const completedCount = targetComic.issues?.filter(i => i.isCompleted).length || 0;
+    const isCurrentlyCompleted = (total > 0 && completedCount === total) || targetComic.status === 'completed';
+    const nextCompleted = !isCurrentlyCompleted;
+
+    const updatedIssues = (targetComic.issues || []).map(issue => ({
+      ...issue,
+      isCompleted: nextCompleted,
+      lastReadAt: new Date().toISOString()
+    }));
+
+    const updatedComic: ComicBook = {
+      ...targetComic,
+      issues: updatedIssues,
+      status: nextCompleted ? 'completed' : 'reading'
     };
 
     await updateComic(updatedComic);
@@ -254,6 +284,7 @@ export function useComics() {
     updateComic,
     deleteComic,
     toggleIssueCompletion,
+    toggleComicCompletion,
     updateIssueProgress,
     addCategory,
     updateCategory,

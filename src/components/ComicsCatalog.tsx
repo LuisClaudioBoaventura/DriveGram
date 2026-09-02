@@ -22,6 +22,7 @@ interface ComicsCatalogProps {
   onNewComic: () => void;
   onDeleteComic: (comicId: string) => void;
   onEditComic?: (comic: ComicBook) => void;
+  onToggleComicCompletion?: (comicId: string) => void;
   categories?: string[];
 }
 
@@ -31,6 +32,7 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
   onNewComic,
   onDeleteComic,
   onEditComic,
+  onToggleComicCompletion,
   categories = []
 }) => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'reading' | 'completed'>('all');
@@ -264,13 +266,18 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
           {filteredComics.map((comic) => {
             const total = comic.issues?.length || 0;
             const completed = comic.issues?.filter(i => i.isCompleted).length || 0;
+            const isCompleted = (total > 0 && completed === total) || comic.status === 'completed';
             const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
             return (
               <div
                 key={comic.id}
                 onClick={() => onSelectComic(comic)}
-                className="group relative flex flex-col bg-white dark:bg-drive-darkSurface rounded-2xl border border-gray-200 dark:border-drive-darkBorder hover:border-pink-500/50 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-200 overflow-hidden cursor-pointer"
+                className={`group relative flex flex-col bg-white dark:bg-drive-darkSurface rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-200 overflow-hidden cursor-pointer ${
+                  isCompleted
+                    ? 'border-2 border-emerald-500 dark:border-emerald-500 shadow-emerald-500/15 ring-1 ring-emerald-500/30'
+                    : 'border border-gray-200 dark:border-drive-darkBorder hover:border-pink-500/50'
+                }`}
               >
                 {/* 2:3 Aspect Ratio Cover Art */}
                 <div className="relative aspect-[2/3] w-full overflow-hidden bg-black/60">
@@ -280,15 +287,41 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
 
-                  {/* Publisher Badge */}
-                  {comic.publisher && (
-                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-wider border border-white/10">
-                      {comic.publisher}
-                    </span>
-                  )}
+                  {/* Lida Badge & Publisher Badge */}
+                  <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 items-start max-w-[80%]">
+                    {isCompleted && (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-600/95 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-wider shadow-md flex items-center gap-1 border border-emerald-400/40">
+                        <CheckCircle2 className="w-2.5 h-2.5" />
+                        <span>Lida</span>
+                      </span>
+                    )}
+
+                    {comic.publisher && (
+                      <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-wider border border-white/10 truncate">
+                        {comic.publisher}
+                      </span>
+                    )}
+                  </div>
 
                   {/* Actions Hover Buttons */}
-                  <div className="absolute top-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                    {onToggleComicCompletion && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleComicCompletion(comic.id);
+                        }}
+                        className={`p-1.5 rounded-lg backdrop-blur-md transition-all ${
+                          isCompleted
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md border border-emerald-400/40'
+                            : 'bg-black/70 hover:bg-emerald-600 text-gray-300 hover:text-white'
+                        }`}
+                        title={isCompleted ? 'Marcar como não lida' : 'Marcar como lida'}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
                     {onEditComic && (
                       <button
                         onClick={(e) => {
@@ -320,7 +353,11 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
                   {total > 0 && (
                     <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/50">
                       <div
-                        className="h-full bg-gradient-to-r from-pink-500 to-rose-400 transition-all duration-300"
+                        className={`h-full transition-all duration-300 ${
+                          isCompleted
+                            ? 'bg-emerald-500'
+                            : 'bg-gradient-to-r from-pink-500 to-rose-400'
+                        }`}
                         style={{ width: `${progress}%` }}
                       />
                     </div>
@@ -342,8 +379,8 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
 
                   <div className="flex items-center justify-between text-[10px] text-gray-500 font-mono pt-1 border-t border-gray-100 dark:border-gray-800">
                     <span>{total} {total === 1 ? 'edição' : 'edições'}</span>
-                    <span className={progress === 100 ? 'text-emerald-500 font-bold' : 'text-pink-500 font-bold'}>
-                      {progress === 100 ? '✓ Completo' : `${progress}%`}
+                    <span className={isCompleted ? 'text-emerald-500 font-bold' : progress > 0 ? 'text-pink-500 font-bold' : 'text-gray-400'}>
+                      {isCompleted ? '✓ Concluída' : progress > 0 ? `${progress}%` : 'Não lida'}
                     </span>
                   </div>
                 </div>

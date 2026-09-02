@@ -19,6 +19,7 @@ import {
   Key,
   Youtube,
   Menu,
+  Smartphone,
   X
 } from 'lucide-react';
 import { TelegramAuthState, FileType } from '../types/index.js';
@@ -37,6 +38,7 @@ interface NavbarProps {
   onOpenApiKeysModal?: () => void;
   onOpenOmdbKeyModal?: () => void;
   onOpenYouTubeModal?: (type?: YouTubeTargetType) => void;
+  onOpenMobileServerSettings?: () => void;
   onSyncNow: () => void;
   isSyncing: boolean;
   onOpenMobileMenu?: () => void;
@@ -55,6 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenApiKeysModal,
   onOpenOmdbKeyModal,
   onOpenYouTubeModal,
+  onOpenMobileServerSettings,
   onSyncNow,
   isSyncing,
   onOpenMobileMenu
@@ -173,6 +176,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all active:scale-95"
             >
               <Key className="w-4 h-4 text-amber-500" />
+            </button>
+          )}
+
+          {/* Configurações Mobile / Servidor Modal Trigger */}
+          {onOpenMobileServerSettings && (
+            <button
+              onClick={onOpenMobileServerSettings}
+              title="Configurações do Servidor Mobile / App"
+              className="inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 transition-all active:scale-95"
+            >
+              <Smartphone className="w-4 h-4 text-blue-500" />
             </button>
           )}
 

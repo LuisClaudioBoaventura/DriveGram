@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Play, 
   Pause, 
@@ -17,7 +17,8 @@ import {
   Radio,
   Send,
   Loader2,
-  CloudUpload
+  CloudUpload,
+  Download
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem } from '../types/index.js';
 
@@ -89,15 +90,62 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [hasStreamError, setHasStreamError] = useState(false);
 
-  const activeAudioFile = activeTrack?.fileId
-    ? allFiles.find(f => f.id === activeTrack.fileId)
-    : null;
+  // Priority 1: Direct fileId match in allFiles
+  // Priority 2: Match by podcast folder and track title in allFiles
+  const activeAudioFile = useMemo(() => {
+    if (!activeTrack) return null;
+    if (activeTrack.fileId) {
+      const direct = allFiles.find(f => f.id === activeTrack.fileId && !f.isTrash);
+      if (direct) return direct;
+    }
+    const cleanTrackTitle = (activeTrack.title || '').toLowerCase().replace(/[/\\?%*:|"<>_.-]/g, ' ').trim();
+    if (cleanTrackTitle && show.folderId) {
+      const matchInFolder = allFiles.find(f => 
+        !f.isTrash &&
+        f.parentId === show.folderId &&
+        (f.type === 'audio' || f.mimeType?.startsWith('audio/') || f.name.endsWith('.mp3')) &&
+        (
+          f.name.toLowerCase().includes(cleanTrackTitle) ||
+          cleanTrackTitle.includes(f.name.toLowerCase().replace(/\.[^/.]+$/, '').trim())
+        )
+      );
+      if (matchInFolder) return matchInFolder;
+    }
+    return null;
+  }, [activeTrack, allFiles, show.folderId]);
 
-  // Determine audio stream source: local API stream if saved, or remote audioUrl
-  const audioSource = activeAudioFile 
-    ? `/api/stream/${activeAudioFile.id}` 
-    : (activeTrack?.audioUrl || undefined);
+  // Reset stream error when switching tracks
+  useEffect(() => {
+    setHasStreamError(false);
+  }, [activeTrack?.id, activeTrack?.fileId]);
+
+  // PRIORITY SYSTEM (ONLINE FIRST):
+  // 1. If original remote source (audioUrl) is available AND no stream error -> PRIORITIZE ONLINE WEB SOURCE
+  // 2. Fallback: If online source fails or is missing AND file is saved on Telegram -> PLAY FROM TELEGRAM (/api/stream/:id)
+  const isSavedOnTelegram = Boolean(activeAudioFile || activeTrack?.fileId);
+  const isOnlineSourceAvailable = Boolean(activeTrack?.audioUrl && !hasStreamError);
+  const isPlayingOnline = isOnlineSourceAvailable;
+  const isPlayingFromTelegram = !isOnlineSourceAvailable && Boolean(activeAudioFile);
+  const audioSource = isOnlineSourceAvailable
+    ? activeTrack!.audioUrl
+    : (activeAudioFile ? `/api/stream/${activeAudioFile.id}` : activeTrack?.audioUrl);
+
+  const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+    if (isOnlineSourceAvailable && activeAudioFile) {
+      console.warn(`[DriveGram Audio] Falha na reprodução online para "${activeTrack?.title}". Alternando para a versão salva no Telegram...`);
+      setHasStreamError(true);
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.load();
+          if (isPlaying) {
+            audioRef.current.play().catch(() => {});
+          }
+        }
+      }, 60);
+    }
+  };
 
   const formatSeconds = (sec: number) => {
     if (isNaN(sec) || !isFinite(sec)) return '00:00';
@@ -119,6 +167,48 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
     }
   };
 
+  const savedTrackPosition = useMemo(() => {
+    if (!activeTrack) return 0;
+    if (activeTrack.lastPositionSeconds && activeTrack.lastPositionSeconds > 0) {
+      return activeTrack.lastPositionSeconds;
+    }
+    try {
+      const raw = localStorage.getItem(`drivegram_podcast_pos_${activeTrack.id}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.pos === 'number' && parsed.pos > 0) return parsed.pos;
+      }
+    } catch (e) {}
+    return 0;
+  }, [activeTrack?.id, activeTrack?.lastPositionSeconds]);
+
+  const restoredTrackRef = useRef<string | null>(null);
+
+  // Reset restored ref when track changes
+  useEffect(() => {
+    restoredTrackRef.current = null;
+  }, [activeTrack?.id]);
+
+  const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+    const audioEl = e.currentTarget;
+    onLoadedMetadata(audioEl.duration);
+
+    if (activeTrack && savedTrackPosition > 0 && restoredTrackRef.current !== activeTrack.id) {
+      audioEl.currentTime = savedTrackPosition;
+      onTimeUpdate(savedTrackPosition);
+      restoredTrackRef.current = activeTrack.id;
+    }
+  };
+
+  const handleCanPlay = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+    const audioEl = e.currentTarget;
+    if (activeTrack && savedTrackPosition > 0 && restoredTrackRef.current !== activeTrack.id) {
+      audioEl.currentTime = savedTrackPosition;
+      onTimeUpdate(savedTrackPosition);
+      restoredTrackRef.current = activeTrack.id;
+    }
+  };
+
   return (
     <>
       {/* Persistent Global Audio Element */}
@@ -128,12 +218,12 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
         onTimeUpdate={(e) => {
           onTimeUpdate((e.target as HTMLAudioElement).currentTime);
         }}
-        onLoadedMetadata={(e) => {
-          onLoadedMetadata((e.target as HTMLAudioElement).duration);
-        }}
+        onLoadedMetadata={handleLoadedMetadata}
+        onCanPlay={handleCanPlay}
         onPlay={onPlay}
         onPause={onPause}
         onEnded={onAudioEnded}
+        onError={handleAudioError}
       />
 
       {/* Floating MiniPlayer Card / Vinyl Bubble */}
@@ -325,14 +415,26 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
                     </div>
 
                     <div className="overflow-hidden flex-1">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-wider border border-emerald-500/30">
                           {show.showType === 'podcast' ? '🎙️ Podcast' : '🎵 Música'}
                         </span>
-                        {activeTrack?.fileId && (
-                          <span className="flex items-center gap-1 text-[9px] font-bold text-sky-400">
+                        {isPlayingOnline ? (
+                          <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/15 px-1.5 py-0.2 rounded border border-emerald-500/30" title="Prioridade: Executando da Fonte Online (Web)">
+                            <Radio className="w-2.5 h-2.5" />
+                            <span>Online</span>
+                          </span>
+                        ) : isPlayingFromTelegram ? (
+                          <span className="flex items-center gap-1 text-[9px] font-bold text-sky-400 bg-sky-500/15 px-1.5 py-0.2 rounded border border-sky-500/30" title="Executando da cópia salva no Telegram">
                             <Send className="w-2.5 h-2.5" />
-                            <span className="hidden sm:inline">Salvo</span>
+                            <span>Telegram</span>
+                          </span>
+                        ) : null}
+
+                        {isSavedOnTelegram && (
+                          <span className="flex items-center gap-1 text-[9px] font-bold text-sky-300 bg-sky-500/20 px-1.5 py-0.2 rounded border border-sky-400/40" title="Episódio salvo no Telegram">
+                            <Send className="w-2.5 h-2.5 text-sky-400" />
+                            <span>Salvo no Telegram</span>
                           </span>
                         )}
                       </div>
@@ -347,8 +449,21 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
 
                   {/* Window Control Buttons */}
                   <div className="flex items-center gap-1 shrink-0">
+                    {/* Download button if file is saved on Telegram */}
+                    {activeAudioFile && (
+                      <a
+                        href={`/api/stream/${activeAudioFile.id}?download=true`}
+                        download={`${activeTrack?.title || 'episodio'}.mp3`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 transition-colors"
+                        title="Baixar episódio do Telegram para o seu dispositivo"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+
                     {/* Backup to Telegram button if unbacked */}
-                    {activeTrack && !activeTrack.fileId && activeTrack.audioUrl && onBackupTrack && (
+                    {activeTrack && !isSavedOnTelegram && activeTrack.audioUrl && onBackupTrack && (
                       <button
                         onClick={handleQuickBackup}
                         disabled={isBackingUp}

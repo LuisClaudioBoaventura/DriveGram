@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   ArrowLeft, 
   Play, 
@@ -37,7 +37,9 @@ import {
   Loader2,
   ShieldCheck,
   RefreshCw,
-  Minimize2
+  Minimize2,
+  Radio,
+  Download
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem, VideoTimestamp } from '../types/index.js';
 
@@ -53,6 +55,7 @@ interface AudioStudioViewProps {
   initialTrackIndex?: number;
   onRefreshSinglePodcast?: (showId: string) => Promise<{ success: boolean; newEpisodesCount: number; show?: any }>;
   onMinimizeToFloating?: () => void;
+  onTrackTask?: (uploadId: string, fileName: string, initialStageLabel?: string, initialSize?: number) => any;
   // Global Audio Playback bindings
   isPlaying?: boolean;
   currentTime?: number;
@@ -84,6 +87,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   initialTrackIndex,
   onRefreshSinglePodcast,
   onMinimizeToFloating,
+  onTrackTask,
   isPlaying: isPlayingProp,
   currentTime: currentTimeProp,
   duration: durationProp,
@@ -156,19 +160,88 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
   const tracks = audioShow.tracks || [];
   const activeTrack: AudioTrack | undefined = tracks[currentTrackIndex];
-  const activeFile = activeTrack?.fileId ? allFiles.find(f => f.id === activeTrack.fileId) : null;
+  
+  // Priority 1: Direct fileId match in allFiles
+  // Priority 2: Match by show folder and track title in allFiles
+  const activeFile = useMemo(() => {
+    if (!activeTrack) return null;
+    if (activeTrack.fileId) {
+      const direct = allFiles.find(f => f.id === activeTrack.fileId && !f.isTrash);
+      if (direct) return direct;
+    }
+    const cleanTrackTitle = (activeTrack.title || '').toLowerCase().replace(/[/\\?%*:|"<>_.-]/g, ' ').trim();
+    if (cleanTrackTitle && audioShow.folderId) {
+      const matchInFolder = allFiles.find(f => 
+        !f.isTrash &&
+        f.parentId === audioShow.folderId &&
+        (f.type === 'audio' || f.mimeType?.startsWith('audio/') || f.name.endsWith('.mp3')) &&
+        (
+          f.name.toLowerCase().includes(cleanTrackTitle) ||
+          cleanTrackTitle.includes(f.name.toLowerCase().replace(/\.[^/.]+$/, '').trim())
+        )
+      );
+      if (matchInFolder) return matchInFolder;
+    }
+    return null;
+  }, [activeTrack, allFiles, audioShow.folderId]);
 
-  // Sync notes when active track changes
+  const [hasStudioStreamError, setHasStudioStreamError] = useState(false);
+
+  // Reset studio stream error when switching tracks
+  useEffect(() => {
+    setHasStudioStreamError(false);
+  }, [activeTrack?.id, activeTrack?.fileId]);
+
+  // PRIORITY SYSTEM (ONLINE FIRST):
+  // 1. If original remote source (audioUrl) exists AND no stream error -> PRIORITIZE ONLINE WEB SOURCE
+  // 2. Fallback: If online source fails or is not available -> PLAY FROM TELEGRAM (/api/stream/:id)
+  const isSavedOnTelegram = Boolean(activeFile || activeTrack?.fileId);
+  const isOnlineSourceAvailable = Boolean(activeTrack?.audioUrl && !hasStudioStreamError);
+  const isPlayingOnline = isOnlineSourceAvailable;
+  const isPlayingFromTelegram = !isOnlineSourceAvailable && Boolean(activeFile);
+  const studioAudioSource = isOnlineSourceAvailable
+    ? activeTrack!.audioUrl
+    : (activeFile ? `/api/stream/${activeFile.id}` : activeTrack?.audioUrl);
+
+  const handleStudioAudioError = () => {
+    if (isOnlineSourceAvailable && activeFile) {
+      console.warn(`[AudioStudioView] Erro na reprodução online para "${activeTrack?.title}". Alternando para a versão salva no Telegram...`);
+      setHasStudioStreamError(true);
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.load();
+          if (isPlaying) {
+            audioRef.current.play().catch(() => {});
+          }
+        }
+      }, 60);
+    }
+  };
+
+  // Sync notes and restore saved exact playback position when active track changes
   useEffect(() => {
     if (activeTrack) {
       setTrackNotes(activeTrack.notes || '');
-      if (activeTrack.lastPositionSeconds && activeTrack.lastPositionSeconds > 0 && currentTime === 0) {
+      
+      // Determine exact saved position from track or localStorage
+      let savedSec = activeTrack.lastPositionSeconds || 0;
+      if (!savedSec) {
+        try {
+          const raw = localStorage.getItem(`drivegram_podcast_pos_${activeTrack.id}`);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed.pos === 'number' && parsed.pos > 0) savedSec = parsed.pos;
+          }
+        } catch (e) {}
+      }
+
+      if (savedSec > 0) {
         if (onSeekProp) {
-          onSeekProp(activeTrack.lastPositionSeconds);
+          onSeekProp(savedSec);
         } else {
-          setLocalCurrentTime(activeTrack.lastPositionSeconds);
+          setLocalCurrentTime(savedSec);
           if (audioRef.current) {
-            audioRef.current.currentTime = activeTrack.lastPositionSeconds;
+            audioRef.current.currentTime = savedSec;
           }
         }
       }
@@ -367,11 +440,20 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   // ---------------- TELEGRAM BACKUP HANDLERS ----------------
   const handleBackupTrackToTelegram = async (track: AudioTrack) => {
     if (!track || track.fileId) return;
+    const uploadId = `backup-${track.id}-${Date.now()}`;
+    const cleanTitle = (track.title || 'episodio').replace(/[/\\?%*:|"<>]/g, '_').trim();
+    
     setBackingUpTrackIds(prev => [...prev, track.id]);
     setBackupSuccessMessage(null);
 
+    let tracker: any = null;
+    if (onTrackTask) {
+      tracker = onTrackTask(uploadId, `${cleanTitle}.mp3`, '1/2 • Conectando ao servidor do podcast...');
+    }
+
     try {
       const payload = JSON.stringify({
+        uploadId,
         showId: audioShow.id,
         trackId: track.id,
         audioUrl: track.audioUrl,
@@ -398,14 +480,23 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
         if (data.updatedShow) {
           await onUpdateAudioShow(data.updatedShow);
         }
+        if (tracker?.finish) {
+          tracker.finish(true);
+        }
         setBackupSuccessMessage(`Episódio "${track.title}" salvo no Telegram e pasta criada no Meu Drive!`);
         setTimeout(() => setBackupSuccessMessage(null), 5000);
       } else {
         const err = res ? await res.json().catch(() => ({})) : {};
+        if (tracker?.finish) {
+          tracker.finish(false, err.error || 'Erro ao realizar backup');
+        }
         alert(err.error || 'Erro ao realizar backup no Telegram. Verifique se o servidor backend está em execução.');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error backing up to Telegram:', e);
+      if (tracker?.finish) {
+        tracker.finish(false, e?.message || 'Falha na conexão');
+      }
       alert('Falha ao conectar com o serviço de backup.');
     } finally {
       setBackingUpTrackIds(prev => prev.filter(id => id !== track.id));
@@ -421,6 +512,15 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
     setIsBackingUpAll(true);
     setBackupSuccessMessage(null);
+
+    // Register all unbacked tracks with onTrackTask
+    if (onTrackTask) {
+      unbackedTracks.forEach((t) => {
+        const trkUploadId = `backup-${t.id}-${Date.now()}`;
+        const cleanTitle = (t.title || 'episodio').replace(/[/\\?%*:|"<>]/g, '_').trim();
+        onTrackTask(trkUploadId, `${cleanTitle}.mp3`, 'Na fila para backup...');
+      });
+    }
 
     try {
       const payload = JSON.stringify({ showId: audioShow.id });
@@ -553,12 +653,21 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
         <audio
           ref={audioRef}
           key={activeTrack ? `track-audio-${activeTrack.id}-${currentTrackIndex}` : (activeFile ? activeFile.id : 'audio-player')}
-          src={activeTrack?.audioUrl || (activeFile ? `/api/stream/${activeFile.id}` : undefined)}
+          src={studioAudioSource}
           onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={(e) => setLocalDuration((e.target as HTMLAudioElement).duration || 0)}
+          onLoadedMetadata={(e) => {
+            const audioEl = e.currentTarget;
+            setLocalDuration(audioEl.duration || 0);
+            const savedSec = activeTrack?.lastPositionSeconds || 0;
+            if (savedSec > 0 && audioEl.currentTime === 0) {
+              audioEl.currentTime = savedSec;
+              setLocalCurrentTime(savedSec);
+            }
+          }}
           onEnded={handleTrackEnded}
           onPlay={() => setLocalIsPlaying(true)}
           onPause={() => setLocalIsPlaying(false)}
+          onError={handleStudioAudioError}
         />
       )}
 
@@ -790,15 +899,43 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                     </p>
                   )}
 
-                  {/* Active Track Telegram Backup Button / Badge */}
+                  {/* Active Track Telegram Backup Button / Download / Source Badge */}
                   {activeTrack && (
-                    <div className="flex items-center justify-center mt-2">
-                      {activeTrack.fileId ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-500/40 text-sky-300 text-[10px] font-bold">
+                    <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
+                      {isPlayingOnline ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold" title="Prioridade: Executando da Fonte Online na Web">
+                          <Radio className="w-3 h-3 text-emerald-400" />
+                          <span>Online (Web)</span>
+                        </span>
+                      ) : isPlayingFromTelegram ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-500/40 text-sky-300 text-[10px] font-bold" title="Executando da cópia salva no Telegram">
+                          <Send className="w-3 h-3 text-sky-400" />
+                          <span>Telegram</span>
+                        </span>
+                      ) : null}
+
+                      {isSavedOnTelegram && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-400/40 text-sky-300 text-[10px] font-bold" title="Episódio salvo no Telegram">
                           <Send className="w-3 h-3 text-sky-400" />
                           <span>Salvo no Telegram</span>
                         </span>
-                      ) : activeTrack.audioUrl ? (
+                      )}
+
+                      {/* Direct Download Button if saved on Telegram */}
+                      {activeFile && (
+                        <a
+                          href={`/api/stream/${activeFile.id}?download=true`}
+                          download={`${activeTrack.title}.mp3`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-sky-600/30 hover:bg-sky-600 text-sky-200 hover:text-white border border-sky-500/40 text-[11px] font-bold transition-all shadow-sm"
+                          title="Baixar episódio do Telegram para o seu dispositivo"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Baixar MP3</span>
+                        </a>
+                      )}
+
+                      {/* Backup Button if not saved */}
+                      {!isSavedOnTelegram && activeTrack.audioUrl && (
                         <button
                           onClick={() => handleBackupTrackToTelegram(activeTrack)}
                           disabled={backingUpTrackIds.includes(activeTrack.id)}
@@ -808,16 +945,16 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                           {backingUpTrackIds.includes(activeTrack.id) ? (
                             <>
                               <Loader2 className="w-3 h-3 animate-spin" />
-                              <span>Salvando no Telegram...</span>
+                              <span>Salvando...</span>
                             </>
                           ) : (
                             <>
-                              <Send className="w-3 h-3" />
-                              <span>Backup no Telegram</span>
+                              <CloudUpload className="w-3 h-3" />
+                              <span>Salvar no Telegram</span>
                             </>
                           )}
                         </button>
-                      ) : null}
+                      )}
                     </div>
                   )}
                 </div>
@@ -1170,19 +1307,25 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               {tracks.map((track, idx) => {
                 const isCurrent = currentTrackIndex === idx;
                 const isBackingUpThis = backingUpTrackIds.includes(track.id);
+                const matchedTrackFile = track.fileId 
+                  ? allFiles.find(f => f.id === track.fileId && !f.isTrash)
+                  : (audioShow.folderId 
+                      ? allFiles.find(f => !f.isTrash && f.parentId === audioShow.folderId && f.name.toLowerCase().includes((track.title || '').toLowerCase().trim())) 
+                      : null);
+                const isTrackSaved = Boolean(matchedTrackFile || track.fileId);
 
                 return (
                   <div
-                    key={`track-row-${track.id || 'idx'}-${idx}`}
+                    key={track.id || `track-row-${idx}`}
                     onClick={() => playTrackByIndex(idx)}
-                    className={`flex items-center justify-between p-3 rounded-2xl text-xs cursor-pointer group transition-all border ${
+                    className={`group flex items-center justify-between p-2.5 rounded-2xl cursor-pointer transition-all ${
                       isCurrent
-                        ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-400 text-emerald-900 dark:text-emerald-200 font-bold shadow-xs'
-                        : 'hover:bg-gray-50 dark:hover:bg-drive-darkHover border-gray-100 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/40 text-emerald-950 dark:text-emerald-200 font-bold shadow-xs'
+                        : 'hover:bg-gray-100 dark:hover:bg-drive-darkBg border border-transparent text-gray-700 dark:text-gray-300'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 overflow-hidden flex-1">
-                      {/* Track Completion Checkbox */}
+                      {/* Completion Toggle */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1211,13 +1354,18 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
                       {/* Track Title, Artist and Telegram status */}
                       <div className="overflow-hidden flex-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="truncate leading-tight block">{track.title}</span>
-                          {track.fileId && (
-                            <span title="Salvo no Telegram">
-                              <Send className="w-3 h-3 text-sky-500 shrink-0 inline" />
+                          {isTrackSaved ? (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20 shrink-0" title="Salvo no Telegram">
+                              <Send className="w-2.5 h-2.5" />
+                              <span>Telegram</span>
                             </span>
-                          )}
+                          ) : track.audioUrl ? (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-gray-400 bg-gray-500/10 px-1 py-0.2 rounded shrink-0" title="Fonte Web">
+                              <span>Web</span>
+                            </span>
+                          ) : null}
                         </div>
                         {track.artist && (
                           <span className="text-[10px] text-gray-400 font-normal truncate block">{track.artist}</span>
@@ -1226,8 +1374,21 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                      {/* Individual Track Backup Button */}
-                      {!track.fileId && track.audioUrl && (
+                      {/* Direct Download Button if saved on Telegram */}
+                      {isTrackSaved && matchedTrackFile && (
+                        <a
+                          href={`/api/stream/${matchedTrackFile.id}?download=true`}
+                          download={`${track.title}.mp3`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1 rounded-lg text-gray-400 hover:text-sky-400 hover:bg-sky-500/10 transition-colors"
+                          title="Baixar episódio do Telegram para o seu dispositivo"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+
+                      {/* Individual Track Backup Button if not saved */}
+                      {!isTrackSaved && track.audioUrl && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

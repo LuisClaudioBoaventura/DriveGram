@@ -15,6 +15,7 @@ import {
   BookOpen,
   Image as ImageIcon,
   Search,
+  DownloadCloud,
   X
 } from 'lucide-react';
 import { DriveItem } from '../types/index.js';
@@ -124,39 +125,62 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
     setMagnifierPos(prev => prev ? { ...prev, visible: false } : null);
   }, []);
 
-  // Fetch comic book manifest
-  useEffect(() => {
-    let isMounted = true;
-    async function loadComic() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/comic/${file.id}/manifest`);
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || 'Não foi possível carregar os quadrinhos.');
-        }
-        const data: ComicManifest = await res.json();
-        if (isMounted) {
-          setManifest(data);
-          const startPage = getSavedPage();
-          const validStart = Math.min(Math.max(0, startPage), Math.max(0, data.totalPages - 1));
-          setCurrentPage(validStart);
-          setLoading(false);
-        }
-      } catch (err: any) {
-        if (isMounted) {
-          setError(err.message || 'Erro ao extrair páginas da HQ.');
-          setLoading(false);
-        }
-      }
-    }
+  const [downloadProgress, setDownloadProgress] = useState<{
+    progress: number;
+    transferred: number;
+    size: number;
+    speed: string;
+    stageLabel: string;
+  } | null>(null);
 
-    loadComic();
-    return () => {
-      isMounted = false;
+  // Fetch comic book manifest with real-time download tracking
+  const loadComic = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    const checkProgress = async () => {
+      try {
+        const res = await fetch(`/api/uploads/progress/comic-${file.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && (data.progress !== undefined || data.transferred > 0)) {
+            setDownloadProgress({
+              progress: typeof data.progress === 'number' && !isNaN(data.progress) ? data.progress : 0,
+              transferred: data.transferred || 0,
+              size: data.size || file.size || 0,
+              speed: data.speed || '',
+              stageLabel: data.stageLabel || ''
+            });
+          }
+        }
+      } catch (e) {}
     };
-  }, [file.id, getSavedPage]);
+
+    const pollTimer = setInterval(checkProgress, 200);
+
+    try {
+      const res = await fetch(`/api/comic/${file.id}/manifest`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Não foi possível carregar os quadrinhos. Verifique sua conexão com a internet.');
+      }
+      const data: ComicManifest = await res.json();
+      setManifest(data);
+      const startPage = getSavedPage();
+      const validStart = Math.min(Math.max(0, startPage), Math.max(0, data.totalPages - 1));
+      setCurrentPage(validStart);
+      setLoading(false);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao carregar páginas da HQ.');
+      setLoading(false);
+    } finally {
+      clearInterval(pollTimer);
+    }
+  }, [file.id, file.size, getSavedPage]);
+
+  useEffect(() => {
+    loadComic();
+  }, [loadComic]);
 
   const totalPages = manifest?.totalPages || 0;
 
@@ -242,15 +266,59 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
   };
 
   if (loading) {
+    const hasProgress = downloadProgress && (downloadProgress.progress > 0 || downloadProgress.size > 0);
+    const pct = downloadProgress ? Math.min(100, Math.max(0, downloadProgress.progress)) : 0;
+    const transferredMb = downloadProgress ? (downloadProgress.transferred / (1024 * 1024)).toFixed(1) : '0';
+    const totalMb = downloadProgress && downloadProgress.size ? (downloadProgress.size / (1024 * 1024)).toFixed(1) : ((file.size || 0) / (1024 * 1024)).toFixed(1);
+
     return (
-      <div className="flex flex-col items-center justify-center h-full w-full bg-drive-darkBg text-white p-8 animate-in fade-in">
-        <div className="w-16 h-16 rounded-full bg-blue-600/20 border-2 border-blue-500/30 flex items-center justify-center mb-4">
-          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="flex flex-col items-center justify-center h-full w-full bg-drive-darkBg text-white p-4 sm:p-6 animate-in fade-in select-none">
+        <div className="w-full max-w-sm sm:max-w-md bg-gray-900/90 border border-gray-800 rounded-3xl p-6 sm:p-8 flex flex-col items-center shadow-2xl backdrop-blur-xl">
+          {/* Animated Glowing Icon */}
+          <div className="relative mb-5">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-purple-600/30 to-pink-600/30 border border-purple-500/40 flex items-center justify-center shadow-xl shadow-purple-500/20">
+              <BookOpen className="w-8 h-8 sm:w-9 sm:h-9 text-purple-400 animate-pulse" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 p-1.5 bg-blue-600 text-white rounded-xl shadow-lg animate-bounce">
+              <DownloadCloud className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </div>
+          </div>
+
+          <h3 className="text-sm sm:text-base font-black text-gray-100 text-center mb-1 line-clamp-1">
+            {file.name.replace(/\.[^/.]+$/, "")}
+          </h3>
+
+          <p className="text-xs text-purple-400 font-semibold text-center mb-4">
+            {downloadProgress?.stageLabel || `Preparando HQ (${file.extension.toUpperCase()})...`}
+          </p>
+
+          {/* Real-time Progress Bar */}
+          <div className="w-full space-y-2 mb-4 bg-gray-950/60 p-3.5 rounded-2xl border border-gray-800/80">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="text-gray-300 flex items-center gap-1.5 truncate">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block shrink-0" />
+                {downloadProgress?.speed ? downloadProgress.speed : 'Baixando do Telegram...'}
+              </span>
+              <span className="font-bold text-purple-300 shrink-0">{pct}%</span>
+            </div>
+
+            <div className="w-full bg-gray-800 h-2.5 rounded-full overflow-hidden p-0.5 border border-gray-700/80">
+              <div 
+                className="h-full bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 rounded-full transition-all duration-300 shadow-sm"
+                style={{ width: `${Math.max(5, pct)}%` }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-gray-400 font-mono">
+              <span>{transferredMb} MB de {totalMb} MB</span>
+              <span className="text-gray-400">Cache Local</span>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+            O arquivo está sendo transferido da nuvem para o seu dispositivo para garantir leitura fluida e virada de páginas instantânea.
+          </p>
         </div>
-        <h3 className="text-base font-bold text-gray-200 mb-1">Processando HQ ({file.extension.toUpperCase()})...</h3>
-        <p className="text-xs text-gray-400 text-center max-w-sm">
-          Extraindo páginas e imagens em alta definição direto do arquivo.
-        </p>
       </div>
     );
   }
@@ -263,13 +331,21 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
         </div>
         <h3 className="text-base font-bold text-rose-400 mb-2">Erro ao abrir quadrinhos</h3>
         <p className="text-xs text-gray-300 max-w-md mb-6">{error || 'Nenhuma página encontrada no arquivo.'}</p>
-        <a
-          href={`/api/stream/${file.id}`}
-          download={file.name}
-          className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg"
-        >
-          Baixar Arquivo Completo
-        </a>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => loadComic()}
+            className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-lg transition-all"
+          >
+            Tentar Novamente
+          </button>
+          <a
+            href={`/api/stream/${file.id}`}
+            download={file.name}
+            className="px-5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold border border-gray-700 shadow-lg"
+          >
+            Baixar Arquivo Completo
+          </a>
+        </div>
       </div>
     );
   }

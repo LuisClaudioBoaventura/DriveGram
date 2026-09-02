@@ -30,7 +30,7 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const DATA_DIR = process.env.DRIVEGRAM_DATA_DIR || process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const DB_FILE = path.join(DATA_DIR, 'drivegram_data.json');
 
 // Ensure data directory exists
@@ -1949,6 +1949,10 @@ class Database {
       year: seriesData.year,
       status: seriesData.status || 'watching',
       folderId: seriesData.folderId,
+      youtubeUrl: seriesData.youtubeUrl,
+      lastSyncedAt: seriesData.lastSyncedAt,
+      autoSyncDaily: seriesData.autoSyncDaily !== undefined ? seriesData.autoSyncDaily : (seriesData.youtubeUrl ? true : undefined),
+      deletedEpisodeIds: seriesData.deletedEpisodeIds || [],
       seasons: seriesData.seasons || [],
       rating: seriesData.rating,
       createdAt: seriesData.createdAt || new Date().toISOString(),
@@ -1964,6 +1968,49 @@ class Database {
     this.syncSeriesWithFolderStructure();
     this.save(this.data);
     return series;
+  }
+
+  public deleteEpisodeFromSeries(seriesId: string, episodeId: string): { series: SeriesShow; deletedEpisode: SeriesEpisode | null } | null {
+    if (!this.data.series) return null;
+    const series = this.data.series.find(s => s.id === seriesId);
+    if (!series) return null;
+
+    let deletedEpisode: SeriesEpisode | null = null;
+
+    if (!series.deletedEpisodeIds) {
+      series.deletedEpisodeIds = [];
+    }
+
+    const updatedSeasons = (series.seasons || []).map(season => {
+      const remainingEpisodes = (season.episodes || []).filter(ep => {
+        if (ep.id === episodeId) {
+          deletedEpisode = ep;
+          // Store videoId, url or ep.id in deletedEpisodeIds to prevent reimport
+          if (ep.videoId && !series.deletedEpisodeIds!.includes(ep.videoId)) {
+            series.deletedEpisodeIds!.push(ep.videoId);
+          }
+          if (ep.videoUrl && !series.deletedEpisodeIds!.includes(ep.videoUrl)) {
+            series.deletedEpisodeIds!.push(ep.videoUrl);
+          }
+          if (ep.id && !series.deletedEpisodeIds!.includes(ep.id)) {
+            series.deletedEpisodeIds!.push(ep.id);
+          }
+          return false;
+        }
+        return true;
+      });
+
+      return {
+        ...season,
+        episodes: remainingEpisodes
+      };
+    });
+
+    series.seasons = updatedSeasons;
+    series.updatedAt = new Date().toISOString();
+
+    this.save(this.data);
+    return { series, deletedEpisode };
   }
 
   public deleteSeries(id: string): boolean {

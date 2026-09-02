@@ -9,12 +9,12 @@ import { db, fixUtf8Encoding } from './database.js';
 import { telegramService } from './telegram.js';
 import { castService } from './cast.js';
 import { comicService } from './comicService.js';
-import { parseYouTubeUrl } from './youtube-parser.js';
+import { parseYouTubeUrl, extractYouTubeVideoId } from './youtube-parser.js';
 import { FileType } from '../src/types/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+const UPLOADS_DIR = process.env.DRIVEGRAM_UPLOADS_DIR || process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
 
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -48,7 +48,11 @@ const upload = multer({
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['*']
+}));
 app.use(express.json({ limit: '50mb' }));
 
 function getFileType(extension: string): FileType {
@@ -137,12 +141,12 @@ interface ServerUploadProgress {
 }
 const activeUploadsMap = new Map<string, ServerUploadProgress>();
 
-app.get('/api/uploads/progress/:id', (req, res) => {
+app.get(['/api/uploads/progress/:id', '/api/upload-progress/:id'], (req, res) => {
   const progress = activeUploadsMap.get(req.params.id);
   if (progress) {
     res.json(progress);
   } else {
-    res.json({ progress: 100, stage: 'completed', speed: 'Concluído' });
+    res.json({ progress: 0, transferred: 0, size: 0, stage: 'idle', speed: '' });
   }
 });
 
@@ -432,11 +436,91 @@ app.get('/api/comic/:id/manifest', async (req, res) => {
 
     const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
     const filePath = getSafeUploadPath(diskFileName);
+    const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
+    const fileExists = fs.existsSync(filePath);
+    const fileSizeOnDisk = fileExists ? fs.statSync(filePath).size : 0;
+    const isFileComplete = fileExists && (
+      (expectedSize > 0 && fileSizeOnDisk >= Math.floor(expectedSize * 0.95)) ||
+      (expectedSize === 0 && fileSizeOnDisk > 1024)
+    );
 
-    // If file is not on disk, download it from Telegram
-    if (!fs.existsSync(filePath) && file.telegramMeta?.messageId) {
-      console.log(`[DriveGram Comic] Downloading HQ ${file.name} to disk for page extraction...`);
-      await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath);
+    // If file is not complete on disk, download it from Telegram
+    if (!isFileComplete && file.telegramMeta?.messageId) {
+      console.log(`[DriveGram Comic] Downloading HQ "${file.name}" to disk for page extraction...`);
+      const uploadId = `comic-${file.id}`;
+      activeUploadsMap.set(uploadId, {
+        uploadId,
+        fileName: file.name,
+        size: expectedSize,
+        transferred: 0,
+        progress: 0,
+        speed: 'Conectando ao Telegram...',
+        stage: 'cloud',
+        stageLabel: `⚡ Baixando HQ "${file.name}" para a pasta uploads...`,
+        updatedAt: Date.now()
+      });
+
+      const dlStartTime = Date.now();
+      try {
+        await telegramService.downloadMediaByMessageId(
+          file.telegramMeta.messageId, 
+          filePath,
+          (pct, transferred, total) => {
+            const elapsedSec = Math.max(0.2, (Date.now() - dlStartTime) / 1000);
+            const currentTrans = transferred > 0 ? transferred : 0;
+            const currentTotal = total > 0 ? total : expectedSize;
+            const speedMBs = ((currentTrans / (1024 * 1024)) / elapsedSec).toFixed(1);
+            const safePct = Math.min(100, Math.max(0, isNaN(pct) ? Math.round((currentTrans / (currentTotal || 1)) * 100) : pct));
+
+            activeUploadsMap.set(uploadId, {
+              uploadId,
+              fileName: file.name,
+              size: currentTotal,
+              transferred: currentTrans,
+              progress: safePct,
+              speed: `${speedMBs} MB/s`,
+              stage: safePct >= 100 ? 'completed' : 'cloud',
+              stageLabel: safePct >= 100 ? 'HQ baixada! Extraindo páginas...' : `⚡ Baixando "${file.name}" (${safePct}%)...`,
+              updatedAt: Date.now()
+            });
+          },
+          expectedSize
+        );
+
+        db.touchFileCachedAt(file.id);
+
+        const finalSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : expectedSize;
+        if (finalSize > 0 && file.size !== finalSize) {
+          db.updateFile(file.id, { size: finalSize });
+        }
+
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: file.name,
+          size: finalSize,
+          transferred: finalSize,
+          progress: 100,
+          speed: 'Concluído',
+          stage: 'completed',
+          stageLabel: 'HQ baixada com sucesso!',
+          updatedAt: Date.now()
+        });
+        setTimeout(() => activeUploadsMap.delete(uploadId), 15000);
+      } catch (err: any) {
+        console.error(`[DriveGram Comic] Error downloading HQ ${file.id}:`, err);
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: file.name,
+          size: expectedSize,
+          transferred: 0,
+          progress: 0,
+          speed: '',
+          stage: 'error',
+          stageLabel: err.message || 'Falha no download da HQ',
+          updatedAt: Date.now()
+        });
+        throw err;
+      }
     }
 
     if (!fs.existsSync(filePath)) {
@@ -458,9 +542,25 @@ app.get('/api/comic/:id/page/:pageIndex', async (req, res) => {
 
     const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
     const filePath = getSafeUploadPath(diskFileName);
+    const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
+    const isFileComplete = fs.existsSync(filePath) && (expectedSize === 0 || fs.statSync(filePath).size >= expectedSize);
 
-    if (!fs.existsSync(filePath) && file.telegramMeta?.messageId) {
-      await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath);
+    if (!isFileComplete && file.telegramMeta?.messageId) {
+      const uploadId = `comic-${file.id}`;
+      const dlStart = Date.now();
+      activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: expectedSize, transferred: 0, progress: 0, speed: 'Conectando...', stage: 'cloud', stageLabel: `Baixando HQ "${file.name}"...`, updatedAt: Date.now() });
+      try {
+        await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath, (pct, transferred, total) => {
+          const speed = ((transferred / (1024 * 1024)) / Math.max(0.2, (Date.now() - dlStart) / 1000)).toFixed(1);
+          activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: total, transferred, progress: pct, speed: `${speed} MB/s`, stage: pct >= 100 ? 'completed' : 'cloud', stageLabel: pct >= 100 ? 'HQ baixada!' : `Baixando "${file.name}" (${pct}%)...`, updatedAt: Date.now() });
+        }, expectedSize);
+        db.touchFileCachedAt(file.id);
+        activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: expectedSize, transferred: expectedSize, progress: 100, speed: 'Concluído', stage: 'completed', stageLabel: 'HQ baixada!', updatedAt: Date.now() });
+        setTimeout(() => activeUploadsMap.delete(uploadId), 15000);
+      } catch (dlErr: any) {
+        activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: expectedSize, transferred: 0, progress: 0, speed: '', stage: 'error', stageLabel: dlErr.message || 'Falha no download', updatedAt: Date.now() });
+        throw dlErr;
+      }
     }
 
     if (!fs.existsSync(filePath)) {
@@ -476,6 +576,159 @@ app.get('/api/comic/:id/page/:pageIndex', async (req, res) => {
   } catch (e: any) {
     console.error('Error streaming comic page:', e);
     res.status(500).json({ error: e.message || 'Erro ao carregar página da HQ' });
+  }
+});
+
+// ---------------- VIDEO CACHE STATUS & ON-DEMAND LOCAL CACHING ----------------
+app.get('/api/video/:id/cache-status', (req, res) => {
+  try {
+    const file = db.getAllFiles().find(f => f.id === req.params.id);
+    if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
+
+    const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
+    const filePath = getSafeUploadPath(diskFileName);
+    const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
+    const fileExists = fs.existsSync(filePath);
+    const fileSizeOnDisk = fileExists ? fs.statSync(filePath).size : 0;
+    const activeDownload = activeUploadsMap.get(`video-${file.id}`);
+    const isActivelyDownloading = !!activeDownload && activeDownload.stage !== 'completed' && activeDownload.stage !== 'error';
+
+    const isCached = !isActivelyDownloading && fileExists && (
+      (expectedSize > 0 && fileSizeOnDisk >= Math.floor(expectedSize * 0.95)) ||
+      (expectedSize === 0 && fileSizeOnDisk > 1024)
+    );
+
+    res.json({
+      cached: isCached,
+      size: expectedSize || fileSizeOnDisk || (activeDownload?.size || 0),
+      transferred: isCached ? (fileSizeOnDisk || expectedSize) : (activeDownload?.transferred || 0),
+      progress: isCached ? 100 : (activeDownload?.progress || 0),
+      speed: isCached ? 'Pasta uploads' : (activeDownload?.speed || ''),
+      stage: isCached ? 'completed' : (activeDownload?.stage || (isActivelyDownloading ? 'cloud' : 'idle')),
+      stageLabel: isCached ? 'Vídeo disponível na pasta uploads!' : (activeDownload?.stageLabel || (isActivelyDownloading ? 'Baixando...' : 'Não iniciado')),
+      isDownloading: isActivelyDownloading
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao verificar status do vídeo' });
+  }
+});
+
+app.post('/api/video/:id/cache', async (req, res) => {
+  try {
+    const file = db.getAllFiles().find(f => f.id === req.params.id);
+    if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
+
+    const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
+    const filePath = getSafeUploadPath(diskFileName);
+    const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
+    const fileExists = fs.existsSync(filePath);
+    const fileSizeOnDisk = fileExists ? fs.statSync(filePath).size : 0;
+    const activeDownload = activeUploadsMap.get(`video-${file.id}`);
+    const isActivelyDownloading = !!activeDownload && activeDownload.stage !== 'completed' && activeDownload.stage !== 'error';
+
+    const isCached = !isActivelyDownloading && fileExists && (
+      (expectedSize > 0 && fileSizeOnDisk >= Math.floor(expectedSize * 0.95)) ||
+      (expectedSize === 0 && fileSizeOnDisk > 1024)
+    );
+
+    if (isCached) {
+      db.touchFileCachedAt(file.id);
+      return res.json({ cached: true, message: 'Arquivo já está salvo na pasta uploads' });
+    }
+
+    if (!file.telegramMeta?.messageId) {
+      return res.status(400).json({ error: 'Arquivo não possui registro no Telegram' });
+    }
+
+    const uploadId = `video-${file.id}`;
+    const existing = activeUploadsMap.get(uploadId);
+    if (existing && existing.stage !== 'completed' && existing.stage !== 'error') {
+      return res.json({ cached: false, isDownloading: true, message: 'Download já em andamento' });
+    }
+
+    activeUploadsMap.set(uploadId, {
+      uploadId,
+      fileName: file.name,
+      size: expectedSize,
+      transferred: 0,
+      progress: 0,
+      speed: 'Conectando ao Telegram...',
+      stage: 'cloud',
+      stageLabel: `⚡ Conectando e baixando "${file.name}" para a pasta uploads...`,
+      updatedAt: Date.now()
+    });
+
+    // Start download in background
+    (async () => {
+      const dlStartTime = Date.now();
+      try {
+        await telegramService.downloadMediaByMessageId(
+          file.telegramMeta!.messageId!,
+          filePath,
+          (pct, transferred, total) => {
+            const elapsedSec = Math.max(0.2, (Date.now() - dlStartTime) / 1000);
+            const currentTrans = transferred > 0 ? transferred : 0;
+            const currentTotal = total > 0 ? total : expectedSize;
+            const speedMBs = ((currentTrans / (1024 * 1024)) / elapsedSec).toFixed(2);
+            const safePct = Math.min(100, Math.max(0, isNaN(pct) ? Math.round((currentTrans / (currentTotal || 1)) * 100) : pct));
+
+            activeUploadsMap.set(uploadId, {
+              uploadId,
+              fileName: file.name,
+              size: currentTotal,
+              transferred: currentTrans,
+              progress: safePct,
+              speed: `${speedMBs} MB/s`,
+              stage: safePct >= 100 ? 'completed' : 'cloud',
+              stageLabel: safePct >= 100 ? 'Vídeo salvo na pasta uploads!' : `⚡ Baixando "${file.name}" (${safePct}% - ${speedMBs} MB/s)...`,
+              updatedAt: Date.now()
+            });
+          },
+          expectedSize
+        );
+
+        db.touchFileCachedAt(file.id);
+
+        const finalSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : expectedSize;
+        if (finalSize > 0 && file.size !== finalSize) {
+          db.updateFile(file.id, { size: finalSize });
+        }
+
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: file.name,
+          size: finalSize,
+          transferred: finalSize,
+          progress: 100,
+          speed: 'Concluído',
+          stage: 'completed',
+          stageLabel: 'Vídeo salvo na pasta uploads com sucesso!',
+          updatedAt: Date.now()
+        });
+
+        if (!file.telegramMeta!.telegramFileName || file.telegramMeta!.telegramFileName !== diskFileName) {
+          file.telegramMeta!.telegramFileName = diskFileName;
+          db.updateFile(file.id, { telegramMeta: file.telegramMeta });
+        }
+      } catch (err: any) {
+        console.error(`[Video Download] Error downloading video ${file.id}:`, err);
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: file.name,
+          size: expectedSize,
+          transferred: 0,
+          progress: 0,
+          speed: '',
+          stage: 'error',
+          stageLabel: err.message || 'Erro ao baixar vídeo para a pasta uploads',
+          updatedAt: Date.now()
+        });
+      }
+    })();
+
+    res.json({ cached: false, isDownloading: true, message: 'Download iniciado' });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao iniciar download do vídeo' });
   }
 });
 
@@ -511,15 +764,27 @@ app.get('/api/stream/:id', async (req, res) => {
     // 1. Temporary Cache Mode (Salva em disco com expiração / auto-limpeza)
     if (isTempCache) {
       if (!fs.existsSync(filePath) && file.telegramMeta?.messageId) {
+        const uploadId = `video-${file.id}`;
+        const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
+        const dlStart = Date.now();
         try {
           console.log(`[DriveGram Temp Cache] Downloading file ${file.name} to uploads for temporary caching...`);
-          const buffer = await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath);
-          if (buffer && (!file.telegramMeta.telegramFileName || file.telegramMeta.telegramFileName !== diskFileName)) {
+          activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: expectedSize, transferred: 0, progress: 0, speed: 'Conectando...', stage: 'cloud', stageLabel: `⚡ Conectando e baixando "${file.name}"...`, updatedAt: Date.now() });
+          await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath, (pct, transferred, total) => {
+            const speed = ((transferred / (1024 * 1024)) / Math.max(0.2, (Date.now() - dlStart) / 1000)).toFixed(2);
+            activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: total, transferred, progress: pct, speed: `${speed} MB/s`, stage: pct >= 100 ? 'completed' : 'cloud', stageLabel: pct >= 100 ? 'Vídeo pronto!' : `⚡ Baixando "${file.name}" (${pct}%)...`, updatedAt: Date.now() });
+          }, expectedSize);
+          if (!file.telegramMeta.telegramFileName || file.telegramMeta.telegramFileName !== diskFileName) {
             file.telegramMeta.telegramFileName = diskFileName;
             db.updateFile(file.id, { telegramMeta: file.telegramMeta });
           }
+          db.touchFileCachedAt(file.id);
+          const finalSz = fs.existsSync(filePath) ? fs.statSync(filePath).size : expectedSize;
+          activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: finalSz, transferred: finalSz, progress: 100, speed: 'Concluído', stage: 'completed', stageLabel: 'Vídeo salvo na pasta uploads!', updatedAt: Date.now() });
+          setTimeout(() => activeUploadsMap.delete(uploadId), 15000);
         } catch (e) {
           console.warn(`[DriveGram Temp Cache] Failed to download to cache, falling back to direct stream:`, e);
+          activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: file.size || 0, transferred: 0, progress: 0, speed: '', stage: 'error', stageLabel: (e as any)?.message || 'Falha no download', updatedAt: Date.now() });
         }
       }
 
@@ -805,7 +1070,22 @@ app.get('/api/files/download/:id', async (req, res) => {
   const filePath = getSafeUploadPath(diskFileName);
 
   if (!fs.existsSync(filePath) && file.telegramMeta?.messageId) {
-    await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath);
+    const uploadId = `download-${file.id}`;
+    const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
+    const dlStart = Date.now();
+    activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: expectedSize, transferred: 0, progress: 0, speed: 'Conectando...', stage: 'cloud', stageLabel: `⚡ Baixando "${file.name}"...`, updatedAt: Date.now() });
+    try {
+      await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath, (pct, transferred, total) => {
+        const speed = ((transferred / (1024 * 1024)) / Math.max(0.2, (Date.now() - dlStart) / 1000)).toFixed(2);
+        activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: total, transferred, progress: pct, speed: `${speed} MB/s`, stage: pct >= 100 ? 'completed' : 'cloud', stageLabel: pct >= 100 ? 'Download concluído!' : `⚡ Baixando "${file.name}" (${pct}%)...`, updatedAt: Date.now() });
+      }, expectedSize);
+      db.touchFileCachedAt(file.id);
+      const finalSz = fs.existsSync(filePath) ? fs.statSync(filePath).size : expectedSize;
+      activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: finalSz, transferred: finalSz, progress: 100, speed: 'Concluído', stage: 'completed', stageLabel: 'Arquivo salvo!', updatedAt: Date.now() });
+      setTimeout(() => activeUploadsMap.delete(uploadId), 15000);
+    } catch (dlErr: any) {
+      activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: expectedSize, transferred: 0, progress: 0, speed: '', stage: 'error', stageLabel: dlErr.message || 'Falha no download', updatedAt: Date.now() });
+    }
   }
 
   if (fs.existsSync(filePath)) {
@@ -1560,6 +1840,204 @@ app.delete('/api/series-categories/:category', (req, res) => {
   res.json(updated);
 });
 
+// ---------------- ATUALIZAÇÃO AUTOMÁTICA & SINCRONIZAÇÃO DE SÉRIES (YOUTUBE) ----------------
+export async function refreshSingleSeriesInternal(series: any): Promise<{ series: any; newEpisodesCount: number }> {
+  if (!series || !series.youtubeUrl) return { series, newEpisodesCount: 0 };
+
+  let fetchedVideos: any[] = [];
+  try {
+    const parsed = await parseYouTubeUrl(series.youtubeUrl);
+    if (parsed && Array.isArray(parsed.videos) && parsed.videos.length > 0) {
+      fetchedVideos = parsed.videos;
+      if (parsed.coverImage && (!series.coverImage || series.coverImage.includes('unsplash'))) {
+        series.coverImage = parsed.coverImage;
+      }
+      if (parsed.description && !series.description) {
+        series.description = parsed.description;
+      }
+    }
+  } catch (err) {
+    console.warn(`[AutoSync] YouTube fetch failed for series "${series.title}":`, err);
+  }
+
+  if (fetchedVideos.length === 0) {
+    series.lastSyncedAt = new Date().toISOString();
+    return { series: db.saveSeries(series), newEpisodesCount: 0 };
+  }
+
+  const seasons = series.seasons || [];
+  let season1 = seasons.find((s: any) => s.seasonNumber === 1) || seasons[0];
+  if (!season1) {
+    season1 = {
+      id: `season-${Date.now()}-1`,
+      seasonNumber: 1,
+      title: 'Temporada 1',
+      episodes: []
+    };
+    seasons.push(season1);
+  }
+
+  const allEpisodes = seasons.flatMap((s: any) => s.episodes || []);
+  const existingKeys = new Set<string>();
+  allEpisodes.forEach((e: any) => {
+    if (e.videoId) existingKeys.add(e.videoId.toLowerCase().trim());
+    if (e.videoUrl) existingKeys.add(e.videoUrl.toLowerCase().trim());
+    if (e.id) existingKeys.add(e.id.toLowerCase().trim());
+    if (e.title) existingKeys.add(e.title.toLowerCase().trim());
+  });
+
+  const deletedKeys = new Set<string>(
+    (series.deletedEpisodeIds || []).map((id: string) => id.toLowerCase().trim())
+  );
+
+  let newEpisodesCount = 0;
+  const newEpisodesToAdd: any[] = [];
+
+  for (const v of fetchedVideos) {
+    const vid = (v.videoId || extractYouTubeVideoId(v.url) || '').trim();
+    const vUrl = (v.url || '').toLowerCase().trim();
+    const vTitle = (v.title || '').toLowerCase().trim();
+    const vId = (v.id || '').toLowerCase().trim();
+
+    // Skip if already in existing episodes or in user-deleted episodes blacklist
+    if (
+      (vid && (existingKeys.has(vid.toLowerCase()) || deletedKeys.has(vid.toLowerCase()))) ||
+      (vUrl && (existingKeys.has(vUrl) || deletedKeys.has(vUrl))) ||
+      (vId && (existingKeys.has(vId) || deletedKeys.has(vId))) ||
+      (vTitle && (existingKeys.has(vTitle) || deletedKeys.has(vTitle)))
+    ) {
+      continue;
+    }
+
+    const nextNumber = (season1.episodes?.length || 0) + newEpisodesToAdd.length + 1;
+    newEpisodesToAdd.push({
+      id: `ep-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      seasonNumber: season1.seasonNumber || 1,
+      episodeNumber: nextNumber,
+      title: v.title,
+      videoId: vid || undefined,
+      duration: v.duration || '15:00',
+      durationSeconds: v.durationSeconds || 900,
+      videoUrl: v.url,
+      embedUrl: v.embedUrl,
+      description: v.description || undefined
+    });
+
+    if (vid) existingKeys.add(vid.toLowerCase());
+    if (vUrl) existingKeys.add(vUrl);
+    if (vTitle) existingKeys.add(vTitle);
+    newEpisodesCount++;
+  }
+
+  season1.episodes = [...(season1.episodes || []), ...newEpisodesToAdd];
+  series.seasons = seasons;
+  series.lastSyncedAt = new Date().toISOString();
+
+  const savedSeries = db.saveSeries(series);
+  return { series: savedSeries, newEpisodesCount };
+}
+
+app.post('/api/series/refresh-all', async (_req, res) => {
+  try {
+    const allSeries = db.getSeries().filter((s: any) => s.youtubeUrl);
+    let totalNewEpisodes = 0;
+    const updatedSeriesList: any[] = [];
+
+    for (const s of allSeries) {
+      try {
+        const result = await refreshSingleSeriesInternal(s);
+        totalNewEpisodes += result.newEpisodesCount;
+        updatedSeriesList.push(result.series);
+      } catch (err) {
+        console.warn(`[AutoSync] Could not refresh series "${s.title}":`, err);
+        updatedSeriesList.push(s);
+      }
+    }
+
+    res.json({
+      success: true,
+      refreshedCount: allSeries.length,
+      totalNewEpisodes,
+      updatedSeries: db.getSeries(),
+      lastSyncedAt: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error refreshing all series:', error);
+    res.status(500).json({ error: error.message || 'Erro ao sincronizar séries' });
+  }
+});
+
+app.post('/api/series/:id/refresh', async (req, res) => {
+  try {
+    const series = db.getSeriesById(req.params.id);
+    if (!series) {
+      return res.status(404).json({ error: 'Série não encontrada' });
+    }
+    const result = await refreshSingleSeriesInternal(series);
+    res.json({
+      success: true,
+      series: result.series,
+      newEpisodesCount: result.newEpisodesCount,
+      lastSyncedAt: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error refreshing single series:', error);
+    res.status(500).json({ error: error.message || 'Erro ao sincronizar série' });
+  }
+});
+
+app.delete('/api/series/:id/episodes/:episodeId', (req, res) => {
+  try {
+    const result = db.deleteEpisodeFromSeries(req.params.id, req.params.episodeId);
+    if (!result) {
+      return res.status(404).json({ error: 'Série ou episódio não encontrado' });
+    }
+    res.json({
+      success: true,
+      series: result.series,
+      deletedEpisode: result.deletedEpisode
+    });
+  } catch (error: any) {
+    console.error('Error deleting episode from series:', error);
+    res.status(500).json({ error: error.message || 'Erro ao excluir vídeo da série' });
+  }
+});
+
+// Periodic background auto-sync for YouTube series playlists (runs every 1 hour)
+setInterval(async () => {
+  try {
+    const allSeries = db.getSeries().filter((s: any) => s.youtubeUrl && s.autoSyncDaily !== false);
+    const now = Date.now();
+    for (const s of allSeries) {
+      const lastSync = s.lastSyncedAt ? new Date(s.lastSyncedAt).getTime() : 0;
+      const hoursSinceSync = (now - lastSync) / (1000 * 60 * 60);
+      if (hoursSinceSync >= 24) {
+        console.log(`[AutoSync] Daily update triggered for YouTube series "${s.title}"...`);
+        await refreshSingleSeriesInternal(s).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.warn('[AutoSync] Error in series daily auto-sync interval:', e);
+  }
+}, 60 * 60 * 1000);
+
+// Startup auto-sync check after 6 seconds
+setTimeout(async () => {
+  try {
+    const allSeries = db.getSeries().filter((s: any) => s.youtubeUrl && s.autoSyncDaily !== false);
+    const now = Date.now();
+    for (const s of allSeries) {
+      const lastSync = s.lastSyncedAt ? new Date(s.lastSyncedAt).getTime() : 0;
+      const hoursSinceSync = (now - lastSync) / (1000 * 60 * 60);
+      if (hoursSinceSync >= 24 || !s.lastSyncedAt) {
+        console.log(`[AutoSync] Startup sync check for YouTube series "${s.title}"...`);
+        await refreshSingleSeriesInternal(s).catch(() => {});
+      }
+    }
+  } catch (e) {}
+}, 6000);
+
+
 // ---------------- MÚSICAS & PODCASTS ----------------
 app.get('/api/audio-shows', (_req, res) => {
   res.json(db.getAudioShows());
@@ -1888,6 +2366,7 @@ app.post('/api/youtube/parse', async (req, res) => {
 });
 
 app.post('/api/youtube/import', async (req, res) => {
+  const uploadId = req.body.uploadId;
   try {
     const {
       url,
@@ -1909,10 +2388,37 @@ app.post('/api/youtube/import', async (req, res) => {
       return res.status(400).json({ error: 'Selecione ao menos um vídeo para importar' });
     }
 
+    if (uploadId) {
+      activeUploadsMap.set(uploadId, {
+        uploadId,
+        fileName: `[YouTube] ${title.trim()}`,
+        size: videos.length,
+        transferred: 0,
+        progress: 15,
+        speed: 'Conectando...',
+        stage: 'local',
+        stageLabel: '1/3 • Obtendo metadados e miniaturas...',
+        updatedAt: Date.now()
+      });
+    }
+
     // Process and upload gallery cover image to Telegram Saved Messages
     const rawCoverUrl = coverImage || videos[0]?.thumbnail || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60';
     let finalCoverUrl = rawCoverUrl;
     try {
+      if (uploadId) {
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: `[YouTube] ${title.trim()}`,
+          size: videos.length,
+          transferred: 1,
+          progress: 45,
+          speed: 'Salvando...',
+          stage: 'cloud',
+          stageLabel: '2/3 • Salvando capa na nuvem Telegram...',
+          updatedAt: Date.now()
+        });
+      }
       const coverResult = await telegramService.uploadCoverToTelegram(rawCoverUrl, title.trim(), 'youtube_' + targetType);
       if (coverResult.messageId) {
         finalCoverUrl = `/api/covers/telegram/${coverResult.messageId}?fallback=${encodeURIComponent(rawCoverUrl)}`;
@@ -1922,6 +2428,22 @@ app.post('/api/youtube/import', async (req, res) => {
     } catch (covErr) {
       console.warn('Could not save YouTube cover to Telegram:', covErr);
     }
+
+    if (uploadId) {
+      activeUploadsMap.set(uploadId, {
+        uploadId,
+        fileName: `[YouTube] ${title.trim()}`,
+        size: videos.length,
+        transferred: Math.round(videos.length * 0.8),
+        progress: 80,
+        speed: 'Organizando...',
+        stage: 'cloud',
+        stageLabel: '3/3 • Criando biblioteca e itens no DriveGram...',
+        updatedAt: Date.now()
+      });
+    }
+
+    let responseData: any = null;
 
     // 1. IMPORT AS COURSE
     if (targetType === 'course') {
@@ -1954,11 +2476,9 @@ app.post('/api/youtube/import', async (req, res) => {
         ]
       });
 
-      return res.json({ success: true, targetType: 'course', item: newCourse });
-    }
-
-    // 2. IMPORT AS PODCAST / AUDIO SHOW
-    if (targetType === 'podcast' || targetType === 'audio') {
+      responseData = { success: true, targetType: 'course', item: newCourse };
+    } else if (targetType === 'podcast' || targetType === 'audio') {
+      // 2. IMPORT AS PODCAST / AUDIO SHOW
       const podcastFolder = db.getOrCreatePodcastFolder({ title: title.trim(), showType: 'podcast' } as any, folderId || undefined);
       const finalFolderId = podcastFolder.id;
 
@@ -1986,11 +2506,9 @@ app.post('/api/youtube/import', async (req, res) => {
         }))
       });
 
-      return res.json({ success: true, targetType: 'podcast', item: newShow });
-    }
-
-    // 3. IMPORT AS SERIES / TV SHOW
-    if (targetType === 'series') {
+      responseData = { success: true, targetType: 'podcast', item: newShow };
+    } else if (targetType === 'series') {
+      // 3. IMPORT AS SERIES / TV SHOW
       const seriesFolder = db.getOrCreateSeriesFolder(title, folderId || undefined);
       const finalFolderId = seriesFolder.id;
 
@@ -2002,6 +2520,10 @@ app.post('/api/youtube/import', async (req, res) => {
         description: description || '',
         coverImage: finalCoverUrl,
         folderId: finalFolderId,
+        youtubeUrl: url,
+        lastSyncedAt: new Date().toISOString(),
+        autoSyncDaily: true,
+        deletedEpisodeIds: [],
         seasons: [
           {
             id: `season-${Date.now()}-1`,
@@ -2012,41 +2534,73 @@ app.post('/api/youtube/import', async (req, res) => {
               seasonNumber: 1,
               episodeNumber: idx + 1,
               title: v.title,
+              videoId: v.videoId || extractYouTubeVideoId(v.url) || undefined,
               duration: v.duration || '15:00',
               durationSeconds: v.durationSeconds || 900,
               videoUrl: v.url,
-              embedUrl: v.embedUrl
+              embedUrl: v.embedUrl,
+              description: v.description || undefined
             }))
           }
         ]
       });
 
-      return res.json({ success: true, targetType: 'series', item: newSeries });
+      responseData = { success: true, targetType: 'series', item: newSeries };
+    } else {
+      // 4. IMPORT AS MOVIE VIDEOS
+      const videoFolder = db.getOrCreateVideoFolder(videos.length > 1 ? title : undefined, folderId || undefined);
+      const finalFolderId = videoFolder.id;
+
+      const savedVideos = [];
+      for (const v of videos) {
+        const newVid = db.saveVideo({
+          title: v.title,
+          director: author || 'YouTube',
+          category: category || 'Vídeos',
+          genre: 'YouTube',
+          description: v.description || description || '',
+          coverImage: finalCoverUrl,
+          folderId: finalFolderId,
+          videoUrl: v.url,
+          embedUrl: v.embedUrl,
+          duration: v.duration
+        });
+        savedVideos.push(newVid);
+      }
+      responseData = { success: true, targetType: 'video', items: savedVideos };
     }
 
-    // 4. IMPORT AS MOVIE VIDEOS
-    const videoFolder = db.getOrCreateVideoFolder(videos.length > 1 ? title : undefined, folderId || undefined);
-    const finalFolderId = videoFolder.id;
-
-    const savedVideos = [];
-    for (const v of videos) {
-      const newVid = db.saveVideo({
-        title: v.title,
-        director: author || 'YouTube',
-        category: category || 'Vídeos',
-        genre: 'YouTube',
-        description: v.description || description || '',
-        coverImage: finalCoverUrl,
-        folderId: finalFolderId,
-        videoUrl: v.url,
-        embedUrl: v.embedUrl,
-        duration: v.duration
+    if (uploadId) {
+      activeUploadsMap.set(uploadId, {
+        uploadId,
+        fileName: `[YouTube] ${title.trim()}`,
+        size: videos.length,
+        transferred: videos.length,
+        progress: 100,
+        speed: 'Concluído',
+        stage: 'completed',
+        stageLabel: 'Salvo com sucesso no DriveGram!',
+        updatedAt: Date.now()
       });
-      savedVideos.push(newVid);
+      setTimeout(() => activeUploadsMap.delete(uploadId), 8000);
     }
 
-    return res.json({ success: true, targetType: 'video', items: savedVideos });
+    return res.json(responseData);
   } catch (error: any) {
+    if (uploadId) {
+      activeUploadsMap.set(uploadId, {
+        uploadId,
+        fileName: 'Importação YouTube',
+        size: 0,
+        transferred: 0,
+        progress: 0,
+        speed: 'Erro',
+        stage: 'error',
+        stageLabel: error.message || 'Falha ao importar do YouTube',
+        updatedAt: Date.now()
+      });
+      setTimeout(() => activeUploadsMap.delete(uploadId), 8000);
+    }
     console.error('Error importing YouTube content:', error);
     res.status(500).json({ error: error.message || 'Falha ao importar conteúdo do YouTube' });
   }
@@ -2201,14 +2755,27 @@ async function refreshSinglePodcastInternal(show: any): Promise<{ show: any; new
     }
   }
 
-  // Combine: newly fetched episodes first, then existing tracks
-  const combinedTracks = [...newTracksToAdd, ...existingTracks].map((t: any, idx: number) => ({
+  // Combine and strictly deduplicate tracks
+  const finalTracks: any[] = [];
+  const finalSeenKeys = new Set<string>();
+
+  for (const t of [...newTracksToAdd, ...existingTracks]) {
+    if (!t || !t.title) continue;
+    const cleanTitle = t.title.toLowerCase().replace(/[/\\?%*:|"<>_.\-\s]/g, '').trim();
+    const key = t.audioUrl ? t.audioUrl.trim().toLowerCase() : cleanTitle;
+    if (!finalSeenKeys.has(key) && (!cleanTitle || !finalSeenKeys.has(cleanTitle))) {
+      finalSeenKeys.add(key);
+      if (cleanTitle) finalSeenKeys.add(cleanTitle);
+      finalTracks.push(t);
+    }
+  }
+
+  show.tracks = finalTracks.map((t: any, idx: number) => ({
     ...t,
     order: idx + 1,
     trackNumber: idx + 1
   }));
 
-  show.tracks = combinedTracks;
   show.lastSyncedAt = new Date().toISOString();
   const savedShow = db.saveAudioShow(show);
 
@@ -2298,21 +2865,134 @@ setInterval(async () => {
   }
 }, 1000 * 60 * 60 * 2);
 
+// Helper to download remote audio streams with live chunk progress
+async function downloadStreamWithProgress(
+  url: string,
+  destPath: string,
+  uploadId: string,
+  fileName: string,
+  stagePrefix: string = '1/2'
+): Promise<number> {
+  const startTime = Date.now();
+  activeUploadsMap.set(uploadId, {
+    uploadId,
+    fileName,
+    size: 0,
+    transferred: 0,
+    progress: 0,
+    speed: 'Conectando ao servidor...',
+    stage: 'local',
+    stageLabel: `${stagePrefix} • Conectando ao servidor do podcast...`,
+    updatedAt: Date.now()
+  });
+
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
+      'Accept': '*/*'
+    }
+  });
+
+  if (!res.ok || !res.body) {
+    throw new Error(`Erro ao baixar áudio (HTTP ${res.status})`);
+  }
+
+  const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
+  const totalDownloadSize = contentLength > 0 ? contentLength : 0;
+
+  const fileStream = fs.createWriteStream(destPath);
+  let downloadedBytes = 0;
+  let lastProgressUpdate = Date.now();
+
+  const reader = res.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      fileStream.write(Buffer.from(value));
+      downloadedBytes += value.length;
+
+      const now = Date.now();
+      if (now - lastProgressUpdate > 100 || (totalDownloadSize > 0 && downloadedBytes === totalDownloadSize)) {
+        lastProgressUpdate = now;
+        const elapsedSec = (now - startTime) / 1000;
+        const speedMBs = elapsedSec > 0 ? ((downloadedBytes / (1024 * 1024)) / elapsedSec).toFixed(1) : '1.0';
+        const pct = totalDownloadSize > 0 
+          ? Math.min(Math.round((downloadedBytes / totalDownloadSize) * 100), 99) 
+          : Math.min(Math.round((downloadedBytes / (20 * 1024 * 1024)) * 100), 90);
+
+        const currentMB = (downloadedBytes / (1024 * 1024)).toFixed(1);
+        const totalMB = totalDownloadSize > 0 ? ` de ${(totalDownloadSize / (1024 * 1024)).toFixed(1)} MB` : '';
+
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName,
+          size: totalDownloadSize || downloadedBytes,
+          transferred: downloadedBytes,
+          progress: pct,
+          speed: `${speedMBs} MB/s`,
+          stage: 'local',
+          stageLabel: `${stagePrefix} • Baixando áudio (${currentMB} MB${totalMB})...`,
+          updatedAt: Date.now()
+        });
+      }
+    }
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    fileStream.end((err?: any) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+
+  return fs.statSync(destPath).size;
+}
+
 // ---------------- BACKUP DE EPISÓDIOS NO TELEGRAM ----------------
-app.post(['/api/podcasts/backup-telegram', '/api/audio-shows/backup-telegram'], async (req, res) => {
+// ---------------- BACKUP DE EPISÓDIOS NO TELEGRAM ----------------
+const handlePodcastBackup = async (req: express.Request, res: express.Response) => {
+  const uploadId = req.body.uploadId || `backup-${req.body.trackId || Date.now()}-${Date.now()}`;
   try {
-    const { showId, trackId, audioUrl, title, folderId } = req.body;
-    if (!showId) {
-      return res.status(400).json({ error: 'showId é obrigatório' });
+    const { showId, trackId, audioUrl, title, artist, showTitle, coverImage, folderId } = req.body;
+
+    let show: any = null;
+    const allShows = db.getAudioShows();
+
+    if (showId && showId !== 'recent-episodes-playlist') {
+      show = db.getAudioShowById(showId);
+      if (!show) {
+        show = allShows.find((s: any) => 
+          s.id === showId || 
+          (s.title && showId && s.title.toLowerCase().trim() === showId.toLowerCase().trim()) || 
+          s.podcastId === showId
+        );
+      }
     }
 
-    let show = db.getAudioShowById(showId);
+    // Try finding by trackId, audioUrl, showTitle or artist across all shows
     if (!show) {
-      const allShows = db.getAudioShows();
-      show = allShows.find((s: any) => s.id === showId || s.title?.toLowerCase().trim() === showId.toLowerCase().trim() || s.podcastId === showId);
+      show = allShows.find((s: any) => 
+        (showTitle && s.title && s.title.toLowerCase().trim() === showTitle.toLowerCase().trim()) ||
+        (artist && s.artist && s.artist.toLowerCase().trim() === artist.toLowerCase().trim()) ||
+        s.tracks?.some((t: any) => (trackId && t.id === trackId) || (audioUrl && t.audioUrl === audioUrl))
+      );
     }
+
+    // If still not found, automatically create or resolve the show entity
     if (!show) {
-      return res.status(404).json({ error: 'Álbum/Podcast não encontrado' });
+      const finalTitle = showTitle || artist || title || 'Podcast';
+      show = db.saveAudioShow({
+        title: finalTitle,
+        artist: artist || 'Podcast',
+        host: artist || 'Podcast',
+        genre: 'Podcast',
+        category: 'Podcasts',
+        description: 'Podcast importado',
+        coverImage: coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
+        showType: 'podcast',
+        tracks: []
+      });
     }
 
     let trackIndex = (show.tracks || []).findIndex((t: any) => 
@@ -2348,52 +3028,50 @@ app.post(['/api/podcasts/backup-telegram', '/api/audio-shows/backup-telegram'], 
     const diskFileName = `podcast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.mp3`;
     const tempFilePath = path.join(UPLOADS_DIR, diskFileName);
 
-    const audioRes = await fetch(streamUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
-        'Accept': '*/*'
-      }
-    });
-
-    if (!audioRes.ok) {
-      return res.status(400).json({ error: `Erro ao baixar áudio do episódio (HTTP ${audioRes.status})` });
-    }
-
-    const buffer = Buffer.from(await audioRes.arrayBuffer());
-    fs.writeFileSync(tempFilePath, buffer);
-    const fileSize = buffer.length;
+    // 1. Download stream chunks with live progress
+    const fileSize = await downloadStreamWithProgress(
+      streamUrl,
+      tempFilePath,
+      uploadId,
+      `${cleanTitle}.mp3`,
+      '1/2'
+    );
 
     // Ensure podcast folder in "Meu Drive" exists
-    const targetFolder = db.getOrCreatePodcastFolder(show);
+    const targetFolder = db.getOrCreatePodcastFolder(show, folderId || undefined);
     const targetFolderId = targetFolder.id;
 
-    const uploadId = `backup-${trackId || Date.now()}-${Date.now()}`;
+    // 2. Upload to Telegram Cloud with live progress
     activeUploadsMap.set(uploadId, {
       uploadId,
       fileName: `${cleanTitle}.mp3`,
       size: fileSize,
-      transferred: Math.round(fileSize * 0.15),
-      progress: 15,
-      speed: '2.0 MB/s',
+      transferred: 0,
+      progress: 0,
+      speed: 'Conectando ao Telegram...',
       stage: 'cloud',
-      stageLabel: 'Enviando ao Telegram...',
+      stageLabel: '2/2 • Enviando ao Telegram Cloud...',
       updatedAt: Date.now()
     });
 
+    const uploadStartTime = Date.now();
     const telegramResult = await telegramService.uploadToSavedMessages(
       tempFilePath,
       `${cleanTitle}.mp3`,
       `🎙️ Podcast: ${show.title} | ${track.title}`,
       (progressPct) => {
+        const transferred = Math.round((fileSize * progressPct) / 100);
+        const elapsedSec = (Date.now() - uploadStartTime) / 1000;
+        const speedMBs = elapsedSec > 0 ? ((transferred / (1024 * 1024)) / elapsedSec).toFixed(1) : '2.0';
         activeUploadsMap.set(uploadId, {
           uploadId,
           fileName: `${cleanTitle}.mp3`,
           size: fileSize,
-          transferred: Math.round((fileSize * progressPct) / 100),
+          transferred,
           progress: progressPct,
-          speed: '2.5 MB/s',
-          stage: progressPct === 100 ? 'completed' : 'cloud',
-          stageLabel: progressPct === 100 ? 'Salvo no Telegram!' : 'Enviando ao Telegram...',
+          speed: `${speedMBs} MB/s`,
+          stage: progressPct >= 100 ? 'completed' : 'cloud',
+          stageLabel: progressPct >= 100 ? 'Salvo no Telegram!' : '2/2 • Enviando ao Telegram Cloud...',
           updatedAt: Date.now()
         });
       }
@@ -2446,10 +3124,10 @@ app.post(['/api/podcasts/backup-telegram', '/api/audio-shows/backup-telegram'], 
       progress: 100,
       speed: 'Concluído',
       stage: 'completed',
-      stageLabel: 'Salvo no Telegram!',
+      stageLabel: 'Salvo com sucesso no Telegram!',
       updatedAt: Date.now()
     });
-    setTimeout(() => activeUploadsMap.delete(uploadId), 6000);
+    setTimeout(() => activeUploadsMap.delete(uploadId), 8000);
 
     res.json({
       success: true,
@@ -2458,12 +3136,25 @@ app.post(['/api/podcasts/backup-telegram', '/api/audio-shows/backup-telegram'], 
       updatedTrack: show.tracks[trackIndex]
     });
   } catch (error: any) {
+    activeUploadsMap.set(uploadId, {
+      uploadId,
+      fileName: 'Episódio de Podcast',
+      size: 0,
+      transferred: 0,
+      progress: 0,
+      speed: 'Erro',
+      stage: 'error',
+      stageLabel: error.message || 'Erro ao realizar backup do episódio',
+      updatedAt: Date.now()
+    });
+    setTimeout(() => activeUploadsMap.delete(uploadId), 8000);
     console.error('Error backing up podcast episode to Telegram:', error);
     res.status(500).json({ error: error.message || 'Erro ao realizar backup do episódio no Telegram' });
   }
-});
+};
 
-app.post(['/api/podcasts/backup-all-telegram', '/api/audio-shows/backup-all-telegram'], async (req, res) => {
+const handlePodcastBackupAll = async (req: express.Request, res: express.Response) => {
+  const masterUploadId = req.body.uploadId || `backup-all-${req.body.showId || Date.now()}`;
   try {
     const { showId } = req.body;
     if (!showId) {
@@ -2493,99 +3184,112 @@ app.post(['/api/podcasts/backup-all-telegram', '/api/audio-shows/backup-all-tele
     const targetFolderId = targetFolder.id;
 
     let backedUpCount = 0;
+    const totalToBackup = tracksToBackup.length;
 
     for (let i = 0; i < show.tracks.length; i++) {
       const track = show.tracks[i];
       if (!track.audioUrl || track.fileId) continue;
 
+      const trackUploadId = `backup-${track.id}-${Date.now()}`;
       try {
         const cleanTitle = (track.title || `episodio_${i + 1}`).replace(/[/\\?%*:|"<>]/g, '_').trim();
         const diskFileName = `podcast_${Date.now()}_${i}.mp3`;
         const tempFilePath = path.join(UPLOADS_DIR, diskFileName);
 
-        const audioRes = await fetch(track.audioUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGramPodcastClient/1.0',
-            'Accept': '*/*'
+        const currentEpIdx = backedUpCount + 1;
+        const fileSize = await downloadStreamWithProgress(
+          track.audioUrl,
+          tempFilePath,
+          trackUploadId,
+          `${cleanTitle}.mp3`,
+          `Episódio ${currentEpIdx}/${totalToBackup} (1/2)`
+        );
+
+        activeUploadsMap.set(trackUploadId, {
+          uploadId: trackUploadId,
+          fileName: `${cleanTitle}.mp3`,
+          size: fileSize,
+          transferred: 0,
+          progress: 0,
+          speed: 'Conectando ao Telegram...',
+          stage: 'cloud',
+          stageLabel: `Episódio ${currentEpIdx}/${totalToBackup} (2/2) • Enviando ao Telegram...`,
+          updatedAt: Date.now()
+        });
+
+        const uploadStartTime = Date.now();
+        const telegramResult = await telegramService.uploadToSavedMessages(
+          tempFilePath,
+          `${cleanTitle}.mp3`,
+          `🎙️ Podcast: ${show.title} | ${track.title}`,
+          (progressPct) => {
+            const transferred = Math.round((fileSize * progressPct) / 100);
+            const elapsedSec = (Date.now() - uploadStartTime) / 1000;
+            const speedMBs = elapsedSec > 0 ? ((transferred / (1024 * 1024)) / elapsedSec).toFixed(1) : '2.0';
+            activeUploadsMap.set(trackUploadId, {
+              uploadId: trackUploadId,
+              fileName: `${cleanTitle}.mp3`,
+              size: fileSize,
+              transferred,
+              progress: progressPct,
+              speed: `${speedMBs} MB/s`,
+              stage: progressPct === 100 ? 'completed' : 'cloud',
+              stageLabel: progressPct === 100 ? 'Salvo no Telegram!' : `Episódio ${currentEpIdx}/${totalToBackup} • Enviando ao Telegram...`,
+              updatedAt: Date.now()
+            });
+          }
+        );
+
+        const newDriveItem = db.createFile({
+          name: `${cleanTitle}.mp3`,
+          parentId: targetFolderId,
+          size: fileSize,
+          mimeType: 'audio/mpeg',
+          extension: 'mp3',
+          type: 'audio',
+          telegramMeta: {
+            messageId: telegramResult.messageId,
+            chatId: 'me',
+            fileSize: fileSize,
+            mimeType: 'audio/mpeg',
+            telegramFileName: diskFileName,
+            uploadDate: new Date().toISOString(),
+            isUploadedToTelegram: telegramResult.success
           }
         });
 
-        if (audioRes.ok) {
-          const buffer = Buffer.from(await audioRes.arrayBuffer());
-          fs.writeFileSync(tempFilePath, buffer);
-          const fileSize = buffer.length;
+        show.tracks[i] = {
+          ...track,
+          fileId: newDriveItem.id
+        };
 
-          const uploadId = `backup-${track.id}-${Date.now()}`;
-          activeUploadsMap.set(uploadId, {
-            uploadId,
-            fileName: `${cleanTitle}.mp3`,
-            size: fileSize,
-            transferred: Math.round(fileSize * 0.2),
-            progress: 20,
-            speed: '2.0 MB/s',
-            stage: 'cloud',
-            stageLabel: 'Enviando ao Telegram...',
-            updatedAt: Date.now()
-          });
-
-          const telegramResult = await telegramService.uploadToSavedMessages(
-            tempFilePath,
-            `${cleanTitle}.mp3`,
-            `🎙️ Podcast: ${show.title} | ${track.title}`,
-            (progressPct) => {
-              activeUploadsMap.set(uploadId, {
-                uploadId,
-                fileName: `${cleanTitle}.mp3`,
-                size: fileSize,
-                transferred: Math.round((fileSize * progressPct) / 100),
-                progress: progressPct,
-                speed: '2.5 MB/s',
-                stage: progressPct === 100 ? 'completed' : 'cloud',
-                stageLabel: progressPct === 100 ? 'Salvo no Telegram!' : 'Enviando ao Telegram...',
-                updatedAt: Date.now()
-              });
-            }
-          );
-
-          const newDriveItem = db.createFile({
-            name: `${cleanTitle}.mp3`,
-            parentId: targetFolderId,
-            size: fileSize,
-            mimeType: 'audio/mpeg',
-            extension: 'mp3',
-            type: 'audio',
-            telegramMeta: {
-              messageId: telegramResult.messageId,
-              chatId: 'me',
-              fileSize: fileSize,
-              mimeType: 'audio/mpeg',
-              telegramFileName: diskFileName,
-              uploadDate: new Date().toISOString(),
-              isUploadedToTelegram: telegramResult.success
-            }
-          });
-
-          show.tracks[i] = {
-            ...track,
-            fileId: newDriveItem.id
-          };
-
-          backedUpCount++;
-          activeUploadsMap.set(uploadId, {
-            uploadId,
-            fileName: `${cleanTitle}.mp3`,
-            size: fileSize,
-            transferred: fileSize,
-            progress: 100,
-            speed: 'Concluído',
-            stage: 'completed',
-            stageLabel: 'Salvo no Telegram!',
-            updatedAt: Date.now()
-          });
-          setTimeout(() => activeUploadsMap.delete(uploadId), 5000);
-        }
-      } catch (err) {
+        backedUpCount++;
+        activeUploadsMap.set(trackUploadId, {
+          uploadId: trackUploadId,
+          fileName: `${cleanTitle}.mp3`,
+          size: fileSize,
+          transferred: fileSize,
+          progress: 100,
+          speed: 'Concluído',
+          stage: 'completed',
+          stageLabel: 'Salvo com sucesso no Telegram!',
+          updatedAt: Date.now()
+        });
+        setTimeout(() => activeUploadsMap.delete(trackUploadId), 6000);
+      } catch (err: any) {
         console.error(`Error backing up track ${track.title}:`, err);
+        activeUploadsMap.set(trackUploadId, {
+          uploadId: trackUploadId,
+          fileName: `${track.title || 'Episódio'}.mp3`,
+          size: 0,
+          transferred: 0,
+          progress: 0,
+          speed: 'Erro',
+          stage: 'error',
+          stageLabel: err.message || 'Falha no backup do episódio',
+          updatedAt: Date.now()
+        });
+        setTimeout(() => activeUploadsMap.delete(trackUploadId), 8000);
       }
     }
 
@@ -2599,7 +3303,13 @@ app.post(['/api/podcasts/backup-all-telegram', '/api/audio-shows/backup-all-tele
     console.error('Error backing up all podcast episodes to Telegram:', error);
     res.status(500).json({ error: error.message || 'Erro ao realizar backup dos episódios no Telegram' });
   }
-});
+};
+
+app.post('/api/podcasts/backup-telegram', handlePodcastBackup);
+app.post('/api/audio-shows/backup-telegram', handlePodcastBackup);
+
+app.post('/api/podcasts/backup-all-telegram', handlePodcastBackupAll);
+app.post('/api/audio-shows/backup-all-telegram', handlePodcastBackupAll);
 
 app.get('/api/audio-categories', (_req, res) => {
   res.json(db.getAudioCategories());
@@ -2982,14 +3692,28 @@ app.post('/api/telegram/download-all', async (_req, res) => {
     const filePath = path.join(UPLOADS_DIR, diskFileName);
 
     if (!fs.existsSync(filePath) && file.telegramMeta?.messageId) {
-      const buffer = await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath);
-      if (buffer) {
+      const uploadId = `download-all-${file.id}`;
+      const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
+      const dlStart = Date.now();
+      activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: expectedSize, transferred: 0, progress: 0, speed: 'Conectando...', stage: 'cloud', stageLabel: `⚡ Baixando "${file.name}"...`, updatedAt: Date.now() });
+      try {
+        await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath, (pct, transferred, total) => {
+          const speed = ((transferred / (1024 * 1024)) / Math.max(0.2, (Date.now() - dlStart) / 1000)).toFixed(2);
+          activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: total, transferred, progress: pct, speed: `${speed} MB/s`, stage: pct >= 100 ? 'completed' : 'cloud', stageLabel: pct >= 100 ? 'Concluído!' : `⚡ Baixando "${file.name}" (${pct}%)...`, updatedAt: Date.now() });
+        }, expectedSize);
         downloadedCount++;
-        totalBytes += buffer.length;
+        const finalSz = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
+        totalBytes += finalSz;
         if (!file.telegramMeta.telegramFileName || file.telegramMeta.telegramFileName !== diskFileName) {
           file.telegramMeta.telegramFileName = diskFileName;
           db.updateFile(file.id, { telegramMeta: file.telegramMeta });
         }
+        db.touchFileCachedAt(file.id);
+        activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: finalSz, transferred: finalSz, progress: 100, speed: 'Concluído', stage: 'completed', stageLabel: 'Arquivo salvo!', updatedAt: Date.now() });
+        setTimeout(() => activeUploadsMap.delete(uploadId), 10000);
+      } catch (dlErr: any) {
+        activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: expectedSize, transferred: 0, progress: 0, speed: '', stage: 'error', stageLabel: dlErr.message || 'Falha', updatedAt: Date.now() });
+        setTimeout(() => activeUploadsMap.delete(uploadId), 10000);
       }
     } else {
       skippedCount++;
@@ -3374,17 +4098,29 @@ function purgeExpiredCacheRoutine() {
 setTimeout(purgeExpiredCacheRoutine, 10000);
 setInterval(purgeExpiredCacheRoutine, 2 * 60 * 1000);
 
-// ---------------- SERVIR FRONTEND ESTÁTICO (PRODUÇÃO / RENDER) ----------------
+// ---------------- SERVIR FRONTEND ESTÁTICO (PRODUÇÃO / RENDER / ANDROID) ----------------
+// On Android (embedded): __dirname = nodejs-project/server/, so www is at ../../www/
+// On desktop (dist):     __dirname = server/, so dist is at ../dist/
 const DIST_DIR = path.join(__dirname, '..', 'dist');
-if (fs.existsSync(DIST_DIR)) {
-  app.use(express.static(DIST_DIR));
+const WWW_DIR = path.join(__dirname, '..', '..', 'www');
+const STATIC_DIR = fs.existsSync(DIST_DIR)
+  ? DIST_DIR
+  : fs.existsSync(WWW_DIR)
+    ? WWW_DIR
+    : null;
+
+if (STATIC_DIR) {
+  console.log(`[DriveGram] Serving static frontend from: ${STATIC_DIR}`);
+  app.use(express.static(STATIC_DIR));
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(DIST_DIR, 'index.html'));
+      res.sendFile(path.join(STATIC_DIR, 'index.html'));
     }
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`🚀 DriveGram rodando na porta http://localhost:${PORT}`);
+app.listen(Number(PORT), '0.0.0.0', () => {
+  console.log(`🚀 DriveGram server running on port ${PORT}`);
+  console.log(`📁 Uploads dir: ${UPLOADS_DIR}`);
+  if (STATIC_DIR) console.log(`🌐 Frontend: ${STATIC_DIR}`);
 });

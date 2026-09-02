@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Tv, X, Upload, Link as LinkIcon, Image as ImageIcon, Save, Check } from 'lucide-react';
+import { Tv, X, Upload, Link as LinkIcon, Image as ImageIcon, Save, Check, Youtube, RotateCcw } from 'lucide-react';
 import { SeriesShow, DriveItem } from '../types/index.js';
 
 interface EditSeriesModalProps {
@@ -41,6 +41,9 @@ export const EditSeriesModal: React.FC<EditSeriesModalProps> = ({
   const [year, setYear] = useState(series.year?.toString() || '');
   const [status, setStatus] = useState<'watching' | 'completed' | 'plan_to_watch'>(series.status || 'watching');
   const [description, setDescription] = useState(series.description || '');
+  const [youtubeUrl, setYoutubeUrl] = useState(series.youtubeUrl || '');
+  const [autoSyncDaily, setAutoSyncDaily] = useState(series.autoSyncDaily !== false);
+  const [deletedCount, setDeletedCount] = useState((series.deletedEpisodeIds || []).length);
   const [coverImage, setCoverImage] = useState(series.coverImage || PRESET_COVERS[0]);
   const [customCoverUrl, setCustomCoverUrl] = useState('');
   const [coverTab, setCoverTab] = useState<'upload' | 'url' | 'folder' | 'gallery'>('gallery');
@@ -96,6 +99,9 @@ export const EditSeriesModal: React.FC<EditSeriesModalProps> = ({
         year: year ? parseInt(year, 10) || undefined : undefined,
         status,
         description: description.trim() || undefined,
+        youtubeUrl: youtubeUrl.trim() || undefined,
+        autoSyncDaily,
+        deletedEpisodeIds: deletedCount === 0 ? [] : series.deletedEpisodeIds,
         coverImage: finalCover,
         updatedAt: new Date().toISOString()
       });
@@ -265,6 +271,66 @@ export const EditSeriesModal: React.FC<EditSeriesModalProps> = ({
               placeholder="Descreva a série..."
               className="w-full px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none resize-none"
             />
+          </div>
+
+          {/* YouTube Playlist & Auto-Sync Section */}
+          <div className="p-3.5 rounded-2xl bg-red-500/5 border border-red-500/20 dark:border-red-500/30 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-xl bg-red-600 text-white">
+                <Youtube className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                  Integração com YouTube Playlist
+                </h4>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                  Atualização automática diária e detecção de novos vídeos
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Link da Playlist / Canal do YouTube
+                </label>
+                <input
+                  type="url"
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/playlist?list=... ou canal"
+                  className="w-full px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-red-500 focus:outline-none"
+                />
+              </div>
+
+              {youtubeUrl.trim() && (
+                <div className="flex items-center justify-between pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-gray-700 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={autoSyncDaily}
+                      onChange={(e) => setAutoSyncDaily(e.target.checked)}
+                      className="w-4 h-4 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-700"
+                    />
+                    <span>Atualização diária automática (detectar novos vídeos uma vez por dia)</span>
+                  </label>
+                </div>
+              )}
+
+              {deletedCount > 0 && (
+                <div className="flex items-center justify-between p-2 rounded-xl bg-gray-100 dark:bg-gray-800/80 text-[11px] text-gray-600 dark:text-gray-400">
+                  <span>🚫 {deletedCount} vídeo(s) excluído(s) da playlist (ignorados na sincronização)</span>
+                  <button
+                    type="button"
+                    onClick={() => setDeletedCount(0)}
+                    className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Restaurar</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Cover Art Selection Hub */}

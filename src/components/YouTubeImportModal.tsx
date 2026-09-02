@@ -61,6 +61,7 @@ interface YouTubeImportModalProps {
   initialType?: YouTubeTargetType;
   allFolders?: FolderItem[];
   onImportSuccess?: (result: { targetType: YouTubeTargetType; item: any }) => void;
+  onTrackTask?: (uploadId: string, fileName: string, initialStageLabel?: string, initialSize?: number) => any;
 }
 
 export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
@@ -68,7 +69,8 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
   onClose,
   initialType = 'course',
   allFolders = [],
-  onImportSuccess
+  onImportSuccess,
+  onTrackTask
 }) => {
   const [urlInput, setUrlInput] = useState('');
   const [isParsing, setIsParsing] = useState(false);
@@ -86,6 +88,7 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
 
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<string | null>(null);
+  const [importPercentage, setImportPercentage] = useState<number>(0);
 
   // Get corresponding default root folder name for target type
   const getDefaultTargetFolderName = (type: YouTubeTargetType) => {
@@ -131,6 +134,7 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
       setIsParsing(false);
       setIsImporting(false);
       setImportProgress(null);
+      setImportPercentage(0);
     }
   }, [isOpen, initialType, allFolders]);
 
@@ -228,18 +232,40 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
     }
 
     const selectedVideos = parsedData.videos.filter(v => selectedVideoIds.has(v.id));
+    const uploadId = `yt-import-${Date.now()}`;
+    const targetTitle = customTitle.trim() || parsedData.title;
 
     setIsImporting(true);
-    setImportProgress('Criando estrutura e pastas no DriveGram...');
+    setImportProgress('1/3 • Obtendo metadados e miniaturas...');
+    setImportPercentage(15);
+
+    let tracker: any = null;
+    if (onTrackTask) {
+      tracker = onTrackTask(uploadId, `[YouTube] ${targetTitle}`, '1/3 • Obtendo metadados e miniaturas...', selectedVideos.length);
+    }
+
+    const pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/uploads/progress/${uploadId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.progress !== undefined) {
+            setImportPercentage(data.progress);
+            if (data.stageLabel) setImportProgress(data.stageLabel);
+          }
+        }
+      } catch (e) {}
+    }, 200);
 
     try {
       const res = await fetch('/api/youtube/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          uploadId,
           url: urlInput,
           targetType,
-          title: customTitle.trim() || parsedData.title,
+          title: targetTitle,
           author: customAuthor.trim() || parsedData.author,
           description: parsedData.description,
           coverImage: parsedData.coverImage,
@@ -249,13 +275,17 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
         })
       });
 
+      clearInterval(pollTimer);
+
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Erro ao importar conteúdo.');
       }
 
       const result = await res.json();
-      setImportProgress('Importação concluída com sucesso!');
+      setImportPercentage(100);
+      setImportProgress('Salvo com sucesso no DriveGram!');
+      if (tracker?.finish) tracker.finish(true);
       
       setTimeout(() => {
         setIsImporting(false);
@@ -263,9 +293,11 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
         if (onImportSuccess) {
           onImportSuccess(result);
         }
-      }, 600);
+      }, 700);
     } catch (err: any) {
+      clearInterval(pollTimer);
       setIsImporting(false);
+      if (tracker?.finish) tracker.finish(false, err.message);
       setParseError(err.message || 'Falha ao salvar os itens no banco de dados.');
     }
   };
@@ -691,6 +723,27 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
           )}
 
         </div>
+
+        {/* Real-time Import Progress Bar Banner */}
+        {isImporting && (
+          <div className="px-6 py-3 bg-red-500/10 border-t border-red-500/20 flex flex-col gap-2 shrink-0 animate-in fade-in">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {importProgress || 'Processando download e importação...'}
+              </span>
+              <span className="font-mono font-black text-red-600 dark:text-red-400 bg-red-500/10 px-2 py-0.5 rounded-lg text-[11px]">
+                {importPercentage}%
+              </span>
+            </div>
+            <div className="w-full h-2 bg-red-950/20 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner">
+              <div 
+                className="h-full bg-gradient-to-r from-red-600 via-rose-500 to-orange-500 transition-all duration-300 rounded-full shadow"
+                style={{ width: `${Math.max(importPercentage, 5)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Modal Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200/80 dark:border-gray-800/80 bg-gray-50/50 dark:bg-gray-900/50 shrink-0">

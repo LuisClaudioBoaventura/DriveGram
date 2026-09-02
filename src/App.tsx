@@ -50,6 +50,7 @@ import { CategoryManagerModal } from './components/CategoryManagerModal.js';
 import { EditItemModal } from './components/EditItemModal.js';
 import { DuplicateFilesModal } from './components/DuplicateFilesModal.js';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
+import { MobileServerSettingsModal } from './components/MobileServerSettingsModal.js';
 import { YouTubeImportModal, YouTubeTargetType } from './components/YouTubeImportModal.js';
 import { useFileSystem } from './hooks/useFileSystem.js';
 import { useTelegram } from './hooks/useTelegram.js';
@@ -132,6 +133,7 @@ export function App() {
   const [isNewAdultVideoModalOpen, setIsNewAdultVideoModalOpen] = useState(false);
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
   const [youtubeInitialType, setYoutubeInitialType] = useState<YouTubeTargetType>('course');
+  const [isMobileServerModalOpen, setIsMobileServerModalOpen] = useState(false);
   const [isDuplicatesModalOpen, setIsDuplicatesModalOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
@@ -417,6 +419,7 @@ export function App() {
         }}
         onOpenApiKeysModal={() => setIsApiKeysModalOpen(true)}
         onOpenYouTubeModal={() => handleOpenYouTubeModal()}
+        onOpenMobileServerSettings={() => setIsMobileServerModalOpen(true)}
         onSyncNow={async () => {
           if (!tg.authState.isConnected) {
             setLoginPromptReason({
@@ -612,10 +615,12 @@ export function App() {
               ) : selectedComicForView ? (
                 /* Active Comic / HQ Studio & Reader */
                 <ComicStudioView
-                  comic={selectedComicForView}
+                  comic={comics.comics.find(c => c.id === selectedComicForView.id) || selectedComicForView}
                   activeIssue={comics.activeIssue}
                   onSelectIssue={comics.setActiveIssue}
-                  onToggleIssueCompletion={comics.toggleIssueCompletion}
+                  onToggleIssueCompletion={async (issueId) => {
+                    await comics.toggleIssueCompletion(issueId, selectedComicForView.id);
+                  }}
                   onUpdateComic={async (updated) => {
                     await comics.updateComic(updated);
                     setSelectedComicForView(updated);
@@ -627,7 +632,7 @@ export function App() {
                     fs.refresh();
                   }}
                   onBackToLibrary={() => setSelectedComicForView(null)}
-                  onOpenEditModal={() => setEditingComic(selectedComicForView)}
+                  onOpenEditModal={() => setEditingComic(comics.comics.find(c => c.id === selectedComicForView.id) || selectedComicForView)}
                   allFiles={fs.allFiles}
                 />
               ) : selectedSeriesForView ? (
@@ -638,24 +643,39 @@ export function App() {
                   onBackToCatalog={() => setSelectedSeriesForView(null)}
                   onUpdateSeries={async (updated) => {
                     await series.updateSeries(updated);
-                setSelectedSeriesForView(updated);
-                fs.refresh();
-              }}
-              onDeleteSeries={async (id) => {
-                await series.deleteSeries(id);
-                setSelectedSeriesForView(null);
-                fs.refresh();
-              }}
-              onToggleEpisodeCompletion={series.toggleEpisodeCompletion}
-              onUpdateEpisodeProgress={series.updateEpisodeProgress}
-              onOpenEditModal={() => setEditingSeries(selectedSeriesForView)}
-            />
-          ) : selectedAudioForView ? (
-            /* Active Music & Podcast Studio */
-            <AudioStudioView
-              audioShow={selectedAudioForView}
-              allFiles={fs.allFiles}
-              initialTrackIndex={selectedAudioTrackIndex}
+                    setSelectedSeriesForView(updated);
+                    fs.refresh();
+                  }}
+                  onDeleteSeries={async (id) => {
+                    await series.deleteSeries(id);
+                    setSelectedSeriesForView(null);
+                    fs.refresh();
+                  }}
+                  onDeleteEpisode={async (seriesId, episodeId) => {
+                    const updated = await series.deleteEpisode(seriesId, episodeId);
+                    if (updated) {
+                      setSelectedSeriesForView(updated);
+                      fs.refresh();
+                    }
+                  }}
+                  onRefreshSeries={async (seriesId) => {
+                    const res = await series.refreshSingleSeries(seriesId);
+                    if (res.series) {
+                      setSelectedSeriesForView(res.series);
+                      fs.refresh();
+                    }
+                    return res;
+                  }}
+                  onToggleEpisodeCompletion={series.toggleEpisodeCompletion}
+                  onUpdateEpisodeProgress={series.updateEpisodeProgress}
+                  onOpenEditModal={() => setEditingSeries(selectedSeriesForView)}
+                />
+              ) : selectedAudioForView ? (
+                /* Active Music & Podcast Studio */
+                <AudioStudioView
+                  audioShow={selectedAudioForView}
+                  allFiles={fs.allFiles}
+                  initialTrackIndex={selectedAudioTrackIndex}
               onBackToCatalog={() => setSelectedAudioForView(null)}
               onUpdateAudioShow={async (updated) => {
                 await audioShows.updateAudioShow(updated);
@@ -671,6 +691,7 @@ export function App() {
               onUpdateTrackProgress={audioShows.updateTrackProgress}
               onOpenEditModal={() => setEditingAudioShow(selectedAudioForView)}
               onRefreshSinglePodcast={audioShows.refreshSinglePodcast}
+              onTrackTask={fs.trackRemoteTask}
               onMinimizeToFloating={() => {
                 audioShows.setIsFloatingOpen(true);
                 setSelectedAudioForView(null);
@@ -789,6 +810,7 @@ export function App() {
                 fs.refresh();
               }}
               onEditComic={(comic) => setEditingComic(comic)}
+              onToggleComicCompletion={comics.toggleComicCompletion}
             />
           ) : fs.activeTab === 'videos' ? (
             /* Videos & Movies Catalog */
@@ -841,6 +863,16 @@ export function App() {
                 series.deleteSeries(id);
                 fs.refresh();
               }}
+              onRefreshSeries={async (seriesId) => {
+                const res = await series.refreshSingleSeries(seriesId);
+                fs.refresh();
+                return res;
+              }}
+              onRefreshAllSeries={async () => {
+                const res = await series.refreshAllSeries();
+                fs.refresh();
+                return res;
+              }}
             />
           ) : fs.activeTab === 'podcasts' ? (
             /* Music & Podcasts Catalog */
@@ -849,7 +881,7 @@ export function App() {
               categories={audioShows.categories}
               folders={fs.allFolders}
               onSelectShow={(a, trackIndex) => {
-                audioShows.playShowAndTrack(a, trackIndex !== undefined ? trackIndex : 0, false);
+                audioShows.playShowAndTrack(a, trackIndex !== undefined ? trackIndex : 0, true);
                 setSelectedAudioForView(a);
                 setSelectedAudioTrackIndex(trackIndex !== undefined ? trackIndex : 0);
               }}
@@ -1076,6 +1108,7 @@ export function App() {
           courses.refreshCourses();
           books.refreshBooks();
         }}
+        onOpenMobileServerSettings={() => setIsMobileServerModalOpen(true)}
         loading={tg.loading}
       />
 
@@ -1481,6 +1514,7 @@ export function App() {
         initialType={youtubeInitialType}
         allFolders={fs.allFolders}
         onImportSuccess={handleYouTubeImportSuccess}
+        onTrackTask={fs.trackRemoteTask}
       />
 
       {/* Edit/Rename File & Folder Modal */}
@@ -1522,6 +1556,12 @@ export function App() {
             refreshAllLibraries();
           }
         }}
+      />
+
+      {/* Mobile Server / Backend Configuration Modal */}
+      <MobileServerSettingsModal
+        isOpen={isMobileServerModalOpen}
+        onClose={() => setIsMobileServerModalOpen(false)}
       />
 
       {/* Persistent Global Floating Audiobook Player */}
@@ -1592,7 +1632,7 @@ export function App() {
           hasNextTrack={!!audioShows.getNextTrack()}
           hasPreviousTrack={!!audioShows.getPreviousTrack()}
           isCardVisible={selectedAudioForView === null}
-          onBackupTrack={audioShows.backupTrackToTelegram}
+          onBackupTrack={(track) => audioShows.backupTrackToTelegram(track, fs.trackRemoteTask)}
         />
       )}
 

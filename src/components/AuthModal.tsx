@@ -26,6 +26,7 @@ interface AuthModalProps {
   onSignIn: (code: string, password?: string) => Promise<any>;
   onDisconnect: () => Promise<void>;
   onSuccessAuth: () => void;
+  onOpenMobileServerSettings?: () => void;
   loading: boolean;
 }
 
@@ -39,6 +40,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onSignIn,
   onDisconnect,
   onSuccessAuth,
+  onOpenMobileServerSettings,
   loading
 }) => {
   const [authMethod, setAuthMethod] = useState<'qr' | 'phone'>('qr');
@@ -251,9 +253,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
 
                 {qrError && (
-                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-2 mb-3 w-full">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{qrError}</span>
+                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-600 dark:text-rose-400 flex flex-col gap-2 mb-3 w-full text-left">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{qrError}</span>
+                    </div>
+                    {onOpenMobileServerSettings && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenMobileServerSettings();
+                        }}
+                        className="mt-1 py-1.5 px-3 rounded-lg bg-rose-100 dark:bg-rose-900/50 text-rose-800 dark:text-rose-200 font-semibold text-[11px] text-center hover:bg-rose-200 transition-colors"
+                      >
+                        ⚙️ Configurar Endereço IP do Servidor (ex: 192.168.0.6:5000)
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -319,9 +335,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
 
                     {error && (
-                      <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>{error}</span>
+                      <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-600 dark:text-rose-400 flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>{error}</span>
+                        </div>
+                        {onOpenMobileServerSettings && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              onOpenMobileServerSettings();
+                            }}
+                            className="mt-1 py-1.5 px-3 rounded-lg bg-rose-100 dark:bg-rose-900/50 text-rose-800 dark:text-rose-200 font-semibold text-[11px] text-center hover:bg-rose-200 transition-colors"
+                          >
+                            ⚙️ Configurar Endereço IP do Servidor (ex: 192.168.0.6:5000)
+                          </button>
+                        )}
                       </div>
                     )}
 

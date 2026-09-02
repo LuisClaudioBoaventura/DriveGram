@@ -45,6 +45,7 @@ import {
   List
 } from 'lucide-react';
 import { Course, Lesson, CourseModule, DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface CourseViewProps {
   course: Course;
@@ -146,6 +147,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
   });
   const [isCinemaMode, setIsCinemaMode] = useState(false);
   const [lessonViewMode, setLessonViewMode] = useState<'list' | 'grid'>('list');
+  const [courseDownloadFile, setCourseDownloadFile] = useState<DriveItem | null>(null);
 
   const handlePlayRandomLesson = () => {
     const allLessons = course.modules.flatMap(m => m.lessons);
@@ -1072,6 +1074,17 @@ export const CourseView: React.FC<CourseViewProps> = ({
                 ))}
               </div>
 
+              {/* Download Lesson Video Button */}
+              {activeMediaFile && (
+                <button
+                  onClick={() => setCourseDownloadFile(activeMediaFile)}
+                  className="p-2 rounded-xl bg-gray-100 dark:bg-drive-darkHover hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-all active:scale-95"
+                  title="Baixar Vídeo da Aula para Cache Local"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              )}
+
               {/* Mark Completed Button */}
               {activeLesson && (
                 <button
@@ -1986,6 +1999,15 @@ export const CourseView: React.FC<CourseViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Video Download & Cache Progress Modal */}
+      {courseDownloadFile && (
+        <VideoDownloadModal
+          file={courseDownloadFile}
+          isOpen={!!courseDownloadFile}
+          onClose={() => setCourseDownloadFile(null)}
+        />
       )}
     </div>
   );

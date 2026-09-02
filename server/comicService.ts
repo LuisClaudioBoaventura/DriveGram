@@ -68,7 +68,7 @@ export const comicService = {
       const zipPages: string[] = [];
 
       zip.forEach((relativePath, file) => {
-        if (!file.dir && !relativePath.startsWith('__MACOSX')) {
+        if (!file.dir && !relativePath.startsWith('__MACOSX') && !relativePath.includes('/.')) {
           const fileExt = path.extname(relativePath).toLowerCase();
           if (IMAGE_EXTENSIONS.has(fileExt)) {
             zipPages.push(relativePath);
@@ -92,8 +92,12 @@ export const comicService = {
         const list = extractor.getFileList();
         const rarPages: string[] = [];
 
-        for (const header of list.fileHeaders) {
-          if (!header.flags.directory && !header.name.startsWith('__MACOSX')) {
+        const fileHeaders = list?.fileHeaders 
+          ? (typeof (list.fileHeaders as any)[Symbol.iterator] === 'function' ? [...list.fileHeaders] : list.fileHeaders)
+          : (Array.isArray(list) && list[1] ? [...list[1]] : []);
+
+        for (const header of fileHeaders) {
+          if (header && !header.flags?.directory && header.name && !header.name.startsWith('__MACOSX') && !header.name.includes('/.')) {
             const fileExt = path.extname(header.name).toLowerCase();
             if (IMAGE_EXTENSIONS.has(fileExt)) {
               rarPages.push(header.name);
@@ -106,8 +110,14 @@ export const comicService = {
           format = 'cbr';
         }
       } catch (rarErr) {
-        console.error('Error extracting RAR comic:', rarErr);
+        console.error('[DriveGram Comic] Error extracting RAR comic:', rarErr);
       }
+    }
+
+    // Single image file fallback
+    if (pages.length === 0 && IMAGE_EXTENSIONS.has(ext)) {
+      pages = [path.basename(filePath)];
+      format = 'cbz';
     }
 
     if (pages.length === 0) {
@@ -166,15 +176,23 @@ export const comicService = {
     let pageBuffer: Buffer | null = null;
 
     if (cacheEntry.manifest.format === 'cbz') {
-      const zip = await JSZip.loadAsync(fileBuffer);
-      const zipEntry = zip.file(pagePath);
-      if (!zipEntry) throw new Error(`Página ${pagePath} não encontrada no arquivo ZIP`);
-      pageBuffer = await zipEntry.async('nodebuffer');
+      if (cacheEntry.manifest.totalPages === 1 && IMAGE_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+        pageBuffer = fileBuffer;
+      } else {
+        const zip = await JSZip.loadAsync(fileBuffer);
+        const zipEntry = zip.file(pagePath);
+        if (!zipEntry) throw new Error(`Página ${pagePath} não encontrada no arquivo ZIP`);
+        pageBuffer = await zipEntry.async('nodebuffer');
+      }
     } else {
       const arrayBuf = toArrayBuffer(fileBuffer);
       const extractor = await createExtractorFromData({ data: arrayBuf });
       const extracted = extractor.extract({ files: [pagePath] });
-      const fileData = [...extracted.files][0];
+      const filesList: any[] = extracted?.files 
+        ? Array.from(extracted.files as any)
+        : (Array.isArray(extracted) && (extracted as any)[1] ? Array.from((extracted as any)[1]) : []);
+
+      const fileData = filesList.find((f: any) => f?.fileHeader?.name === pagePath) || filesList[0];
       if (!fileData || !fileData.extraction) {
         throw new Error(`Página ${pagePath} não encontrada no arquivo RAR`);
       }

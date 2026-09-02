@@ -30,6 +30,7 @@ import { DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
 import { PdfReader } from './PdfReader.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface SubtitleCue {
   start: number;
@@ -101,6 +102,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   // Video time & cues
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
+  const [isVideoDownloadModalOpen, setIsVideoDownloadModalOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -329,14 +331,25 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               </button>
             )}
 
-            <a
-              href={`/api/stream/${file.id}`}
-              download={file.name}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow transition-all"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Baixar</span>
-            </a>
+            {file.type === 'video' || file.mimeType?.includes('video') ? (
+              <button
+                onClick={() => setIsVideoDownloadModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow transition-all"
+                title="Baixar Vídeo para Cache Local"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Baixar</span>
+              </button>
+            ) : (
+              <a
+                href={`/api/stream/${file.id}`}
+                download={file.name}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow transition-all"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Baixar</span>
+              </a>
+            )}
 
             <button
               onClick={onClose}
@@ -621,6 +634,15 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Video Download & Cache Progress Modal */}
+      {(file.type === 'video' || file.mimeType?.includes('video')) && (
+        <VideoDownloadModal
+          file={file}
+          isOpen={isVideoDownloadModalOpen}
+          onClose={() => setIsVideoDownloadModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

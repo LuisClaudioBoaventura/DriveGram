@@ -418,17 +418,60 @@ export function useAudioShows() {
     return { success: false, newEpisodesCount: 0 };
   };
 
+  // Local storage helpers for instantaneous synchronous saving and cross-session persistence
+  const getSavedPodcastProgress = (trackId?: string, showId?: string): number => {
+    if (!trackId) return 0;
+    try {
+      const raw = localStorage.getItem(`drivegram_podcast_pos_${trackId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.pos === 'number' && parsed.pos > 0) return parsed.pos;
+      }
+      if (showId) {
+        const rawShow = localStorage.getItem(`drivegram_podcast_last_${showId}`);
+        if (rawShow) {
+          const parsedShow = JSON.parse(rawShow);
+          if (parsedShow.trackId === trackId && typeof parsedShow.pos === 'number' && parsedShow.pos > 0) {
+            return parsedShow.pos;
+          }
+        }
+      }
+    } catch (e) {}
+    return 0;
+  };
+
+  const setSavedPodcastProgress = (trackId: string, pos: number, showId?: string) => {
+    try {
+      if (trackId && pos >= 0) {
+        localStorage.setItem(`drivegram_podcast_pos_${trackId}`, JSON.stringify({
+          pos: Math.floor(pos),
+          updatedAt: Date.now()
+        }));
+        if (showId) {
+          localStorage.setItem(`drivegram_podcast_last_${showId}`, JSON.stringify({
+            trackId,
+            pos: Math.floor(pos),
+            updatedAt: Date.now()
+          }));
+        }
+      }
+    } catch (e) {}
+  };
+
   const savePlaybackPosition = useCallback(async () => {
     const currentShow = activeShowRef.current;
     const currentTrk = activeTrackRef.current;
     const pos = currentTimeRef.current;
     if (!currentShow || !currentTrk || pos <= 0) return;
 
+    const floorPos = Math.floor(pos);
+    setSavedPodcastProgress(currentTrk.id, floorPos, currentShow.id);
+
     const updatedTracks = (currentShow.tracks || []).map(t => {
       if (t.id === currentTrk.id) {
         return {
           ...t,
-          lastPositionSeconds: Math.floor(pos)
+          lastPositionSeconds: floorPos
         };
       }
       return t;
@@ -439,13 +482,47 @@ export function useAudioShows() {
       tracks: updatedTracks
     };
 
-    try {
-      await fetch(`/api/audio-shows/${updatedShow.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedShow)
-      });
-    } catch (e) {}
+    activeShowRef.current = updatedShow;
+    setActiveShow(updatedShow);
+    setAudioShows(prev => prev.map(s => s.id === updatedShow.id ? updatedShow : s));
+
+    if (updatedShow.id !== 'recent-episodes-playlist') {
+      try {
+        await fetch(`/api/audio-shows/${updatedShow.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedShow)
+        });
+      } catch (e) {}
+    }
+  }, []);
+
+  // Periodic automatic progress saving every 3 seconds while playing
+  useEffect(() => {
+    if (!isPlaying) return;
+    const timer = setInterval(() => {
+      savePlaybackPosition();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [isPlaying, savePlaybackPosition]);
+
+  // Window beforeunload / pagehide listener to save exact point before closing or navigating
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const currentShow = activeShowRef.current;
+      const currentTrk = activeTrackRef.current;
+      const pos = currentTimeRef.current;
+      if (currentTrk && pos > 0) {
+        setSavedPodcastProgress(currentTrk.id, pos, currentShow?.id);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
+    };
   }, []);
 
   const playShowAndTrack = useCallback((show: AudioShow, trackIndex = 0, autoPlay = false) => {
@@ -458,13 +535,19 @@ export function useAudioShows() {
       setIsFloatingOpen(true);
     }
 
-    if (track?.lastPositionSeconds && track.lastPositionSeconds > 0) {
-      setCurrentTime(track.lastPositionSeconds);
+    const savedPos = (track?.lastPositionSeconds && track.lastPositionSeconds > 0)
+      ? track.lastPositionSeconds
+      : (track ? getSavedPodcastProgress(track.id, show.id) : 0);
+
+    if (savedPos > 0) {
+      setCurrentTime(savedPos);
+      currentTimeRef.current = savedPos;
       if (audioRef.current) {
-        audioRef.current.currentTime = track.lastPositionSeconds;
+        audioRef.current.currentTime = savedPos;
       }
     } else {
       setCurrentTime(0);
+      currentTimeRef.current = 0;
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
       }
@@ -474,6 +557,9 @@ export function useAudioShows() {
       setTimeout(() => {
         if (audioRef.current) {
           audioRef.current.playbackRate = playbackSpeed;
+          if (savedPos > 0) {
+            audioRef.current.currentTime = savedPos;
+          }
           audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
         }
       }, 100);
@@ -492,13 +578,19 @@ export function useAudioShows() {
     const track = activeShow.tracks[trackIndex];
     setActiveTrack(track);
 
-    if (track?.lastPositionSeconds && track.lastPositionSeconds > 0) {
-      setCurrentTime(track.lastPositionSeconds);
+    const savedPos = (track?.lastPositionSeconds && track.lastPositionSeconds > 0)
+      ? track.lastPositionSeconds
+      : (track ? getSavedPodcastProgress(track.id, activeShow.id) : 0);
+
+    if (savedPos > 0) {
+      setCurrentTime(savedPos);
+      currentTimeRef.current = savedPos;
       if (audioRef.current) {
-        audioRef.current.currentTime = track.lastPositionSeconds;
+        audioRef.current.currentTime = savedPos;
       }
     } else {
       setCurrentTime(0);
+      currentTimeRef.current = 0;
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
       }
@@ -508,6 +600,9 @@ export function useAudioShows() {
       setTimeout(() => {
         if (audioRef.current) {
           audioRef.current.playbackRate = playbackSpeed;
+          if (savedPos > 0) {
+            audioRef.current.currentTime = savedPos;
+          }
           audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
         }
       }, 100);
@@ -635,10 +730,22 @@ export function useAudioShows() {
     }
   }, [activeShow, activeTrack, toggleTrackCompletion, playNextTrack]);
 
-  const backupTrackToTelegram = useCallback(async (track: AudioTrack) => {
+  const backupTrackToTelegram = useCallback(async (
+    track: AudioTrack, 
+    onTrackTask?: (uploadId: string, fileName: string, initialStageLabel?: string) => any
+  ) => {
     if (!activeShow || !track || track.fileId) return;
+    const uploadId = `backup-${track.id || Date.now()}-${Date.now()}`;
+    const cleanTitle = (track.title || 'episodio').replace(/[/\\?%*:|"<>]/g, '_').trim();
+    
+    let tracker: any = null;
+    if (onTrackTask) {
+      tracker = onTrackTask(uploadId, `${cleanTitle}.mp3`, '1/2 • Conectando ao servidor do podcast...');
+    }
+
     try {
       const payload = JSON.stringify({
+        uploadId,
         showId: activeShow.id,
         trackId: track.id,
         audioUrl: track.audioUrl,
@@ -665,9 +772,19 @@ export function useAudioShows() {
         if (data.updatedShow) {
           await updateAudioShow(data.updatedShow);
         }
+        if (tracker?.finish) {
+          tracker.finish(true);
+        }
+      } else {
+        if (tracker?.finish) {
+          tracker.finish(false, 'Erro ao salvar episódio');
+        }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error backing up track to telegram:', e);
+      if (tracker?.finish) {
+        tracker.finish(false, e?.message || 'Falha ao salvar episódio');
+      }
     }
   }, [activeShow, updateAudioShow]);
 

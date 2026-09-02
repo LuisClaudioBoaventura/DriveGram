@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tv, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, Layers } from 'lucide-react';
+import { Tv, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, Layers, RefreshCw, Youtube, Info, AlertCircle, X } from 'lucide-react';
 import { SeriesShow, FolderItem } from '../types/index.js';
 
 interface SeriesCatalogProps {
@@ -10,6 +10,8 @@ interface SeriesCatalogProps {
   onOpenNewModal: () => void;
   onEditSeries?: (series: SeriesShow) => void;
   onDeleteSeries?: (id: string) => void;
+  onRefreshSeries?: (seriesId: string) => Promise<{ success: boolean; series?: SeriesShow; newEpisodesCount: number }>;
+  onRefreshAllSeries?: () => Promise<{ success: boolean; totalNewEpisodes: number; refreshedCount: number }>;
 }
 
 export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
@@ -18,11 +20,79 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
   onSelectSeries,
   onOpenNewModal,
   onEditSeries,
-  onDeleteSeries
+  onDeleteSeries,
+  onRefreshSeries,
+  onRefreshAllSeries
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'watching' | 'completed' | 'plan_to_watch'>('all');
+  const [isRefreshingAll, setIsRefreshingAll] = useState(false);
+  const [refreshingSeriesId, setRefreshingSeriesId] = useState<string | null>(null);
+  const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  const youtubeSeriesCount = seriesList.filter(s => s.youtubeUrl).length;
+
+  const handleRefreshAll = async () => {
+    if (isRefreshingAll || !onRefreshAllSeries) return;
+    setIsRefreshingAll(true);
+    setSyncFeedback(null);
+    try {
+      const res = await onRefreshAllSeries();
+      if (res.success) {
+        if (res.totalNewEpisodes > 0) {
+          setSyncFeedback({
+            message: `🎉 Sincronização concluída! ${res.totalNewEpisodes} novos vídeos foram detectados em ${res.refreshedCount} playlists!`,
+            type: 'success'
+          });
+        } else {
+          setSyncFeedback({
+            message: `✅ Todas as ${res.refreshedCount} playlists do YouTube já estão 100% atualizadas.`,
+            type: 'info'
+          });
+        }
+      }
+    } catch (e) {
+      setSyncFeedback({
+        message: 'Erro ao sincronizar playlists.',
+        type: 'error'
+      });
+    } finally {
+      setIsRefreshingAll(false);
+      setTimeout(() => setSyncFeedback(null), 6000);
+    }
+  };
+
+  const handleRefreshSingle = async (e: React.MouseEvent, series: SeriesShow) => {
+    e.stopPropagation();
+    if (refreshingSeriesId || !onRefreshSeries) return;
+    setRefreshingSeriesId(series.id);
+    setSyncFeedback(null);
+    try {
+      const res = await onRefreshSeries(series.id);
+      if (res.success) {
+        if (res.newEpisodesCount > 0) {
+          setSyncFeedback({
+            message: `🎉 "${series.title}": ${res.newEpisodesCount} novos vídeos adicionados!`,
+            type: 'success'
+          });
+        } else {
+          setSyncFeedback({
+            message: `✅ "${series.title}" já está atualizada.`,
+            type: 'info'
+          });
+        }
+      }
+    } catch (e) {
+      setSyncFeedback({
+        message: `Erro ao sincronizar "${series.title}".`,
+        type: 'error'
+      });
+    } finally {
+      setRefreshingSeriesId(null);
+      setTimeout(() => setSyncFeedback(null), 6000);
+    }
+  };
 
   const filteredSeries = seriesList.filter(series => {
     const matchesSearch = series.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -104,6 +174,22 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
                     <Plus className="w-4 h-4" />
                     <span>Adicionar Série / Anime</span>
                   </button>
+
+                  {youtubeSeriesCount > 0 && onRefreshAllSeries && (
+                    <button
+                      onClick={handleRefreshAll}
+                      disabled={isRefreshingAll}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold border transition-all ${
+                        isRefreshingAll
+                          ? 'bg-red-600/30 text-red-200 border-red-500/50 cursor-wait'
+                          : 'bg-red-950/70 hover:bg-red-900 text-red-100 border-red-700/60 hover:border-red-500 active:scale-95 shadow-lg shadow-red-950/40'
+                      }`}
+                      title="Verificar e baixar novos vídeos para todas as playlists do YouTube"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingAll ? 'animate-spin text-red-300' : 'text-red-400'}`} />
+                      <span>{isRefreshingAll ? 'Sincronizando Playlists...' : `Sincronizar Playlists (${youtubeSeriesCount})`}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -130,11 +216,54 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
                   <Plus className="w-4 h-4 text-purple-600" />
                   <span>Adicionar Série / Anime</span>
                 </button>
+
+                {youtubeSeriesCount > 0 && onRefreshAllSeries && (
+                  <button
+                    onClick={handleRefreshAll}
+                    disabled={isRefreshingAll}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold border transition-all ${
+                      isRefreshingAll
+                        ? 'bg-red-600/30 text-red-200 border-red-500/50 cursor-wait'
+                        : 'bg-red-950/70 hover:bg-red-900 text-red-100 border-red-700/60 hover:border-red-500 active:scale-95 shadow-lg shadow-red-950/40'
+                    }`}
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingAll ? 'animate-spin text-red-300' : 'text-red-400'}`} />
+                    <span>{isRefreshingAll ? 'Sincronizando Playlists...' : `Sincronizar Playlists (${youtubeSeriesCount})`}</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Sync Feedback Toast Notification Banner */}
+      {syncFeedback && (
+        <div className={`px-4 py-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-3 border animate-in fade-in slide-in-from-top-2 duration-200 shadow-lg ${
+          syncFeedback.type === 'success'
+            ? 'bg-emerald-950/90 text-emerald-200 border-emerald-800/80'
+            : syncFeedback.type === 'error'
+            ? 'bg-rose-950/90 text-rose-200 border-rose-800/80'
+            : 'bg-indigo-950/90 text-indigo-200 border-indigo-800/80'
+        }`}>
+          <div className="flex items-center gap-2.5">
+            {syncFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : syncFeedback.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            ) : (
+              <Info className="w-4 h-4 text-indigo-400 shrink-0" />
+            )}
+            <span>{syncFeedback.message}</span>
+          </div>
+          <button
+            onClick={() => setSyncFeedback(null)}
+            className="p-1 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
         {/* Filter & Search Toolbar */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white dark:bg-drive-darkSurface p-3 rounded-2xl border border-gray-200 dark:border-drive-darkBorder shadow-sm">
@@ -227,11 +356,17 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
                     />
 
-                    {/* Category badge */}
+                    {/* Category and YouTube badges */}
                     <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
                       <span className="px-2 py-0.5 rounded-md bg-purple-600/90 text-white text-[9px] font-black uppercase shadow">
                         {series.category || 'Série'}
                       </span>
+                      {series.youtubeUrl && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-600/95 text-white text-[8px] font-black uppercase tracking-wider shadow">
+                          <Youtube className="w-2.5 h-2.5" />
+                          <span>YouTube</span>
+                        </span>
+                      )}
                     </div>
 
                     {/* Play Hover Trigger */}
@@ -241,8 +376,18 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
                       </div>
                     </div>
 
-                    {/* Edit/Delete Overlay Actions */}
+                    {/* Edit/Delete/Sync Overlay Actions */}
                     <div className="absolute top-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                      {series.youtubeUrl && onRefreshSeries && (
+                        <button
+                          onClick={(e) => handleRefreshSingle(e, series)}
+                          disabled={refreshingSeriesId === series.id}
+                          className="p-1.5 rounded-lg bg-black/70 hover:bg-red-600 text-white shadow transition-colors"
+                          title="Sincronizar playlist do YouTube"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${refreshingSeriesId === series.id ? 'animate-spin text-red-300' : ''}`} />
+                        </button>
+                      )}
                       {onEditSeries && (
                         <button
                           onClick={(e) => {

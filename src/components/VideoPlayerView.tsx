@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2 } from 'lucide-react';
 import { MovieVideo, DriveItem, VideoTimestamp } from '../types/index.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface VideoPlayerViewProps {
   video: MovieVideo;
@@ -34,6 +35,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [selectedSubId, setSelectedSubId] = useState<string>('none');
   const [showSubMenu, setShowSubMenu] = useState(false);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   const videoFile = video.fileId ? allFiles.find(f => f.id === video.fileId) : null;
   const subtitles = video.subtitles || videoFile?.subtitles || [];
@@ -299,14 +301,13 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             )}
 
             {videoFile && (
-              <a
-                href={`/api/stream/${videoFile.id}`}
-                download={videoFile.name}
-                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
-                title="Baixar Vídeo"
+              <button
+                onClick={() => setIsDownloadModalOpen(true)}
+                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
+                title="Baixar Vídeo para Cache Local"
               >
                 <Download className="w-4 h-4" />
-              </a>
+              </button>
             )}
           </div>
         </div>
@@ -542,6 +543,16 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         </div>
       )}
       </div>
+
+      {/* Video Download & Cache Progress Modal */}
+      {videoFile && (
+        <VideoDownloadModal
+          file={videoFile}
+          isOpen={isDownloadModalOpen}
+          onClose={() => setIsDownloadModalOpen(false)}
+          customTitle={video.title}
+        />
+      )}
     </div>
   );
 };

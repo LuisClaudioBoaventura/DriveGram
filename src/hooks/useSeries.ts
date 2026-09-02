@@ -244,6 +244,76 @@ export function useSeries() {
     await updateSeries(updatedSeries);
   };
 
+  const deleteEpisode = async (seriesId: string, episodeId: string): Promise<SeriesShow | null> => {
+    try {
+      const res = await fetch(`/api/series/${seriesId}/episodes/${episodeId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updated: SeriesShow = data.series;
+        setSeriesList(prev => prev.map(s => s.id === updated.id ? updated : s));
+        if (activeSeries?.id === updated.id) {
+          setActiveSeries(updated);
+          if (activeEpisode?.id === episodeId) {
+            const allEps = (updated.seasons || []).flatMap(s => s.episodes || []);
+            setActiveEpisode(allEps[0] || null);
+          }
+        }
+        return updated;
+      }
+    } catch (e) {
+      console.error('Error deleting episode:', e);
+    }
+    return null;
+  };
+
+  const refreshSingleSeries = async (seriesId: string): Promise<{ success: boolean; series?: SeriesShow; newEpisodesCount: number }> => {
+    try {
+      const res = await fetch(`/api/series/${seriesId}/refresh`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updated: SeriesShow = data.series;
+        setSeriesList(prev => prev.map(s => s.id === updated.id ? updated : s));
+        if (activeSeries?.id === updated.id) {
+          setActiveSeries(updated);
+        }
+        return { success: true, series: updated, newEpisodesCount: data.newEpisodesCount || 0 };
+      }
+    } catch (e) {
+      console.error('Error refreshing single series:', e);
+    }
+    return { success: false, newEpisodesCount: 0 };
+  };
+
+  const refreshAllSeries = async (): Promise<{ success: boolean; totalNewEpisodes: number; refreshedCount: number }> => {
+    try {
+      const res = await fetch('/api/series/refresh-all', {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.updatedSeries)) {
+          setSeriesList(data.updatedSeries);
+          if (activeSeries) {
+            const refreshedActive = data.updatedSeries.find((s: SeriesShow) => s.id === activeSeries.id);
+            if (refreshedActive) setActiveSeries(refreshedActive);
+          }
+        }
+        return {
+          success: true,
+          totalNewEpisodes: data.totalNewEpisodes || 0,
+          refreshedCount: data.refreshedCount || 0
+        };
+      }
+    } catch (e) {
+      console.error('Error refreshing all series:', e);
+    }
+    return { success: false, totalNewEpisodes: 0, refreshedCount: 0 };
+  };
+
   return {
     seriesList,
     categories,
@@ -257,6 +327,9 @@ export function useSeries() {
     createSeriesFromFolder,
     updateSeries,
     deleteSeries,
+    deleteEpisode,
+    refreshSingleSeries,
+    refreshAllSeries,
     toggleEpisodeCompletion,
     updateEpisodeProgress,
     addCategory,

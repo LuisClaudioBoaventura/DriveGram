@@ -12,7 +12,11 @@ import {
   HardDrive,
   Cloud,
   Send,
-  Sparkles
+  Sparkles,
+  Radio,
+  Youtube,
+  Music,
+  BookOpen
 } from 'lucide-react';
 import { UploadProgress } from '../types/index.js';
 
@@ -121,12 +125,27 @@ export const UploadManager: React.FC<UploadManagerProps> = ({ uploads, onClear }
             const transferredStr = formatBytes(transferredBytes);
             const totalStr = formatBytes(u.size || 0);
 
+            const isYouTube = u.fileName.includes('[YouTube]') || u.id.startsWith('yt-');
+            const isPodcast = u.id.startsWith('backup-') || u.fileName.toLowerCase().includes('podcast');
+            const isComic = u.id.startsWith('comic-') || u.fileName.toLowerCase().endsWith('.cbr') || u.fileName.toLowerCase().endsWith('.cbz');
+
             return (
               <div key={u.id} className="p-2.5 rounded-2xl bg-gray-50/50 dark:bg-drive-darkBg/50 hover:bg-gray-100/70 dark:hover:bg-drive-darkHover transition-colors space-y-2 border border-gray-100 dark:border-gray-800/80">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-bold text-gray-900 dark:text-gray-100 truncate flex-1 text-xs" title={u.fileName}>
-                    {u.fileName}
-                  </span>
+                  <div className="flex items-center gap-1.5 truncate flex-1">
+                    {isYouTube ? (
+                      <Youtube className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                    ) : isPodcast ? (
+                      <Radio className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    ) : isComic ? (
+                      <BookOpen className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                    ) : (
+                      <File className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                    )}
+                    <span className="font-bold text-gray-900 dark:text-gray-100 truncate text-xs" title={u.fileName}>
+                      {u.fileName}
+                    </span>
+                  </div>
 
                   <div className="flex items-center gap-1.5 text-[11px] font-mono shrink-0">
                     {isCompleted && (

@@ -347,6 +347,7 @@ export interface SeriesEpisode {
   fileId?: string; // driveItem id
   videoUrl?: string;
   embedUrl?: string;
+  videoId?: string;
   isCompleted?: boolean;
   lastPositionSeconds?: number;
   description?: string;
@@ -373,6 +374,10 @@ export interface SeriesShow {
   year?: string | number;
   status?: 'watching' | 'completed' | 'plan_to_watch';
   folderId?: string;
+  youtubeUrl?: string; // URL da Playlist ou Canal do YouTube
+  lastSyncedAt?: string; // Timestamp ISO da última sincronização
+  autoSyncDaily?: boolean; // Se deve sincronizar automaticamente uma vez por dia
+  deletedEpisodeIds?: string[]; // IDs/videoIds de vídeos excluídos pelo usuário para evitar reimportação
   seasons: SeriesSeason[];
   rating?: number;
   createdAt: string;
