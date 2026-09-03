@@ -376,44 +376,44 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-950 text-gray-100 overflow-hidden select-none font-sans">
       {/* Top Navbar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 py-2.5 bg-gray-950/95 backdrop-blur-md border-b border-gray-800/80 shrink-0">
-        <div className="flex items-center gap-3 overflow-hidden">
+      <div className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-2 sm:py-2.5 bg-gray-950/95 backdrop-blur-md border-b border-gray-800/80 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={onBackToCatalog}
-            className="p-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-purple-400 border border-gray-800 transition-all active:scale-95 shrink-0"
+            className="p-1.5 sm:p-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-purple-400 border border-gray-800 transition-all active:scale-95 shrink-0"
             title="Voltar para Catálogo de Séries / Canais"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
 
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg overflow-hidden border border-purple-500/30 shrink-0 bg-black">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg overflow-hidden border border-purple-500/30 shrink-0 bg-black">
               <img
                 src={series.coverImage || 'https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=800&auto=format&fit=crop&q=60'}
                 alt={series.title}
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="overflow-hidden">
-              <h1 className="text-xs sm:text-sm font-black text-white truncate max-w-xs sm:max-w-md">
+            <div className="min-w-0">
+              <h1 className="text-xs sm:text-sm font-black text-white truncate max-w-[120px] sm:max-w-xs md:max-w-md">
                 {series.title}
               </h1>
-              <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                <span className="text-purple-400 font-bold">{series.category || 'Série / Canal'}</span>
+              <div className="flex items-center gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] text-gray-400 truncate">
+                <span className="text-purple-400 font-bold shrink-0">{series.category || 'Série / Canal'}</span>
                 <span>•</span>
-                <span>{totalEpisodes} vídeos</span>
-                <span>•</span>
-                <span className="text-emerald-400 font-medium">{completedEpisodes} assistidos ({progressPct}%)</span>
+                <span className="shrink-0">{totalEpisodes} vídeos</span>
+                <span className="hidden sm:inline">•</span>
+                <span className="text-emerald-400 font-medium hidden sm:inline truncate">{completedEpisodes} assistidos ({progressPct}%)</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Top Right Action Buttons */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Season Selector Tabs (if multi-season) */}
           {seasons.length > 1 && (
-            <div className="hidden md:flex items-center gap-1 bg-gray-900 p-1 rounded-xl border border-gray-800">
+            <div className="hidden md:flex items-center gap-1 bg-gray-900 p-1 rounded-xl border border-gray-800 shrink-0">
               {seasons.map((season, idx) => (
                 <button
                   key={season.id}
@@ -433,7 +433,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
           {/* Toggle Sidebar Button */}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 ${
               isSidebarOpen
                 ? 'bg-purple-600/20 text-purple-300 border-purple-500/40 hover:bg-purple-600/30'
                 : 'bg-gray-900 text-gray-300 border-gray-800 hover:border-gray-700'
@@ -449,7 +449,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
             <button
               onClick={handleRefreshPlaylist}
               disabled={isRefreshing}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shadow-sm ${
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shadow-sm shrink-0 ${
                 isRefreshing
                   ? 'bg-red-600/20 text-red-300 border-red-500/50 cursor-wait'
                   : 'bg-red-950/40 hover:bg-red-900/60 text-red-300 border-red-800/60 hover:border-red-600 active:scale-95'
@@ -464,7 +464,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
           {onOpenEditModal && (
             <button
               onClick={onOpenEditModal}
-              className="p-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-purple-400 border border-gray-800 transition-all"
+              className="p-1.5 sm:p-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-purple-400 border border-gray-800 transition-all shrink-0"
               title="Editar Dados & Capa"
             >
               <Edit3 className="w-4 h-4" />
@@ -478,7 +478,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                 onBackToCatalog();
               }
             }}
-            className="p-2 rounded-xl bg-gray-900 hover:bg-rose-950/40 text-gray-400 hover:text-rose-400 border border-gray-800 hover:border-rose-900 transition-all"
+            className="p-1.5 sm:p-2 rounded-xl bg-gray-900 hover:bg-rose-950/40 text-gray-400 hover:text-rose-400 border border-gray-800 hover:border-rose-900 transition-all shrink-0"
             title="Excluir Coleção"
           >
             <Trash2 className="w-4 h-4" />

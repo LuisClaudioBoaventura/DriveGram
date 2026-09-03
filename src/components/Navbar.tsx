@@ -168,23 +168,23 @@ export const Navbar: React.FC<NavbarProps> = ({
             <HardDrive className="w-4 h-4 text-emerald-500" />
           </button>
 
-          {/* Central de Chaves de API Modal Trigger */}
+          {/* Central de Chaves de API Modal Trigger (Desktop/Tablet) */}
           {(onOpenApiKeysModal || onOpenOmdbKeyModal) && (
             <button
               onClick={onOpenApiKeysModal || onOpenOmdbKeyModal}
               title="Central de Chaves de API (OMDb, Google Books, YouTube, TMDb)"
-              className="inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all active:scale-95"
+              className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all active:scale-95"
             >
               <Key className="w-4 h-4 text-amber-500" />
             </button>
           )}
 
-          {/* Configurações Mobile / Servidor Modal Trigger */}
+          {/* Configurações Mobile / Servidor Modal Trigger (Desktop/Tablet) */}
           {onOpenMobileServerSettings && (
             <button
               onClick={onOpenMobileServerSettings}
               title="Configurações do Servidor Mobile / App"
-              className="inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 transition-all active:scale-95"
+              className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 transition-all active:scale-95"
             >
               <Smartphone className="w-4 h-4 text-blue-500" />
             </button>
@@ -193,15 +193,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Telegram Connection Badge & Login Button */}
           <button
             onClick={onOpenAuth}
-            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-medium transition-all shadow-sm active:scale-95 ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-medium transition-all shadow-sm active:scale-95 shrink-0 ${
               telegramState.isConnected
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60 hover:bg-emerald-100'
                 : 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-800/60 hover:bg-sky-100'
             }`}
             title={telegramState.isConnected ? 'Telegram Conectado' : 'Conectar Telegram'}
           >
-            <div className={`w-2 h-2 rounded-full ${telegramState.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-sky-500'}`} />
-            <span className="font-semibold text-[11px] sm:text-xs">
+            <div className={`w-2 h-2 rounded-full shrink-0 ${telegramState.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-sky-500'}`} />
+            <span className="font-semibold text-[11px] sm:text-xs max-w-[70px] sm:max-w-[120px] md:max-w-[160px] truncate block">
               {telegramState.isConnected 
                 ? (telegramState.firstName || telegramState.username || 'Conectado')
                 : 'Conectar'

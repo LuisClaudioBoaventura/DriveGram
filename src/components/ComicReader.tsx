@@ -359,23 +359,23 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}
     >
       {/* Top Floating Control Bar */}
-      <div className="absolute top-0 inset-x-0 z-30 flex items-center justify-between px-4 py-2.5 bg-gradient-to-b from-black/90 via-black/60 to-transparent backdrop-blur-sm opacity-90 hover:opacity-100 transition-opacity">
-        <div className="flex items-center gap-3">
-          <span className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black text-[10px] tracking-wider uppercase shadow">
+      <div className="absolute top-0 inset-x-0 z-30 flex items-center justify-between px-3 sm:px-4 py-2 bg-gradient-to-b from-black/95 via-black/70 to-transparent backdrop-blur-sm opacity-90 hover:opacity-100 transition-opacity shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <span className="px-2 py-0.5 sm:py-1 rounded-lg bg-blue-600 text-white font-black text-[9px] sm:text-[10px] tracking-wider uppercase shadow shrink-0">
             {manifest.format.toUpperCase()}
           </span>
-          <h2 className="text-xs sm:text-sm font-bold text-white truncate max-w-xs sm:max-w-md" title={file.name}>
+          <h2 className="text-xs sm:text-sm font-bold text-white truncate max-w-[110px] sm:max-w-xs md:max-w-md" title={file.name}>
             {file.name.replace(/\.[^/.]+$/, "")}
           </h2>
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {/* View Mode Switcher */}
-          <div className="flex items-center bg-gray-900/80 border border-gray-700/80 rounded-xl p-0.5 shadow-sm">
+          <div className="flex items-center bg-gray-900/80 border border-gray-700/80 rounded-xl p-0.5 shadow-sm shrink-0">
             <button
               onClick={() => { setViewMode('single'); setZoom(1); }}
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
+              className={`p-1 sm:p-1.5 rounded-lg text-xs transition-colors ${
                 viewMode === 'single' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'
               }`}
               title="Página Única"
@@ -385,7 +385,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
 
             <button
               onClick={() => { setViewMode('double'); setZoom(1); }}
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
+              className={`p-1 sm:p-1.5 rounded-lg text-xs transition-colors ${
                 viewMode === 'double' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'
               }`}
               title="Páginas Lado a Lado (Dupla)"
@@ -395,7 +395,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
 
             <button
               onClick={() => { setViewMode('webtoon'); setZoom(1); }}
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
+              className={`p-1 sm:p-1.5 rounded-lg text-xs transition-colors ${
                 viewMode === 'webtoon' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'
               }`}
               title="Rolagem Vertical (Estilo Webtoon/Manhwa)"
@@ -404,9 +404,9 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
             </button>
           </div>
 
-          {/* Zoom Controls */}
+          {/* Zoom Controls (Desktop / Tablet) */}
           {viewMode !== 'webtoon' && (
-            <div className="hidden sm:flex items-center bg-gray-900/80 border border-gray-700/80 rounded-xl p-0.5">
+            <div className="hidden md:flex items-center bg-gray-900/80 border border-gray-700/80 rounded-xl p-0.5 shrink-0">
               <button
                 onClick={() => setZoom(z => Math.max(z - 0.2, 0.6))}
                 className="p-1.5 text-gray-400 hover:text-white transition-colors"
@@ -439,7 +439,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
           {/* Magnifier Tool Toggle Button */}
           <button
             onClick={() => setIsMagnifierActive(prev => !prev)}
-            className={`p-1.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 ${
+            className={`p-1.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
               isMagnifierActive
                 ? 'bg-pink-600 border-pink-400 text-white shadow-lg shadow-pink-500/30 ring-2 ring-pink-500/50'
                 : 'bg-gray-900/80 border-gray-700/80 text-gray-400 hover:text-white'
@@ -453,7 +453,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
           {/* Thumbnails Drawer Toggle */}
           <button
             onClick={() => setShowThumbnails(t => !t)}
-            className={`p-1.5 rounded-xl border text-xs font-semibold transition-all ${
+            className={`p-1.5 rounded-xl border text-xs font-semibold transition-all shrink-0 ${
               showThumbnails 
                 ? 'bg-blue-600 border-blue-500 text-white shadow' 
                 : 'bg-gray-900/80 border-gray-700/80 text-gray-400 hover:text-white'
@@ -466,7 +466,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
           {/* Fullscreen */}
           <button
             onClick={toggleFullscreen}
-            className="p-1.5 rounded-xl bg-gray-900/80 hover:bg-gray-800 border border-gray-700/80 text-gray-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-xl bg-gray-900/80 hover:bg-gray-800 border border-gray-700/80 text-gray-400 hover:text-white transition-colors shrink-0"
             title="Tela Cheia (F)"
           >
             {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}

@@ -735,12 +735,12 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 truncate">
-              <h1 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <h1 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 truncate max-w-[120px] sm:max-w-xs md:max-w-md">
                 {audioShow.title}
               </h1>
               {(audioShow.artist || audioShow.host) && (
-                <span className="text-xs text-gray-400 hidden md:inline truncate">
+                <span className="text-xs text-gray-400 hidden md:inline truncate max-w-[120px]">
                   • {audioShow.artist || audioShow.host}
                 </span>
               )}
@@ -750,7 +750,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                   setArtistInput(audioShow.artist || audioShow.host || '');
                   setIsEditingShow(true);
                 }}
-                className="p-1 text-gray-400 hover:text-emerald-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="p-1 text-gray-400 hover:text-emerald-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
                 title="Editar Título e Artista"
               >
                 <Edit3 className="w-3.5 h-3.5" />
@@ -760,7 +760,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                   setCoverUrlInput(audioShow.coverImage || '');
                   setIsChangingCover(true);
                 }}
-                className="p-1 text-gray-400 hover:text-emerald-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="p-1 text-gray-400 hover:text-emerald-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
                 title="Trocar Capa"
               >
                 <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />
@@ -770,13 +770,13 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Backup Telegram Quick Action Button */}
           {hasUnsavedTracks ? (
             <button
               onClick={handleBackupAllToTelegram}
               disabled={isBackingUpAll}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-md shadow-sky-600/20 transition-all active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-md shadow-sky-600/20 transition-all active:scale-95 disabled:opacity-50 shrink-0"
               title="Salvar todos os episódios no Telegram com 1 clique"
             >
               {isBackingUpAll ? (
@@ -787,12 +787,12 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5" />
-                  <span>Backup Telegram</span>
+                  <span className="hidden sm:inline">Backup Telegram</span>
                 </>
               )}
             </button>
           ) : (
-            <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 text-[11px] font-bold">
+            <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 text-[11px] font-bold shrink-0">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Salvo no Telegram ({totalSavedInTelegram})</span>
             </div>
@@ -801,7 +801,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
           {onMinimizeToFloating && (
             <button
               onClick={onMinimizeToFloating}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100/90 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 hover:text-emerald-500 border border-gray-200/80 dark:border-gray-800 text-xs font-bold transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gray-100/90 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 hover:text-emerald-500 border border-gray-200/80 dark:border-gray-800 text-xs font-bold transition-all shadow-xs shrink-0"
               title="Minimizar para Disco de Vinil Flutuante e explorar outras pastas"
             >
               <Disc className="w-3.5 h-3.5 text-emerald-500 animate-spin" style={{ animationDuration: '6s' }} />
@@ -812,10 +812,10 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
           {onOpenEditModal && (
             <button
               onClick={onOpenEditModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all shrink-0"
             >
               <Edit3 className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Editar</span>
+              <span className="hidden sm:inline">Editar</span>
             </button>
           )}
 
@@ -826,7 +826,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                 onBackToCatalog();
               }
             }}
-            className="p-1.5 rounded-xl border border-rose-500/20 text-rose-500 hover:bg-rose-500/10 transition-colors"
+            className="p-1.5 rounded-xl border border-rose-500/20 text-rose-500 hover:bg-rose-500/10 transition-colors shrink-0"
             title="Excluir Coleção"
           >
             <Trash2 className="w-4 h-4" />

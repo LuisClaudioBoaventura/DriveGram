@@ -79,10 +79,10 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-md rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl p-6 text-gray-800 dark:text-gray-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150">
+      <div className="relative w-full max-w-md max-h-[90dvh] overflow-y-auto flex flex-col rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl p-5 sm:p-6 text-gray-800 dark:text-gray-100">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-drive-darkBorder mb-4">
+        <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-drive-darkBorder mb-4 shrink-0">
           <div className="flex items-center gap-2.5">
             <div 
               className="p-2.5 rounded-2xl transition-colors shadow-sm flex items-center justify-center"
@@ -231,28 +231,28 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
           )}
 
           {/* Botões de Ação */}
-          <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-drive-darkBorder">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2.5 pt-3 border-t border-gray-100 dark:border-drive-darkBorder shrink-0">
             <button
               type="button"
               onClick={handleDelete}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors w-full sm:w-auto"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Excluir</span>
             </button>
 
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-drive-darkHover"
+                className="flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-drive-darkHover text-center transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={!name.trim()}
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 disabled:opacity-40"
+                className="flex-1 sm:flex-initial px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 disabled:opacity-40 text-center transition-all active:scale-95"
               >
                 Salvar Alterações
               </button>

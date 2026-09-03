@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import { Course, Lesson, CourseModule, DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { GenerateMarkersModal } from './GenerateMarkersModal.js';
 
 interface CourseViewProps {
   course: Course;
@@ -202,6 +203,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
   // Timestamps state
   const [newTimestampLabel, setNewTimestampLabel] = useState('');
   const [isAddingTimestamp, setIsAddingTimestamp] = useState(false);
+  const [isGenerateMarkersModalOpen, setIsGenerateMarkersModalOpen] = useState(false);
 
   // Materials Drag & Drop state
   const [isDraggingMaterial, setIsDraggingMaterial] = useState(false);
@@ -577,6 +579,19 @@ export const CourseView: React.FC<CourseViewProps> = ({
     await onUpdateCourse({ ...course, modules: updatedModules });
   };
 
+  const handleSaveGeneratedLessonTimestamps = async (newTimestamps: VideoTimestamp[]) => {
+    if (!activeLesson) return;
+    const updatedModules = course.modules.map(mod => ({
+      ...mod,
+      lessons: mod.lessons.map(l => 
+        l.id === activeLesson.id ? { ...l, timestamps: newTimestamps } : l
+      )
+    }));
+
+    const updatedCourse = { ...course, modules: updatedModules };
+    await onUpdateCourse(updatedCourse);
+  };
+
   // ---------------- SUBTITLES HANDLERS ----------------
   const handleAddSubtitleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -785,8 +800,8 @@ export const CourseView: React.FC<CourseViewProps> = ({
       }
     >
       {/* Top Course Bar with Inline Editing & Change Cover Button */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-3 sm:px-6 py-2 sm:py-3 border-b border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={() => {
               if (document.pictureInPictureElement && document.exitPictureInPicture) {
@@ -798,39 +813,40 @@ export const CourseView: React.FC<CourseViewProps> = ({
               }
               onBackToDrive();
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors border border-gray-200 dark:border-drive-darkBorder"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors border border-gray-200 dark:border-drive-darkBorder shrink-0"
+            title="Voltar ao Meu Drive"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Voltar ao Drive</span>
+            <span className="hidden sm:inline">Voltar ao Drive</span>
           </button>
           
-          <div className="h-4 w-px bg-gray-300 dark:bg-drive-darkBorder hidden sm:block" />
+          <div className="h-4 w-px bg-gray-300 dark:bg-drive-darkBorder hidden sm:block shrink-0" />
 
           {isEditingCourse ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <input
                 type="text"
                 value={courseTitleInput}
                 onChange={(e) => setCourseTitleInput(e.target.value)}
-                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-gray-50 dark:bg-drive-darkBg border border-blue-500 focus:outline-none"
+                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-gray-50 dark:bg-drive-darkBg border border-blue-500 focus:outline-none min-w-0"
               />
               <button
                 onClick={handleSaveCourseInfo}
-                className="p-1 rounded-md bg-blue-600 text-white hover:bg-blue-500"
+                className="p-1 rounded-md bg-blue-600 text-white hover:bg-blue-500 shrink-0"
                 title="Salvar Título"
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => setIsEditingCourse(false)}
-                className="p-1 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover"
+                className="p-1 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate max-w-md">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <h1 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 truncate max-w-[120px] sm:max-w-xs md:max-w-md">
                 {course.title}
               </h1>
               <button
@@ -839,7 +855,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
                   setCourseDescInput(course.description);
                   setIsEditingCourse(true);
                 }}
-                className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
+                className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors shrink-0"
                 title="Editar Título do Curso"
               >
                 <Edit3 className="w-3 h-3" />
@@ -850,18 +866,18 @@ export const CourseView: React.FC<CourseViewProps> = ({
                   setCoverImageUrlInput(course.coverImage || '');
                   setIsChangingCover(true);
                 }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-gray-200 dark:border-drive-darkBorder transition-colors"
+                className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-lg text-[10px] font-bold text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-gray-200 dark:border-drive-darkBorder transition-colors shrink-0"
                 title="Trocar Imagem de Capa do Curso"
               >
                 <ImageIcon className="w-3 h-3 text-indigo-500" />
-                <span>Mudar Capa</span>
+                <span className="hidden sm:inline">Mudar Capa</span>
               </button>
             </div>
           )}
         </div>
 
         {/* Global Course Progress Bar & Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <div className="hidden md:flex flex-col items-end gap-1 min-w-[130px]">
             <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
               <div 
@@ -877,7 +893,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
           {/* Cast Video to TV / Chromecast / Airplay Button */}
           <button
             onClick={() => setIsCastModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-xs font-bold transition-all shadow-sm active:scale-95"
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-xs font-bold transition-all shadow-sm active:scale-95 shrink-0"
             title="Transmitir vídeo para Smart TV, Chromecast, AirPlay ou VLC"
           >
             <Cast className="w-3.5 h-3.5 text-sky-500" />
@@ -887,7 +903,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
           {/* Picture-in-Picture Mini Player */}
           <button
             onClick={handleTogglePiP}
-            className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-drive-darkHover border border-gray-200 dark:border-drive-darkBorder transition-colors"
+            className="p-1.5 sm:p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-drive-darkHover border border-gray-200 dark:border-drive-darkBorder transition-colors shrink-0"
             title="Janela Flutuante (Picture-in-Picture) - Assista enquanto usa outros programas"
           >
             <Airplay className="w-4 h-4 text-purple-500" />
@@ -896,7 +912,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
           {/* Cinema Mode Toggle */}
           <button
             onClick={() => setIsCinemaMode(!isCinemaMode)}
-            className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-drive-darkHover border border-gray-200 dark:border-drive-darkBorder transition-colors"
+            className="p-1.5 sm:p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-drive-darkHover border border-gray-200 dark:border-drive-darkBorder transition-colors shrink-0"
             title={isCinemaMode ? 'Exibir Índice Lateral' : 'Modo Cinema'}
           >
             <Tv className="w-4 h-4 text-gray-600 dark:text-gray-300" />
@@ -1197,6 +1213,26 @@ export const CourseView: React.FC<CourseViewProps> = ({
               {/* TAB 1: TIMESTAMPS */}
               {activeTab === 'timestamps' && (
                 <div className="p-4 rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder space-y-3">
+                  {activeLesson.subtitles && activeLesson.subtitles.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                        <span className="text-xs font-semibold text-purple-900 dark:text-purple-200">
+                          Legenda disponível ({activeLesson.subtitles.length})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsGenerateMarkersModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95 shrink-0"
+                        title="Gerar capítulos e tópicos da legenda com 1 clique"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>✨ Gerar Marcadores com 1 Clique</span>
+                      </button>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2 p-2 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/40">
                     <span className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400 px-2 py-1 bg-white dark:bg-drive-darkBg rounded-lg border border-amber-200 dark:border-amber-800">
                       ⏱️ {videoRef.current ? formatSeconds(videoRef.current.currentTime) : '00:00'}
@@ -2007,6 +2043,19 @@ export const CourseView: React.FC<CourseViewProps> = ({
           file={courseDownloadFile}
           isOpen={!!courseDownloadFile}
           onClose={() => setCourseDownloadFile(null)}
+        />
+      )}
+
+      {/* Generate Subtitle Markers Modal */}
+      {activeLesson?.subtitles && activeLesson.subtitles.length > 0 && (
+        <GenerateMarkersModal
+          isOpen={isGenerateMarkersModalOpen}
+          onClose={() => setIsGenerateMarkersModalOpen(false)}
+          subtitles={activeLesson.subtitles}
+          selectedSubId={selectedSubtitleId || undefined}
+          videoDuration={activeLesson.durationSeconds}
+          onSeek={(seconds) => handleSeekTimestamp(seconds)}
+          onSaveTimestamps={handleSaveGeneratedLessonTimestamps}
         />
       )}
     </div>

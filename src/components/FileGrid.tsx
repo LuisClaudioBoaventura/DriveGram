@@ -400,7 +400,7 @@ export const FileGrid: React.FC<FileGridProps> = ({
                     {!isTrashView && file.telegramMeta?.isUploadedToTelegram && (
                       <div 
                         title="Salvo nas Mensagens Salvas do Telegram"
-                        className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 text-[10px] font-semibold backdrop-blur-sm"
+                        className="absolute top-2 left-2 flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 text-[9px] sm:text-[10px] font-semibold backdrop-blur-sm"
                       >
                         <Send className="w-2.5 h-2.5" />
                         <span>Telegram</span>
@@ -411,7 +411,7 @@ export const FileGrid: React.FC<FileGridProps> = ({
                     {!isTrashView && !file.telegramMeta?.isUploadedToTelegram && retryingFileIds.includes(file.id) && (
                       <div 
                         title="Enviando arquivo para o Telegram Cloud..."
-                        className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-700 dark:text-sky-300 text-[10px] font-bold backdrop-blur-sm border border-sky-500/40 shadow-xs animate-pulse"
+                        className="absolute top-2 left-2 z-10 flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-700 dark:text-sky-300 text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-sky-500/40 shadow-xs animate-pulse"
                       >
                         <RefreshCw className="w-2.5 h-2.5 text-sky-600 dark:text-sky-400 animate-spin" />
                         <span>Enviando...</span>
@@ -427,7 +427,7 @@ export const FileGrid: React.FC<FileGridProps> = ({
                           onRetryUploadTelegram?.(file.id);
                         }}
                         title="Salvo apenas localmente. Clique para enviar para as Mensagens Salvas do Telegram agora"
-                        className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-bold backdrop-blur-sm border border-amber-500/40 transition-transform active:scale-95 cursor-pointer shadow-xs"
+                        className="absolute top-2 left-2 z-10 flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-amber-500/40 transition-transform active:scale-95 cursor-pointer shadow-xs"
                       >
                         <CloudUpload className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400 animate-pulse" />
                         <span>Pendente</span>
@@ -438,10 +438,10 @@ export const FileGrid: React.FC<FileGridProps> = ({
                     {isTrashView && (
                       <div 
                         title={`Exclusão definitiva do Telegram em ${daysLeft} dias`}
-                        className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold backdrop-blur-sm"
+                        className="absolute top-2 left-2 flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[9px] sm:text-[10px] font-bold backdrop-blur-sm"
                       >
                         <Clock className="w-2.5 h-2.5" />
-                        <span>{daysLeft}d restantes</span>
+                        <span>{daysLeft}d</span>
                       </div>
                     )}
 
@@ -449,10 +449,10 @@ export const FileGrid: React.FC<FileGridProps> = ({
                     {!isTrashView && file.courseId && (
                       <div 
                         title="Item vinculado a um Curso"
-                        className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[10px] font-semibold backdrop-blur-sm"
+                        className="absolute top-2 right-2 flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[9px] sm:text-[10px] font-semibold backdrop-blur-sm"
                       >
                         <GraduationCap className="w-2.5 h-2.5" />
-                        <span>Aula</span>
+                        <span className="hidden sm:inline">Aula</span>
                       </div>
                     )}
                   </div>

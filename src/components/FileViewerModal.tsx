@@ -24,13 +24,15 @@ import {
   Trash2,
   Upload,
   CloudUpload,
-  RefreshCw
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 import { DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
 import { PdfReader } from './PdfReader.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { GenerateMarkersModal } from './GenerateMarkersModal.js';
 
 interface SubtitleCue {
   start: number;
@@ -103,6 +105,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
   const [isVideoDownloadModalOpen, setIsVideoDownloadModalOpen] = useState(false);
+  const [isGenerateMarkersModalOpen, setIsGenerateMarkersModalOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -218,6 +221,20 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         body: JSON.stringify({ timestamps: updated })
       });
     } catch (e) {}
+  };
+
+  const handleSaveGeneratedFileTimestamps = async (newTimestamps: VideoTimestamp[]) => {
+    if (!file) return;
+    setTimestamps(newTimestamps);
+    try {
+      await fetch(`/api/files/${file.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timestamps: newTimestamps })
+      });
+    } catch (e) {
+      console.error('Error saving generated timestamps to file:', e);
+    }
   };
 
   const handleAddSubtitle = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -518,6 +535,18 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               {/* TAB 1: TIMESTAMPS */}
               {activeSideTab === 'timestamps' && (
                 <div className="space-y-3 flex-1 flex flex-col">
+                  {subtitles.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsGenerateMarkersModalOpen(true)}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-purple-600/25 hover:bg-purple-600/35 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all active:scale-95 shadow-sm"
+                      title="Gerar capítulos e marcadores a partir da legenda em 1 clique"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      <span>✨ Gerar Marcadores da Legenda</span>
+                    </button>
+                  )}
+
                   <div className="p-2.5 rounded-xl bg-gray-800/90 border border-gray-700 space-y-2">
                     <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider block">
                       Criar Timestamp no Tempo Atual
@@ -641,6 +670,19 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           file={file}
           isOpen={isVideoDownloadModalOpen}
           onClose={() => setIsVideoDownloadModalOpen(false)}
+        />
+      )}
+
+      {/* Generate Subtitle Markers Modal */}
+      {subtitles.length > 0 && (
+        <GenerateMarkersModal
+          isOpen={isGenerateMarkersModalOpen}
+          onClose={() => setIsGenerateMarkersModalOpen(false)}
+          subtitles={subtitles}
+          selectedSubId={selectedSubtitleId || undefined}
+          videoDuration={videoRef.current?.duration}
+          onSeek={(seconds) => handleSeek(seconds)}
+          onSaveTimestamps={handleSaveGeneratedFileTimestamps}
         />
       )}
     </div>

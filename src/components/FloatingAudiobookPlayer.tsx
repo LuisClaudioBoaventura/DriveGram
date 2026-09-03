@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Play, 
   Pause, 
@@ -77,6 +77,18 @@ export const FloatingAudiobookPlayer: React.FC<FloatingAudiobookPlayerProps> = (
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const [isVinylToolbarOpen, setIsVinylToolbarOpen] = useState(false);
+  const vinylToolbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleVinylMouseEnter = () => {
+    if (vinylToolbarTimeoutRef.current) clearTimeout(vinylToolbarTimeoutRef.current);
+    setIsVinylToolbarOpen(true);
+  };
+
+  const handleVinylMouseLeave = () => {
+    vinylToolbarTimeoutRef.current = setTimeout(() => setIsVinylToolbarOpen(false), 350);
+  };
+
 
   const activeAudioFile = activeChapter?.fileId
     ? allFiles.find(f => f.id === activeChapter.fileId)
@@ -117,11 +129,24 @@ export const FloatingAudiobookPlayer: React.FC<FloatingAudiobookPlayerProps> = (
         >
           {/* ================= COMPACT / COLLAPSED ROUND VINYL BUBBLE MODE ================= */}
           {isCollapsed ? (
-            <div className="relative group flex items-center justify-center">
-              {/* Floating Quick Action Toolbar on Hover */}
-              <div className="absolute bottom-full right-0 mb-3 flex items-center gap-1.5 p-1.5 rounded-2xl bg-gray-950/95 backdrop-blur-xl border border-purple-500/40 shadow-[0_10px_35px_rgba(0,0,0,0.85),0_0_20px_rgba(168,85,247,0.3)] opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none group-hover:pointer-events-auto transform translate-y-2 group-hover:translate-y-0 z-50 whitespace-nowrap">
+            /* Wrapper: flex-col keeps toolbar + disc in the SAME bounding box,
+               so onMouseLeave only fires when the cursor exits the whole group,
+               not when moving between the disc and the toolbar above it. */
+            <div
+              onMouseEnter={handleVinylMouseEnter}
+              onMouseLeave={handleVinylMouseLeave}
+              className="flex flex-col items-end gap-3"
+            >
+              {/* Quick Action Toolbar – always in DOM, shown/hidden via opacity */}
+              <div
+                className={`flex items-center gap-1.5 p-1.5 rounded-2xl bg-gray-950/95 backdrop-blur-xl border border-purple-500/40 shadow-[0_10px_35px_rgba(0,0,0,0.85),0_0_20px_rgba(168,85,247,0.3)] whitespace-nowrap transition-all duration-200 max-w-[calc(100vw-2rem)] ${
+                  isVinylToolbarOpen
+                    ? 'opacity-100 pointer-events-auto translate-y-0'
+                    : 'opacity-0 pointer-events-none translate-y-2'
+                }`}
+              >
                 {/* Title snippet */}
-                <div 
+                <div
                   onClick={() => onOpenFullReader(book)}
                   className="px-2 py-0.5 max-w-[140px] overflow-hidden cursor-pointer group/info"
                   title="Abrir no leitor completo"
@@ -198,9 +223,9 @@ export const FloatingAudiobookPlayer: React.FC<FloatingAudiobookPlayerProps> = (
               </div>
 
               {/* The Round Vinyl Disc */}
-              <div 
+              <div
                 onClick={() => setIsCollapsed(false)}
-                className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full cursor-pointer group-hover:scale-105 transition-all duration-300 select-none shadow-[0_14px_40px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.35)]"
+                className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full cursor-pointer transition-transform duration-300 hover:scale-105 select-none shadow-[0_14px_40px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.35)]"
                 title="Clique para expandir controles do audiolivro"
               >
                 {/* Outer Ambient Glow & Pulsing Ring when playing */}
@@ -209,9 +234,9 @@ export const FloatingAudiobookPlayer: React.FC<FloatingAudiobookPlayerProps> = (
                 )}
 
                 {/* Vinyl Record Body */}
-                <div className="relative w-full h-full rounded-full bg-gray-950 border-2 border-purple-500/60 p-1 flex items-center justify-center overflow-hidden">
+                <div className="relative w-full h-full rounded-full bg-gray-950 border-2 border-purple-500/60 p-1 flex items-center justify-center overflow-hidden group">
                   {/* Spinning Artwork Circle */}
-                  <div 
+                  <div
                     className="relative w-full h-full rounded-full overflow-hidden flex items-center justify-center"
                     style={{
                       animation: 'spin 12s linear infinite',

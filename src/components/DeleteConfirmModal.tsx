@@ -37,8 +37,8 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-md rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl overflow-hidden text-gray-800 dark:text-gray-100 flex flex-col animate-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-3 sm:p-4 animate-in fade-in duration-150">
+      <div className="relative w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl text-gray-800 dark:text-gray-100 flex flex-col animate-in zoom-in-95 duration-150">
         {/* Header with Warning Accent */}
         <div className={`relative p-6 text-white flex flex-col items-center text-center overflow-hidden ${
           isPermanent 
@@ -113,18 +113,18 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           )}
 
           {/* Action Buttons */}
-          <div className="flex gap-2.5 pt-2">
+          <div className="flex flex-col sm:flex-row gap-2.5 pt-2 shrink-0">
             <button
               onClick={onClose}
               disabled={loading}
-              className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-drive-darkBorder hover:bg-gray-100 dark:hover:bg-drive-darkHover text-gray-700 dark:text-gray-300 font-semibold text-xs transition-colors disabled:opacity-50"
+              className="w-full sm:flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-drive-darkBorder hover:bg-gray-100 dark:hover:bg-drive-darkHover text-gray-700 dark:text-gray-300 font-semibold text-xs transition-colors disabled:opacity-50 text-center"
             >
               Cancelar
             </button>
             <button
               onClick={handleConfirm}
               disabled={loading}
-              className={`flex-1 py-2.5 rounded-xl text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+              className={`w-full sm:flex-1 py-2.5 rounded-xl text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 text-center ${
                 isPermanent
                   ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
                   : 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20'

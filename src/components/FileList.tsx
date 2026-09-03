@@ -270,14 +270,14 @@ export const FileList: React.FC<FileListProps> = ({
                     className="py-2.5 px-4 font-semibold text-gray-800 dark:text-gray-200 group-hover:text-blue-600 dark:group-hover:text-blue-400"
                   >
                     <div className="flex items-center gap-2">
-                      <span>{folder.name}</span>
+                      <span className="truncate max-w-[130px] sm:max-w-xs md:max-w-md">{folder.name}</span>
                       {isLockedRedLocker && (
-                        <span className="px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-[9px] font-bold">
+                        <span className="px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-[9px] font-bold shrink-0">
                           🔒 Protegido
                         </span>
                       )}
                       {isDragTarget && (
-                        <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-bold inline-flex items-center gap-1 animate-pulse">
+                        <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-bold inline-flex items-center gap-1 animate-pulse shrink-0">
                           <ArrowDownToLine className="w-2.5 h-2.5" />
                           <span>Soltar para mover</span>
                         </span>
@@ -296,8 +296,8 @@ export const FileList: React.FC<FileListProps> = ({
                   </td>
                   <td className="py-2.5 px-4 text-gray-400">—</td>
                   <td className="py-2.5 px-4 text-gray-400 hidden sm:table-cell">Pasta</td>
-                  <td className="py-2.5 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1">
+                  <td className="py-2.5 px-4 text-right shrink-0 whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-1 shrink-0">
                       {isTrashView ? (
                         <>
                           <button
@@ -379,9 +379,9 @@ export const FileList: React.FC<FileListProps> = ({
                   <td className="py-2.5 px-4 font-medium text-gray-800 dark:text-gray-200 group-hover:text-blue-600 dark:group-hover:text-blue-400">
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2">
-                        <span className="truncate max-w-xs sm:max-w-md">{file.name}</span>
+                        <span className="truncate max-w-[130px] sm:max-w-xs md:max-w-md">{file.name}</span>
                         {file.courseId && (
-                          <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold shrink-0">
                             Aula
                           </span>
                         )}
@@ -446,8 +446,8 @@ export const FileList: React.FC<FileListProps> = ({
                       </button>
                     )}
                   </td>
-                  <td className="py-2.5 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1">
+                  <td className="py-2.5 px-4 text-right shrink-0 whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-1 shrink-0">
                       {isTrashView ? (
                         <>
                           <button

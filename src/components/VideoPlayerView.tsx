@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2, Sparkles } from 'lucide-react';
 import { MovieVideo, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { GenerateMarkersModal } from './GenerateMarkersModal.js';
 
 interface VideoPlayerViewProps {
   video: MovieVideo;
@@ -36,6 +37,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [selectedSubId, setSelectedSubId] = useState<string>('none');
   const [showSubMenu, setShowSubMenu] = useState(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [isGenerateMarkersModalOpen, setIsGenerateMarkersModalOpen] = useState(false);
 
   const videoFile = video.fileId ? allFiles.find(f => f.id === video.fileId) : null;
   const subtitles = video.subtitles || videoFile?.subtitles || [];
@@ -236,6 +238,30 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     }
   };
 
+  const handleSaveGeneratedTimestamps = async (newTimestamps: VideoTimestamp[]) => {
+    setLocalTimestamps(newTimestamps);
+    const updatedVideo: MovieVideo = {
+      ...video,
+      timestamps: newTimestamps
+    };
+
+    if (onUpdateVideo) {
+      await onUpdateVideo(updatedVideo);
+    } else {
+      try {
+        const isPersonal = Boolean((video as any).date || (video as any).people || (video as any).location);
+        const endpoint = isPersonal ? `/api/personal-videos/${video.id}` : `/api/videos/${video.id}`;
+        await fetch(endpoint, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedVideo)
+        });
+      } catch (e) {
+        console.error('Error saving generated timestamps:', e);
+      }
+    }
+  };
+
   const activeSub = subtitles.find(s => s.id === selectedSubId);
 
   return (
@@ -259,7 +285,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </button>
 
           {/* Video Title & Category */}
-          <div className="flex items-center gap-2 overflow-hidden px-2 max-w-[50vw] sm:max-w-md md:max-w-lg">
+          <div className="flex items-center gap-2 overflow-hidden px-2 flex-1 min-w-0">
             <span className="px-2 py-0.5 rounded-lg bg-red-600/90 text-white text-[10px] font-black uppercase shadow-sm shrink-0">
               {video.category || 'Filme'}
             </span>
@@ -284,7 +310,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   console.warn('PiP error:', e);
                 }
               }}
-              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-purple-400 hover:text-purple-300 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
+              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-purple-400 hover:text-purple-300 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
               title="Janela Flutuante (Picture-in-Picture) - Assista enquanto navega"
             >
               <Airplay className="w-4 h-4" />
@@ -293,7 +319,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             {onOpenEditModal && (
               <button
                 onClick={onOpenEditModal}
-                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
+                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
                 title="Editar Obra / Capa"
               >
                 <Edit3 className="w-4 h-4" />
@@ -303,7 +329,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             {videoFile && (
               <button
                 onClick={() => setIsDownloadModalOpen(true)}
-                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
+                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
                 title="Baixar Vídeo para Cache Local"
               >
                 <Download className="w-4 h-4" />
@@ -458,11 +484,23 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
           {/* Timestamps / Chapters Panel */}
           <div className="space-y-4 bg-gray-900/70 p-5 sm:p-6 rounded-3xl border border-gray-800 shadow-xl backdrop-blur-sm">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Bookmark className="w-4 h-4 text-red-500" />
                 <span>Capítulos / Timestamps ({localTimestamps.length})</span>
               </h3>
+
+              {subtitles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsGenerateMarkersModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all active:scale-95 shadow-sm"
+                  title="Gerar capítulos e marcadores a partir da legenda em 1 clique"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span>✨ Gerar Marcadores da Legenda</span>
+                </button>
+              )}
             </div>
 
             {/* Quick Add Timestamp Input */}
@@ -551,6 +589,23 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           isOpen={isDownloadModalOpen}
           onClose={() => setIsDownloadModalOpen(false)}
           customTitle={video.title}
+        />
+      )}
+
+      {/* Generate Subtitle Markers Modal */}
+      {subtitles.length > 0 && (
+        <GenerateMarkersModal
+          isOpen={isGenerateMarkersModalOpen}
+          onClose={() => setIsGenerateMarkersModalOpen(false)}
+          subtitles={subtitles}
+          selectedSubId={selectedSubId}
+          videoDuration={duration}
+          onSeek={(seconds) => {
+            if (videoRef.current) {
+              videoRef.current.currentTime = seconds;
+            }
+          }}
+          onSaveTimestamps={handleSaveGeneratedTimestamps}
         />
       )}
     </div>

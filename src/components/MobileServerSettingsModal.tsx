@@ -61,10 +61,10 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder rounded-3xl w-full max-w-md max-h-[90dvh] overflow-y-auto flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-drive-darkBorder">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-drive-darkBorder shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
               <Smartphone className="w-5 h-5" />
@@ -153,12 +153,12 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
             </div>
           )}
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex flex-col sm:flex-row gap-2 pt-2 shrink-0">
             <button
               type="button"
               onClick={handleTestConnection}
               disabled={isTesting}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-gray-100 dark:bg-drive-darkBg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-semibold transition-all disabled:opacity-50"
+              className="w-full sm:flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-gray-100 dark:bg-drive-darkBg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-semibold transition-all disabled:opacity-50 text-center"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
               <span>{isTesting ? 'Testando...' : 'Testar Conexão'}</span>
@@ -167,7 +167,7 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
             <button
               type="button"
               onClick={handleSave}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-500/20 transition-all active:scale-95"
+              className="w-full sm:flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-500/20 transition-all active:scale-95 text-center"
             >
               <Save className="w-3.5 h-3.5" />
               <span>Salvar e Conectar</span>
