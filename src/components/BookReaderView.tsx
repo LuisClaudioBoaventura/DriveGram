@@ -44,6 +44,7 @@ import { Book, BookChapter, DriveItem, VideoTimestamp } from '../types/index.js'
 import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
 import { PdfReader } from './PdfReader.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface BookReaderViewProps {
   book: Book;
@@ -118,6 +119,12 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
   const ebookFile = book.ebookFileId 
     ? allFiles.find(f => f.id === book.ebookFileId) 
     : allFiles.find(f => f.parentId === book.folderId && (f.type === 'pdf' || f.extension === 'epub' || f.name.endsWith('.pdf')));
+
+  const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
+
+  const activeAudioFile = activeChapter?.fileId
+    ? allFiles.find(f => f.id === activeChapter.fileId)
+    : allFiles.find(f => f.parentId === book.folderId && (f.type === 'audio' || f.mimeType?.startsWith('audio/')));
 
   // Layout View Mode: 'audio' | 'split' | 'ebook' (Default: 'audio' for audiobooks)
   const [viewMode, setViewMode] = useState<'audio' | 'split' | 'ebook'>(() => {
@@ -337,7 +344,6 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
     }
   };
 
-  const activeAudioFile = activeChapter?.fileId ? allFiles.find(f => f.id === activeChapter.fileId) : null;
   const allBookTimestamps = (book.chapters || []).flatMap(c => 
     (c.timestamps || []).map(ts => ({ ...ts, chapter: c }))
   ).sort((a, b) => a.seconds - b.seconds);
@@ -389,6 +395,17 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{book.isCompleted ? 'Concluído' : 'Concluir'}</span>
           </button>
+
+          {/* Download Audio / Book Button */}
+          {(viewMode === 'ebook' ? ebookFile : activeAudioFile) && (
+            <button
+              onClick={() => setDownloadTargetFile(viewMode === 'ebook' ? ebookFile! : activeAudioFile!)}
+              className="p-2 rounded-xl bg-gray-100/90 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 border border-gray-200/80 dark:border-gray-800 transition-all active:scale-95 shadow-sm shrink-0"
+              title={viewMode === 'ebook' ? "Baixar E-Book / PDF para Cache Local" : "Baixar Capítulo em Áudio para Cache Local"}
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          )}
 
           <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 hidden sm:block shrink-0" />
 
@@ -1022,7 +1039,27 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                       <span className="truncate leading-tight">{chap.title}</span>
                     </div>
 
-                    <span className="text-[10px] text-gray-400 font-mono ml-2 shrink-0">{chap.duration || '20:00'}</span>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      {(() => {
+                        const chapFile = chap.fileId 
+                          ? allFiles.find(f => f.id === chap.fileId) 
+                          : allFiles.find(f => f.parentId === book.folderId && f.name.toLowerCase().includes((chap.title || '').toLowerCase()));
+                        if (!chapFile) return null;
+                        return (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDownloadTargetFile(chapFile);
+                            }}
+                            className="p-1 rounded-lg text-gray-400 hover:text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-950/50 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                            title="Baixar Capítulo para Cache Local"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        );
+                      })()}
+                      <span className="text-[10px] text-gray-400 font-mono">{chap.duration || '20:00'}</span>
+                    </div>
                   </div>
                 );
               })}
@@ -1122,6 +1159,14 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* Universal Download Modal */}
+      {downloadTargetFile && (
+        <VideoDownloadModal
+          file={downloadTargetFile}
+          isOpen={!!downloadTargetFile}
+          onClose={() => setDownloadTargetFile(null)}
+        />
       )}
     </div>
   );

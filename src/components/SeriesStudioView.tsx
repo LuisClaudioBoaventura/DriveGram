@@ -948,6 +948,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                     {filteredEpisodes.map((ep) => {
                       const isCurrent = playingEpisode?.id === ep.id;
                       const thumb = getEpisodeThumbnail(ep);
+                      const epFile = allFiles?.find(f => f.id === ep.fileId);
 
                       return (
                         <div
@@ -1006,6 +1007,18 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                                 {ep.isCompleted ? '✓ Visto' : 'Marcar visto'}
                               </button>
                               <div className="flex items-center gap-1">
+                                {epFile && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDownloadTargetFile(epFile);
+                                    }}
+                                    className="p-1 rounded-md text-gray-500 hover:text-purple-400 hover:bg-purple-950/40 opacity-0 group-hover:opacity-100 transition-all"
+                                    title="Baixar para Cache Local"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                  </button>
+                                )}
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();

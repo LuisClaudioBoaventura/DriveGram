@@ -17,6 +17,7 @@ const DEFAULT_API_HASH = process.env.TELEGRAM_API_HASH || 'b18441a1ff607e10a9898
 
 class TelegramService {
   private client: TelegramClient | null = null;
+  private authClient: TelegramClient | null = null;
   private apiId: number = DEFAULT_API_ID;
   private apiHash: string = DEFAULT_API_HASH;
   private stringSession: StringSession = new StringSession('');
@@ -48,12 +49,83 @@ class TelegramService {
     }
   }
 
+  public async ensureClient(): Promise<TelegramClient | null> {
+    const settings = db.getData().settings;
+    if (!settings.telegramSession) {
+      this.authState.isConnected = false;
+      return null;
+    }
+
+    // If client exists and is connected
+    if (this.client && this.client.connected) {
+      return this.client;
+    }
+
+    // If client exists but disconnected, try connecting
+    if (this.client) {
+      try {
+        await this.client.connect();
+        if (await this.client.isUserAuthorized()) {
+          this.authState.isConnected = true;
+          return this.client;
+        }
+      } catch (err: any) {
+        console.warn('[DriveGram Telegram] Existing client reconnect failed, creating fresh instance...', err.message);
+      }
+    }
+
+    // Recreate client from stored session
+    try {
+      this.apiId = settings.telegramApiId ? parseInt(settings.telegramApiId, 10) : DEFAULT_API_ID;
+      this.apiHash = settings.telegramApiHash || DEFAULT_API_HASH;
+      this.stringSession = new StringSession(settings.telegramSession);
+      this.client = new TelegramClient(this.stringSession, this.apiId, this.apiHash, {
+        connectionRetries: 5,
+      });
+      this.client.setLogLevel('none' as any);
+      this.client.onError = async (err: any) => {
+        if (err?.message === 'TIMEOUT' || err?.message?.includes('TIMEOUT')) return;
+        console.warn('[DriveGram Telegram Client]', err?.message || err);
+      };
+      await this.client.connect();
+      const isAuth = await this.client.isUserAuthorized();
+      if (isAuth) {
+        const me = await this.client.getMe() as any;
+        this.authState = {
+          isConnected: true,
+          phone: me.phone,
+          username: me.username,
+          firstName: me.firstName,
+          userId: me.id ? me.id.toString() : 'me',
+          savedMessagesChatId: 'me',
+          lastSyncDate: new Date().toISOString(),
+          totalSavedFiles: db.getAllFiles().length,
+          storageUsedBytes: db.getAllFiles().reduce((acc, f) => acc + (f.size || 0), 0)
+        };
+        return this.client;
+      } else {
+        console.warn('[DriveGram Telegram] Session is not authorized.');
+        this.authState.isConnected = false;
+        return null;
+      }
+    } catch (err: any) {
+      console.error('[DriveGram Telegram] Failed to connect Telegram client:', err.message);
+      this.authState.isConnected = false;
+      return null;
+    }
+  }
+
   private async initClient(): Promise<boolean> {
     try {
       if (!this.apiId || !this.apiHash) return false;
       this.client = new TelegramClient(this.stringSession, this.apiId, this.apiHash, {
         connectionRetries: 5,
       });
+      this.client.setLogLevel('none' as any);
+      this.client.onError = async (err: any) => {
+        if (err?.message === 'TIMEOUT' || err?.message?.includes('TIMEOUT')) return;
+        console.warn('[DriveGram Telegram Client]', err?.message || err);
+      };
       await this.client.connect();
       
       const isAuth = await this.client.isUserAuthorized();
@@ -101,23 +173,32 @@ class TelegramService {
   // ---------------- QR CODE LOGIN ----------------
   public async startQrLogin(customApiId?: number, customApiHash?: string, password?: string): Promise<{ success: boolean; qrDataUrl?: string; qrLink?: string; message?: string }> {
     try {
-      this.apiId = customApiId || this.apiId || DEFAULT_API_ID;
-      this.apiHash = customApiHash || this.apiHash || DEFAULT_API_HASH;
-      this.stringSession = new StringSession('');
+      const loginApiId = customApiId || this.apiId || DEFAULT_API_ID;
+      const loginApiHash = customApiHash || this.apiHash || DEFAULT_API_HASH;
       this.qrStatus = 'waiting_scan';
       this.qrError = '';
 
-      this.client = new TelegramClient(this.stringSession, this.apiId, this.apiHash, {
+      if (this.authClient) {
+        try { await this.authClient.disconnect(); } catch (_) {}
+      }
+
+      const tempSession = new StringSession('');
+      this.authClient = new TelegramClient(tempSession, loginApiId, loginApiHash, {
         connectionRetries: 5,
       });
-      await this.client.connect();
+      this.authClient.setLogLevel('none' as any);
+      this.authClient.onError = async (err: any) => {
+        if (err?.message === 'TIMEOUT' || err?.message?.includes('TIMEOUT')) return;
+        console.warn('[DriveGram Telegram QR Auth]', err?.message || err);
+      };
+      await this.authClient.connect();
 
       // Launch signInUserWithQrCode in background promise
       const qrPromise = new Promise<{ success: boolean; qrDataUrl: string; qrLink: string }>((resolve, reject) => {
-        this.client!.signInUserWithQrCode(
+        this.authClient!.signInUserWithQrCode(
           {
-            apiId: this.apiId,
-            apiHash: this.apiHash,
+            apiId: loginApiId,
+            apiHash: loginApiHash,
           },
           {
             qrCode: async (code) => {
@@ -150,16 +231,22 @@ class TelegramService {
               reject(err);
             }
           }
-        ).then(async (user: any) => {
+        ).then(async (_user: any) => {
           this.qrStatus = 'confirmed';
-          const sessionString = this.client!.session.save() as unknown as string;
-          const me = await this.client!.getMe() as any;
+          const sessionString = this.authClient!.session.save() as unknown as string;
+          const me = await this.authClient!.getMe() as any;
 
           db.updateSettings({
-            telegramApiId: this.apiId.toString(),
-            telegramApiHash: this.apiHash,
+            telegramApiId: loginApiId.toString(),
+            telegramApiHash: loginApiHash,
             telegramSession: sessionString
           });
+
+          this.client = this.authClient;
+          this.authClient = null;
+          this.stringSession = new StringSession(sessionString);
+          this.apiId = loginApiId;
+          this.apiHash = loginApiHash;
 
           this.authState = {
             isConnected: true,
@@ -201,14 +288,23 @@ class TelegramService {
       this.apiId = apiId || DEFAULT_API_ID;
       this.apiHash = apiHash || DEFAULT_API_HASH;
       this.currentPhone = phone;
-      this.stringSession = new StringSession('');
       
-      this.client = new TelegramClient(this.stringSession, this.apiId, this.apiHash, {
+      if (this.authClient) {
+        try { await this.authClient.disconnect(); } catch (_) {}
+      }
+
+      const tempSession = new StringSession('');
+      this.authClient = new TelegramClient(tempSession, this.apiId, this.apiHash, {
         connectionRetries: 3,
       });
-      await this.client.connect();
+      this.authClient.setLogLevel('none' as any);
+      this.authClient.onError = async (err: any) => {
+        if (err?.message === 'TIMEOUT' || err?.message?.includes('TIMEOUT')) return;
+        console.warn('[DriveGram Telegram Phone Auth]', err?.message || err);
+      };
+      await this.authClient.connect();
 
-      const result = await this.client.sendCode(
+      const result = await this.authClient.sendCode(
         {
           apiId: this.apiId,
           apiHash: this.apiHash,
@@ -226,11 +322,11 @@ class TelegramService {
 
   public async signInWithCode(code: string, password?: string): Promise<{ success: boolean; message: string }> {
     try {
-      if (!this.client || !this.phoneCodeHash) {
+      if (!this.authClient || !this.phoneCodeHash) {
         return { success: false, message: 'Solicitação de código expirada ou cliente não iniciado' };
       }
 
-      await (this.client as any).signInUser(
+      await (this.authClient as any).signInUser(
         {
           apiId: this.apiId,
           apiHash: this.apiHash,
@@ -244,14 +340,18 @@ class TelegramService {
         }
       );
 
-      const sessionString = this.client.session.save() as unknown as string;
-      const me = await this.client.getMe() as any;
+      const sessionString = this.authClient.session.save() as unknown as string;
+      const me = await this.authClient.getMe() as any;
 
       db.updateSettings({
         telegramApiId: this.apiId.toString(),
         telegramApiHash: this.apiHash,
         telegramSession: sessionString
       });
+
+      this.client = this.authClient;
+      this.authClient = null;
+      this.stringSession = new StringSession(sessionString);
 
       this.authState = {
         isConnected: true,
@@ -276,7 +376,13 @@ class TelegramService {
         await this.client.disconnect();
       } catch (e) {}
     }
+    if (this.authClient) {
+      try {
+        await this.authClient.disconnect();
+      } catch (e) {}
+    }
     this.client = null;
+    this.authClient = null;
     this.qrStatus = 'idle';
     this.qrDataUrl = '';
     this.qrTokenUrl = '';
@@ -300,7 +406,8 @@ class TelegramService {
     caption: string,
     onProgress?: (percent: number) => void
   ): Promise<{ messageId?: number; success: boolean; error?: string }> {
-    if (!this.client || !this.authState.isConnected) {
+    const settings = db.getData().settings;
+    if (!settings.telegramSession) {
       // In demo mode or if offline, simulate smooth real-time progress
       if (onProgress) {
         for (let pct = 15; pct <= 95; pct += 20) {
@@ -313,8 +420,13 @@ class TelegramService {
       return { messageId: Math.floor(Math.random() * 90000) + 1000, success: true };
     }
 
-    try {
-      const message = await this.client.sendFile('me', {
+    let client = await this.ensureClient();
+    if (!client) {
+      return { success: false, error: 'Telegram não conectado ou sessão indisponível.' };
+    }
+
+    const doUpload = async (c: TelegramClient) => {
+      return await c.sendFile('me', {
         file: filePath,
         caption: caption,
         progressCallback: (p: any) => {
@@ -323,18 +435,52 @@ class TelegramService {
           }
         }
       });
+    };
 
+    try {
+      const message = await doUpload(client);
       if (onProgress) {
         onProgress(100);
       }
-
       return {
         messageId: message.id,
         success: true
       };
     } catch (e: any) {
-      console.error('Error uploading to Telegram:', e);
-      return { success: false, error: e.message };
+      console.warn('[DriveGram Telegram] Upload encountered error:', e.message);
+
+      // Auto-recover once if connection dropped, auth key desynchronized, or timeout
+      if (
+        e.message?.includes('AUTH_KEY') ||
+        e.message?.includes('401') ||
+        e.message?.includes('TIMEOUT') ||
+        e.message?.includes('disconnected') ||
+        e.message?.includes('connection')
+      ) {
+        try {
+          console.log('[DriveGram Telegram] Rebuilding client and retrying upload...');
+          this.client = null;
+          client = await this.ensureClient();
+          if (client) {
+            const retryMessage = await doUpload(client);
+            if (onProgress) onProgress(100);
+            return { messageId: retryMessage.id, success: true };
+          }
+        } catch (retryErr: any) {
+          console.error('[DriveGram Telegram] Retry upload also failed:', retryErr.message);
+          if (retryErr.message?.includes('AUTH_KEY_UNREGISTERED')) {
+            this.authState.isConnected = false;
+            db.updateSettings({ telegramSession: undefined });
+            return {
+              success: false,
+              error: 'Sessão do Telegram revogada ou expirada. Por favor, conecte o Telegram novamente.'
+            };
+          }
+          return { success: false, error: retryErr.message || 'Erro ao enviar para o Telegram' };
+        }
+      }
+
+      return { success: false, error: e.message || 'Erro ao enviar para o Telegram' };
     }
   }
 
@@ -348,7 +494,8 @@ class TelegramService {
     const bookCount = manifest.books ? manifest.books.length : 0;
     const caption = `📁 #drivegram_metadata_sync\n📅 Atualizado em: ${new Date().toLocaleString('pt-BR')}\nPastas: ${manifest.folders.length} | Arquivos: ${manifest.files.length} | Cursos: ${courseCount} | Livros: ${bookCount}`;
 
-    if (!this.client || !this.authState.isConnected) {
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) {
       db.updateSettings({ lastSyncDate: new Date().toISOString() });
       return { success: true, message: 'Metadados salvos localmente e preparados para envio em nuvem (Conecte o Telegram para backup automático nas Mensagens Salvas).' };
     }
@@ -357,7 +504,7 @@ class TelegramService {
       const buffer = Buffer.from(manifestJson, 'utf-8');
       (buffer as any).name = 'drivegram_metadata.json';
 
-      const sent = await this.client.sendFile('me', {
+      const sent = await client.sendFile('me', {
         file: buffer,
         caption: caption,
       });
@@ -374,12 +521,13 @@ class TelegramService {
    * Restore all metadata & course structure from Telegram Saved Messages
    */
   public async restoreMetadataFromTelegram(): Promise<{ success: boolean; message: string }> {
-    if (!this.client || !this.authState.isConnected) {
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) {
       return { success: false, message: 'Telegram não conectado para restauração em nuvem.' };
     }
 
     try {
-      const messages = await this.client.getMessages('me', {
+      const messages = await client.getMessages('me', {
         search: '#drivegram_metadata_sync',
         limit: 5
       });
@@ -389,7 +537,7 @@ class TelegramService {
       }
 
       const latestMsg = messages[0];
-      const buffer = await this.client.downloadMedia(latestMsg) as Buffer;
+      const buffer = await client.downloadMedia(latestMsg) as Buffer;
 
       if (!buffer) {
         return { success: false, message: 'Não foi possível baixar o arquivo de metadados.' };
@@ -426,7 +574,8 @@ class TelegramService {
     progressCallback?: (progressPct: number, transferred: number, total: number) => void,
     expectedTotalSize?: number
   ): Promise<Buffer | null> {
-    if (!this.client || !this.authState.isConnected) {
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) {
       throw new Error('Telegram desconectado. Verifique sua conexão com a internet.');
     }
 
@@ -582,10 +731,11 @@ class TelegramService {
    * Delete message permanently from Telegram Saved Messages
    */
   public async deleteMessageFromTelegram(messageId: number): Promise<boolean> {
-    if (!this.client || !this.authState.isConnected) return false;
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) return false;
 
     try {
-      await this.client.deleteMessages('me', [messageId], { revoke: true });
+      await client.deleteMessages('me', [messageId], { revoke: true });
       console.log(`[DriveGram] Successfully deleted message ${messageId} from Telegram.`);
       return true;
     } catch (e: any) {
@@ -645,10 +795,11 @@ class TelegramService {
     fs.writeFileSync(localFilePath, buffer);
 
     // If connected to Telegram, send directly to Saved Messages
-    if (this.client && this.authState.isConnected) {
+    const client = await this.ensureClient();
+    if (client && this.authState.isConnected) {
       try {
         (buffer as any).name = `${diskFileName}`;
-        const message = await this.client.sendFile('me', {
+        const message = await client.sendFile('me', {
           file: buffer,
           caption: `🖼️ #drivegram_cover #${tag}\n📌 ${title}\n📅 ${new Date().toLocaleString('pt-BR')}`
         });
@@ -681,15 +832,16 @@ class TelegramService {
    * Download media purely into memory buffer without creating/writing any file to disk
    */
   public async getMediaBufferInMemory(messageId: number): Promise<Buffer | null> {
-    if (!this.client || !this.authState.isConnected) return null;
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) return null;
 
     try {
-      const messages = await this.client.getMessages('me', { ids: [messageId] });
+      const messages = await client.getMessages('me', { ids: [messageId] });
       if (!messages || messages.length === 0 || !messages[0].media) {
         return null;
       }
 
-      const buffer = await this.client.downloadMedia(messages[0]) as Buffer;
+      const buffer = await client.downloadMedia(messages[0]) as Buffer;
       return buffer || null;
     } catch (e: any) {
       console.error(`[DriveGram] Error fetching media in-memory for message ${messageId}:`, e);
@@ -708,10 +860,11 @@ class TelegramService {
     mimeType: string,
     res: any
   ): Promise<boolean> {
-    if (!this.client || !this.authState.isConnected) return false;
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) return false;
 
     try {
-      const messages = await this.client.getMessages('me', { ids: [messageId] });
+      const messages = await client.getMessages('me', { ids: [messageId] });
       if (!messages || messages.length === 0 || !messages[0].media) {
         return false;
       }
@@ -760,7 +913,7 @@ class TelegramService {
           return false;
         }
 
-        const iter = (this.client as any).iterDownload({
+        const iter = (client as any).iterDownload({
           file: fileLocation,
           offset: bigInt(start || 0),
           requestSize: 256 * 1024
@@ -791,10 +944,11 @@ class TelegramService {
   }
 
   public async deleteMultipleMessagesFromTelegram(messageIds: number[]): Promise<boolean> {
-    if (!this.client || !this.authState.isConnected || messageIds.length === 0) return false;
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected || messageIds.length === 0) return false;
 
     try {
-      await this.client.deleteMessages('me', messageIds, { revoke: true });
+      await client.deleteMessages('me', messageIds, { revoke: true });
       console.log(`[DriveGram] Successfully deleted ${messageIds.length} messages from Telegram.`);
       return true;
     } catch (e: any) {
@@ -807,12 +961,13 @@ class TelegramService {
    * Scan and import all existing media/files from Telegram Saved Messages into DriveGram
    */
   public async scanAndImportSavedMessages(limit = 200): Promise<{ success: boolean; importedCount: number; message: string }> {
-    if (!this.client || !this.authState.isConnected) {
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) {
       return { success: false, importedCount: 0, message: 'Telegram não conectado para importação.' };
     }
 
     try {
-      const messages = await this.client.getMessages('me', { limit });
+      const messages = await client.getMessages('me', { limit });
       let importedCount = 0;
 
       const allFolders = db.getAllFolders();

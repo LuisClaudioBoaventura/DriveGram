@@ -16,14 +16,17 @@ import {
   Star,
   Heart,
   Tag,
-  RotateCcw
+  RotateCcw,
+  Download
 } from 'lucide-react';
-import { PersonalVideo, FolderItem } from '../types/index.js';
+import { PersonalVideo, FolderItem, DriveItem } from '../types/index.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface PersonalVideosCatalogProps {
   videos: PersonalVideo[];
   categories: string[];
   folders: FolderItem[];
+  allFiles?: DriveItem[];
   onSelectVideo: (video: PersonalVideo) => void;
   onOpenNewModal: () => void;
   onEditVideo?: (video: PersonalVideo) => void;
@@ -34,12 +37,15 @@ interface PersonalVideosCatalogProps {
 export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
   videos,
   categories,
+  folders,
+  allFiles = [],
   onSelectVideo,
   onOpenNewModal,
   onEditVideo,
   onDeleteVideo,
   onToggleFavorite
 }) => {
+  const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'favorites' | 'watching' | 'completed'>('all');
@@ -394,6 +400,23 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
 
                     {/* Edit/Delete Overlay Actions */}
                     <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                      {(() => {
+                        const targetFile = allFiles?.find(f => f.id === video.fileId);
+                        if (!targetFile) return null;
+                        return (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDownloadTargetFile(targetFile);
+                            }}
+                            className="p-1.5 rounded-lg bg-black/70 hover:bg-amber-500 hover:text-slate-950 text-white shadow transition-colors"
+                            title="Baixar Vídeo para Cache Local"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        );
+                      })()}
+
                       {onEditVideo && (
                         <button
                           onClick={(e) => {
@@ -505,6 +528,13 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
             </button>
           </div>
         )}
+      {downloadTargetFile && (
+        <VideoDownloadModal
+          file={downloadTargetFile}
+          isOpen={!!downloadTargetFile}
+          onClose={() => setDownloadTargetFile(null)}
+        />
+      )}
     </div>
   );
 };

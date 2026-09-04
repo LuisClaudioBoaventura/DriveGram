@@ -42,6 +42,7 @@ import {
   Download
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem, VideoTimestamp } from '../types/index.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface AudioStudioViewProps {
   audioShow: AudioShow;
@@ -128,6 +129,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const [backingUpTrackIds, setBackingUpTrackIds] = useState<string[]>([]);
   const [isBackingUpAll, setIsBackingUpAll] = useState<boolean>(false);
   const [backupSuccessMessage, setBackupSuccessMessage] = useState<string | null>(null);
+  const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
 
   // Podcast Refresh State
   const [isRefreshingPodcast, setIsRefreshingPodcast] = useState<boolean>(false);
@@ -959,6 +961,18 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                   )}
                 </div>
 
+                {/* Download Active Track Button */}
+                {activeFile && (
+                  <button
+                    onClick={() => setDownloadTargetFile(activeFile)}
+                    className="flex items-center gap-1.5 bg-emerald-950/60 hover:bg-emerald-900/80 px-3 py-1.5 rounded-xl border border-emerald-700/40 text-emerald-200 text-xs font-bold transition-all active:scale-95 shadow-xs"
+                    title="Baixar faixa atual para o cache local"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Baixar Faixa</span>
+                  </button>
+                )}
+
                 {/* Speed Controls Pill */}
                 <div className="flex items-center gap-1.5 bg-emerald-950/60 px-3 py-1 rounded-xl border border-emerald-700/40 text-xs">
                   <span className="text-[10px] text-gray-400 font-bold uppercase mr-1">Velocidade:</span>
@@ -1374,17 +1388,18 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                      {/* Direct Download Button if saved on Telegram */}
-                      {isTrackSaved && matchedTrackFile && (
-                        <a
-                          href={`/api/stream/${matchedTrackFile.id}?download=true`}
-                          download={`${track.title}.mp3`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="p-1 rounded-lg text-gray-400 hover:text-sky-400 hover:bg-sky-500/10 transition-colors"
-                          title="Baixar episódio do Telegram para o seu dispositivo"
+                      {/* Download Button via Progress Modal */}
+                      {matchedTrackFile && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDownloadTargetFile(matchedTrackFile);
+                          }}
+                          className="p-1 rounded-lg text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                          title="Baixar episódio / faixa para cache local"
                         >
                           <Download className="w-3.5 h-3.5" />
-                        </a>
+                        </button>
                       )}
 
                       {/* Individual Track Backup Button if not saved */}
@@ -1509,6 +1524,14 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {downloadTargetFile && (
+        <VideoDownloadModal
+          file={downloadTargetFile}
+          isOpen={!!downloadTargetFile}
+          onClose={() => setDownloadTargetFile(null)}
+        />
       )}
     </div>
   );

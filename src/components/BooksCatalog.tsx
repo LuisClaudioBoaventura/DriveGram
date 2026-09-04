@@ -21,12 +21,15 @@ import {
   Globe,
   HardDrive,
   RotateCcw,
-  Bot
+  Bot,
+  Download
 } from 'lucide-react';
-import { Book } from '../types/index.js';
+import { Book, DriveItem } from '../types/index.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface BooksCatalogProps {
   books: Book[];
+  allFiles?: DriveItem[];
   onSelectBook: (book: Book) => void;
   onNewBook: () => void;
   onDeleteBook: (bookId: string) => void;
@@ -38,6 +41,7 @@ interface BooksCatalogProps {
 
 export const BooksCatalog: React.FC<BooksCatalogProps> = ({
   books,
+  allFiles = [],
   onSelectBook,
   onNewBook,
   onDeleteBook,
@@ -52,6 +56,7 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
   const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
   const [selectedVersion, setSelectedVersion] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
 
   // Helper functions for completion and progress status
   const isBookCompleted = (book: Book) => {
@@ -442,6 +447,25 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                     </button>
                   )}
 
+                  {(() => {
+                    const targetFile = book.ebookFileId 
+                      ? allFiles.find(f => f.id === book.ebookFileId)
+                      : allFiles.find(f => f.id === book.chapters?.[0]?.fileId || (book.folderId && f.parentId === book.folderId && !f.isFolder));
+                    if (!targetFile) return null;
+                    return (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDownloadTargetFile(targetFile);
+                        }}
+                        className="p-1.5 rounded-full bg-black/60 hover:bg-purple-600 text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Baixar para Cache Local"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                    );
+                  })()}
+
                   {onEditBook && (
                     <button
                       onClick={(e) => {
@@ -578,6 +602,13 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
             </button>
           )}
         </div>
+      )}
+      {downloadTargetFile && (
+        <VideoDownloadModal
+          file={downloadTargetFile}
+          isOpen={!!downloadTargetFile}
+          onClose={() => setDownloadTargetFile(null)}
+        />
       )}
     </div>
   );

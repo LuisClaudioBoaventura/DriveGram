@@ -11,7 +11,14 @@ import {
   Clock,
   RefreshCw,
   Zap,
-  Minimize2
+  Minimize2,
+  Headphones,
+  BookOpen,
+  FileText,
+  Image as ImageIcon,
+  Archive,
+  FileCode,
+  File
 } from 'lucide-react';
 import { DriveItem } from '../types/index.js';
 
@@ -31,6 +38,75 @@ interface VideoDownloadModalProps {
   onCompleted?: () => void;
   onPlayDirect?: () => void;
   customTitle?: string;
+  customTypeLabel?: string;
+}
+
+function getItemInfo(file: DriveItem) {
+  const type = file.type || '';
+  const ext = (file.extension || '').toLowerCase();
+  const mime = (file.mimeType || '').toLowerCase();
+
+  if (type === 'video' || mime.startsWith('video/') || ['mp4', 'mkv', 'webm', 'mov', 'avi'].includes(ext)) {
+    return {
+      label: 'vídeo',
+      icon: Film,
+      actionVerb: 'Assistir',
+      colorGradient: 'from-rose-600/30 via-pink-600/30 to-purple-600/30 border-rose-500/40 shadow-rose-500/20',
+      accentColor: 'rose'
+    };
+  }
+  if (type === 'audio' || mime.startsWith('audio/') || ['mp3', 'm4a', 'aac', 'ogg', 'flac', 'wav'].includes(ext)) {
+    return {
+      label: 'áudio',
+      icon: Headphones,
+      actionVerb: 'Ouvir',
+      colorGradient: 'from-purple-600/30 via-indigo-600/30 to-blue-600/30 border-purple-500/40 shadow-purple-500/20',
+      accentColor: 'purple'
+    };
+  }
+  if (type === 'comic' || ['cbr', 'cbz'].includes(ext)) {
+    return {
+      label: 'HQ / Mangá',
+      icon: BookOpen,
+      actionVerb: 'Ler',
+      colorGradient: 'from-pink-600/30 via-rose-600/30 to-amber-600/30 border-pink-500/40 shadow-pink-500/20',
+      accentColor: 'pink'
+    };
+  }
+  if (type === 'ebook' || type === 'pdf' || ['epub', 'pdf', 'mobi'].includes(ext)) {
+    return {
+      label: 'livro',
+      icon: FileText,
+      actionVerb: 'Ler',
+      colorGradient: 'from-emerald-600/30 via-teal-600/30 to-cyan-600/30 border-emerald-500/40 shadow-emerald-500/20',
+      accentColor: 'emerald'
+    };
+  }
+  if (type === 'image' || mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext)) {
+    return {
+      label: 'imagem',
+      icon: ImageIcon,
+      actionVerb: 'Visualizar',
+      colorGradient: 'from-amber-600/30 via-orange-600/30 to-yellow-600/30 border-amber-500/40 shadow-amber-500/20',
+      accentColor: 'amber'
+    };
+  }
+  if (type === 'archive' || ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+    return {
+      label: 'arquivo compactado',
+      icon: Archive,
+      actionVerb: 'Abrir',
+      colorGradient: 'from-blue-600/30 via-cyan-600/30 to-sky-600/30 border-blue-500/40 shadow-blue-500/20',
+      accentColor: 'blue'
+    };
+  }
+  return {
+    label: 'arquivo',
+    icon: File,
+    actionVerb: 'Abrir',
+    colorGradient: 'from-blue-600/30 via-sky-600/30 to-indigo-600/30 border-blue-500/40 shadow-blue-500/20',
+    accentColor: 'blue'
+  };
 }
 
 function formatBytes(bytes: number, decimals = 1): string {
@@ -75,7 +151,8 @@ export const VideoDownloadModal: React.FC<VideoDownloadModalProps> = ({
   onClose,
   onCompleted,
   onPlayDirect,
-  customTitle
+  customTitle,
+  customTypeLabel
 }) => {
   const [downloadProgress, setDownloadProgress] = useState<VideoDownloadProgress | null>(null);
   const [isCached, setIsCached] = useState<boolean>(false);
@@ -257,13 +334,16 @@ export const VideoDownloadModal: React.FC<VideoDownloadModalProps> = ({
 
   if (!isOpen) return null;
 
+  const itemInfo = getItemInfo(file);
+  const IconComponent = itemInfo.icon;
+  const typeLabel = customTypeLabel || itemInfo.label;
   const currentSize = downloadProgress?.size || file.size || 0;
   const currentTransferred = isCached ? currentSize : (downloadProgress?.transferred || 0);
   const currentPct = isCached ? 100 : (downloadProgress ? Math.min(100, Math.max(0, downloadProgress.progress)) : 0);
   const currentSpeed = isCached ? 'Salvo em uploads' : (downloadProgress?.speed || (isStarting ? 'Conectando...' : 'Aguardando...'));
   const currentEta = isCached ? 'Concluído' : calculateEta(currentTransferred, currentSize, currentSpeed);
   const isFinished = isCached || (downloadProgress?.stage === 'completed') || currentPct >= 100;
-  const fileExt = (file.extension || 'MP4').toUpperCase();
+  const fileExt = (file.extension || 'ARQUIVO').toUpperCase();
 
   return (
     <div 
@@ -292,14 +372,14 @@ export const VideoDownloadModal: React.FC<VideoDownloadModalProps> = ({
               ? 'bg-gradient-to-tr from-emerald-600/30 to-teal-600/30 border-emerald-500/50 shadow-emerald-500/20'
               : error
               ? 'bg-gradient-to-tr from-rose-600/30 to-red-600/30 border-rose-500/50 shadow-rose-500/20'
-              : 'bg-gradient-to-tr from-rose-600/30 via-pink-600/30 to-purple-600/30 border-rose-500/40 shadow-rose-500/20 animate-pulse'
+              : `bg-gradient-to-tr ${itemInfo.colorGradient} animate-pulse`
           }`}>
             {isFinished ? (
               <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400 animate-in zoom-in" />
             ) : error ? (
               <AlertCircle className="w-8 h-8 sm:w-10 sm:h-10 text-rose-400 animate-in zoom-in" />
             ) : (
-              <Film className="w-8 h-8 sm:w-9 sm:h-9 text-rose-400 animate-pulse" />
+              <IconComponent className="w-8 h-8 sm:w-9 sm:h-9 text-rose-400 animate-pulse" />
             )}
           </div>
           <div className={`absolute -bottom-1 -right-1 p-1.5 rounded-xl text-white shadow-lg transition-all ${
@@ -327,8 +407,8 @@ export const VideoDownloadModal: React.FC<VideoDownloadModalProps> = ({
           {!isFinished && !error && <Zap className="w-3.5 h-3.5 fill-current animate-pulse text-amber-400" />}
           <span>
             {isFinished 
-              ? '✓ Vídeo salvo na pasta uploads!' 
-              : error || downloadProgress?.stageLabel || (isStarting ? 'Conectando ao Telegram Cloud...' : `Baixando vídeo ${fileExt} para uploads...`)}
+              ? `✓ ${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} salvo na pasta uploads!` 
+              : error || downloadProgress?.stageLabel || (isStarting ? 'Conectando ao Telegram Cloud...' : `Baixando ${typeLabel} ${fileExt} para uploads...`)}
           </span>
         </p>
 
@@ -402,7 +482,7 @@ export const VideoDownloadModal: React.FC<VideoDownloadModalProps> = ({
         {/* Informative Help Text */}
         <p className="text-[11px] text-gray-400 text-center leading-relaxed mb-4 px-2">
           {isFinished 
-            ? 'O vídeo já está gravado na pasta uploads do seu disco local para reprodução instantânea com zero travamentos.' 
+            ? `O ${typeLabel} já está gravado na pasta uploads do seu disco local para uso imediato com zero travamentos.` 
             : 'O arquivo está sendo baixado diretamente para a pasta uploads do seu dispositivo. Você pode fechar este modal que o download continuará em segundo plano.'}
         </p>
 
@@ -427,7 +507,7 @@ export const VideoDownloadModal: React.FC<VideoDownloadModalProps> = ({
                   className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Assistir Vídeo (Local)</span>
+                  <span>{itemInfo.actionVerb} (Local)</span>
                 </button>
               ) : (
                 <button
@@ -450,7 +530,7 @@ export const VideoDownloadModal: React.FC<VideoDownloadModalProps> = ({
                   className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold transition-all border border-gray-700 hover:border-gray-600"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Assistir via Stream</span>
+                  <span>{itemInfo.actionVerb} via Stream</span>
                 </button>
               )}
 
@@ -468,5 +548,9 @@ export const VideoDownloadModal: React.FC<VideoDownloadModalProps> = ({
     </div>
   );
 };
+
+// Aliases for clear semantic use in other libraries
+export const MediaDownloadModal = VideoDownloadModal;
+export const FileDownloadModal = VideoDownloadModal;
 
 

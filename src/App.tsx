@@ -781,6 +781,7 @@ export function App() {
             /* Books & Audiobooks Catalog */
             <BooksCatalog
               books={books.books}
+              allFiles={fs.allFiles}
               categories={books.categories}
               onSelectBook={(b) => {
                 books.selectBook(b);
@@ -818,6 +819,7 @@ export function App() {
               videos={videos.videos}
               categories={videos.categories}
               folders={fs.allFolders}
+              allFiles={fs.allFiles}
               onSelectVideo={(v) => {
                 videos.setActiveVideo(v);
                 setSelectedVideoForView(v);
@@ -835,6 +837,7 @@ export function App() {
               videos={personalVideos.personalVideos}
               categories={personalVideos.categories}
               folders={fs.allFolders}
+              allFiles={fs.allFiles}
               onSelectVideo={(v) => {
                 personalVideos.setActiveVideo(v);
                 setSelectedPersonalVideoForView(v);
@@ -902,6 +905,7 @@ export function App() {
                 performers={adultVault.performers}
                 categories={adultVault.categories}
                 folders={fs.allFolders}
+                allFiles={fs.allFiles}
                 onSelectVideo={(v, playlist) => {
                   adultVault.setActiveVideo(v);
                   setSelectedAdultVideoForView(v);

@@ -8,9 +8,9 @@ powershell "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT_PATH%')
 
 echo.
 echo ======================================================
-echo  ✅ Atalho "DriveGram" criado na sua Area de Trabalho!
+echo  Atalho "DriveGram" criado na sua Area de Trabalho!
 echo ======================================================
 echo.
-echo Agora voce pode apenas dar 2 cliques no icone da Área de Trabalho.
+echo Agora voce pode apenas dar 2 cliques no icone da Area de Trabalho.
 echo.
 pause

@@ -348,25 +348,14 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               </button>
             )}
 
-            {file.type === 'video' || file.mimeType?.includes('video') ? (
-              <button
-                onClick={() => setIsVideoDownloadModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow transition-all"
-                title="Baixar Vídeo para Cache Local"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Baixar</span>
-              </button>
-            ) : (
-              <a
-                href={`/api/stream/${file.id}`}
-                download={file.name}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow transition-all"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Baixar</span>
-              </a>
-            )}
+            <button
+              onClick={() => setIsVideoDownloadModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow transition-all active:scale-95"
+              title="Baixar Arquivo para Cache Local"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Baixar</span>
+            </button>
 
             <button
               onClick={onClose}

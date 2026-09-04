@@ -21,6 +21,7 @@ import {
 import { ComicBook, ComicIssue, DriveItem } from '../types/index.js';
 import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface ComicStudioViewProps {
   comic: ComicBook;
@@ -46,6 +47,7 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
   onOpenEditModal
 }) => {
   const [readingIssue, setReadingIssue] = useState<ComicIssue | null>(null);
+  const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
 
   const totalIssues = comic.issues?.length || 0;
   const completedIssues = comic.issues?.filter(i => i.isCompleted).length || 0;
@@ -253,6 +255,17 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{progressPercent === 100 ? '✓ Coleção Lida' : 'Marcar como Lida'}</span>
               </button>
+
+              {activeFile && (
+                <button
+                  onClick={() => setDownloadTargetFile(activeFile)}
+                  className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-black/40 hover:bg-pink-600 text-gray-200 hover:text-white border border-white/20 hover:border-pink-500 text-xs font-bold transition-all shadow-md active:scale-95"
+                  title="Baixar edição atual para cache local"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Baixar Edição</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -320,17 +333,29 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
 
                     {/* Launch Reader Action */}
                     {issueFile ? (
-                      <button
-                        onClick={() => {
-                          onSelectIssue(issue);
-                          setReadingIssue(issue);
-                        }}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md transition-all shrink-0"
-                        title="Abrir Leitor de HQ"
-                      >
-                        <BookOpen className="w-3.5 h-3.5" />
-                        <span>{issue.currentPage && issue.currentPage > 0 && !issue.isCompleted ? 'Continuar' : 'Ler'}</span>
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => {
+                            onSelectIssue(issue);
+                            setReadingIssue(issue);
+                          }}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md transition-all shrink-0"
+                          title="Abrir Leitor de HQ"
+                        >
+                          <BookOpen className="w-3.5 h-3.5" />
+                          <span>{issue.currentPage && issue.currentPage > 0 && !issue.isCompleted ? 'Continuar' : 'Ler'}</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDownloadTargetFile(issueFile);
+                          }}
+                          className="p-1.5 rounded-xl bg-gray-100 hover:bg-pink-100 dark:bg-gray-800 dark:hover:bg-pink-950/50 text-gray-500 hover:text-pink-500 transition-colors shrink-0"
+                          title="Baixar HQ para Cache Local"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     ) : (
                       <span className="text-[10px] text-gray-400 italic">Sem arquivo</span>
                     )}
@@ -406,6 +431,14 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {downloadTargetFile && (
+        <VideoDownloadModal
+          file={downloadTargetFile}
+          isOpen={!!downloadTargetFile}
+          onClose={() => setDownloadTargetFile(null)}
+        />
       )}
     </div>
   );

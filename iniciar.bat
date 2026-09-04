@@ -1,10 +1,10 @@
 @echo off
-title DriveGram - Inicializador
 chcp 65001 > nul
+title DriveGram - Inicializador
 cls
 
 echo ======================================================
-echo           🚀 INICIANDO O DRIVEGRAM CLOUD 🚀
+echo           INICIANDO O DRIVEGRAM CLOUD
 echo ======================================================
 echo.
 echo [1/3] Verificando dependencias...

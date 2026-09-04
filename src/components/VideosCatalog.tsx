@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Film, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, Clock, Video, Star } from 'lucide-react';
-import { MovieVideo, FolderItem } from '../types/index.js';
+import { Film, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, Clock, Video, Star, Download } from 'lucide-react';
+import { MovieVideo, FolderItem, DriveItem } from '../types/index.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface VideosCatalogProps {
   videos: MovieVideo[];
   categories: string[];
   folders: FolderItem[];
+  allFiles?: DriveItem[];
   onSelectVideo: (video: MovieVideo) => void;
   onOpenNewModal: () => void;
   onEditVideo?: (video: MovieVideo) => void;
@@ -15,11 +17,14 @@ interface VideosCatalogProps {
 export const VideosCatalog: React.FC<VideosCatalogProps> = ({
   videos,
   categories,
+  folders,
+  allFiles = [],
   onSelectVideo,
   onOpenNewModal,
   onEditVideo,
   onDeleteVideo
 }) => {
+  const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'watching' | 'completed'>('all');
@@ -110,6 +115,21 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                     <Play className="w-4 h-4 fill-current text-red-600" />
                     <span>{(featuredVideo.lastPositionSeconds || 0) > 0 ? 'Continuar Assistindo' : 'Assistir Agora'}</span>
                   </button>
+
+                  {(() => {
+                    const featuredFile = allFiles?.find(f => f.id === featuredVideo?.fileId);
+                    if (!featuredFile) return null;
+                    return (
+                      <button
+                        onClick={() => setDownloadTargetFile(featuredFile)}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-black/40 hover:bg-black/60 text-white border border-white/20 hover:border-red-500 text-xs font-bold transition-all shadow-md active:scale-95"
+                        title="Baixar Filme para Cache Local"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>Baixar Filme</span>
+                      </button>
+                    );
+                  })()}
 
                   <button
                     onClick={onOpenNewModal}
@@ -260,6 +280,23 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
 
                     {/* Edit/Delete Overlay Actions */}
                     <div className="absolute top-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                      {(() => {
+                        const videoFile = allFiles?.find(f => f.id === video.fileId);
+                        if (!videoFile) return null;
+                        return (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDownloadTargetFile(videoFile);
+                            }}
+                            className="p-1.5 rounded-lg bg-black/70 hover:bg-red-600 text-white shadow transition-colors"
+                            title="Baixar Filme para Cache Local"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        );
+                      })()}
+
                       {onEditVideo && (
                         <button
                           onClick={(e) => {
@@ -352,6 +389,13 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
             </button>
           </div>
         )}
+      {downloadTargetFile && (
+        <VideoDownloadModal
+          file={downloadTargetFile}
+          isOpen={!!downloadTargetFile}
+          onClose={() => setDownloadTargetFile(null)}
+        />
+      )}
     </div>
   );
 };

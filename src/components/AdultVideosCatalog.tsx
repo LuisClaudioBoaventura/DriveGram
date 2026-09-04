@@ -21,16 +21,19 @@ import {
   Heart,
   User,
   Users,
-  Globe2
+  Globe2,
+  Download
 } from 'lucide-react';
-import { AdultVideo, AdultPerformer, FolderItem } from '../types/index.js';
+import { AdultVideo, AdultPerformer, FolderItem, DriveItem } from '../types/index.js';
 import { PerformerDetailModal } from './PerformerDetailModal.js';
+import { VideoDownloadModal } from './VideoDownloadModal.js';
 
 interface AdultVideosCatalogProps {
   videos: AdultVideo[];
   performers?: AdultPerformer[];
   categories: string[];
   folders: FolderItem[];
+  allFiles?: DriveItem[];
   onSelectVideo: (video: AdultVideo, playlist?: AdultVideo[]) => void;
   onOpenNewModal: () => void;
   onOpenNewPerformerModal?: () => void;
@@ -49,6 +52,8 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
   videos,
   performers = [],
   categories,
+  folders,
+  allFiles = [],
   onSelectVideo,
   onOpenNewModal,
   onOpenNewPerformerModal,
@@ -62,6 +67,7 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
   onLockVault,
   onOpenSecuritySettings
 }) => {
+  const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
   const [activeCatalogTab, setActiveCatalogTab] = useState<'videos' | 'performers'>('videos');
   const [searchQuery, setSearchQuery] = useState('');
   const [performerSearch, setPerformerSearch] = useState('');
@@ -526,6 +532,23 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
 
                       {/* Edit/Delete Overlay Actions (Bottom on hover) */}
                       <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                        {(() => {
+                          const videoFile = allFiles?.find(f => f.id === video.fileId);
+                          if (!videoFile) return null;
+                          return (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDownloadTargetFile(videoFile);
+                              }}
+                              className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white shadow transition-colors"
+                              title="Baixar Vídeo para Cache Local"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          );
+                        })()}
+
                         {onEditVideo && (
                           <button
                             onClick={(e) => {
@@ -818,6 +841,13 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
           onDeletePerformer={onDeletePerformer}
           onToggleFavorite={onTogglePerformerFavorite}
           isDiscreetMode={isDiscreetMode}
+        />
+      )}
+      {downloadTargetFile && (
+        <VideoDownloadModal
+          file={downloadTargetFile}
+          isOpen={!!downloadTargetFile}
+          onClose={() => setDownloadTargetFile(null)}
         />
       )}
     </div>

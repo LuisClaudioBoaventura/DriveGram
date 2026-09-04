@@ -1,4 +1,12 @@
 import 'dotenv/config';
+
+process.on('unhandledRejection', (reason: any) => {
+  console.warn('[Process Warn] Unhandled rejection:', reason?.message || reason);
+});
+process.on('uncaughtException', (err: any) => {
+  console.error('[Process Error] Uncaught exception:', err?.message || err);
+});
+
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -579,8 +587,8 @@ app.get('/api/comic/:id/page/:pageIndex', async (req, res) => {
   }
 });
 
-// ---------------- VIDEO CACHE STATUS & ON-DEMAND LOCAL CACHING ----------------
-app.get('/api/video/:id/cache-status', (req, res) => {
+// ---------------- MEDIA & FILE CACHE STATUS & ON-DEMAND LOCAL CACHING ----------------
+app.get(['/api/video/:id/cache-status', '/api/file/:id/cache-status'], (req, res) => {
   try {
     const file = db.getAllFiles().find(f => f.id === req.params.id);
     if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
@@ -613,7 +621,7 @@ app.get('/api/video/:id/cache-status', (req, res) => {
   }
 });
 
-app.post('/api/video/:id/cache', async (req, res) => {
+app.post(['/api/video/:id/cache', '/api/file/:id/cache'], async (req, res) => {
   try {
     const file = db.getAllFiles().find(f => f.id === req.params.id);
     if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
@@ -3965,14 +3973,14 @@ app.post('/api/telegram/retry-file/:id', async (req, res) => {
       });
     } else {
       activeUploadsMap.delete(uploadId);
-      return res.status(500).json({
+      return res.status(200).json({
         success: false,
         error: telegramResult.error || 'Erro ao enviar para o Telegram'
       });
     }
   } catch (err: any) {
     activeUploadsMap.delete(uploadId);
-    return res.status(500).json({ success: false, error: err.message || 'Erro no envio' });
+    return res.status(200).json({ success: false, error: err.message || 'Erro no envio' });
   }
 });
 
