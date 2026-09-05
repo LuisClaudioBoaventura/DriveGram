@@ -27,11 +27,85 @@ if (fs.existsSync(gradlePath)) {
     console.log('[patch-nodejs-mobile] Replaced jcenter() with google() & mavenCentral()');
   }
 
-  // 2. Fix Gradle 8/9 << operator deprecation/error if present
-  if (content.includes('cdvPluginPostBuildExtras << {')) {
-    content = content.replace('cdvPluginPostBuildExtras << {', 'ext.cdvPluginPostBuildExtras = {');
+  // 2. Fix null check on android.defaultConfig.ndk.abiFilters (fixes "Cannot invoke java.util.Iterator.hasNext() because self is null")
+  const targetNdkCheck = 'if (android.defaultConfig.ndk.abiFilters.isEmpty())';
+  if (content.includes(targetNdkCheck)) {
+    content = content.replace(
+      targetNdkCheck,
+      `def ndkCfg = android.defaultConfig.hasProperty('ndk') ? android.defaultConfig.ndk : null
+    def filters = (ndkCfg != null && ndkCfg.hasProperty('abiFilters')) ? ndkCfg.abiFilters : null
+    if (filters == null || filters.isEmpty())`
+    );
+    content = content.replace(
+      'android.defaultConfig.ndk.abiFilters = ["armeabi-v7a", "arm64-v8a", "x86_64"] as Set<String>;',
+      `if (android.defaultConfig.hasProperty('ndk') && android.defaultConfig.ndk != null) {
+        android.defaultConfig.ndk.abiFilters = ["armeabi-v7a", "arm64-v8a", "x86_64"] as Set<String>;
+      } else {
+        android.defaultConfig.ndk {
+          abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"
+        }
+      }`
+    );
     modified = true;
-    console.log('[patch-nodejs-mobile] Fixed cdvPluginPostBuildExtras syntax for Gradle 8/9');
+    console.log('[patch-nodejs-mobile] Patched ndk.abiFilters null check for Gradle 8/9');
+  }
+
+  // 3. Fallback for Capacitor assets path if www folder is checked
+  const oldWwwThrow = "throw new GradleException('nodejs-mobile-cordova couldn\\'t find the www folder in the Android project.');";
+  if (content.includes(oldWwwThrow)) {
+    content = content.replace(
+      oldWwwThrow,
+      `if (file("\${rootProject.projectDir}/app/src/main/assets/public/").exists()) {
+        projectWWW = "\${rootProject.projectDir}/app/src/main/assets/public";
+    } else if (file("\${rootProject.projectDir}/app/src/main/assets/").exists()) {
+        projectWWW = "\${rootProject.projectDir}/app/src/main/assets";
+    } else {
+        projectWWW = "\${project.projectDir}/src/main/assets";
+    }`
+    );
+    modified = true;
+    console.log('[patch-nodejs-mobile] Patched Capacitor assets fallback');
+  }
+
+  // 4. Ensure cdvPluginPostBuildExtras syntax is robust for Gradle 8/9 & Groovy 4
+  const oldPostBuildRegex = /cdvPluginPostBuildExtras\s*(\+=|\<\<)\s*\{\s*->?/;
+  if (oldPostBuildRegex.test(content)) {
+    content = content.replace(
+      oldPostBuildRegex,
+      `if (!project.ext.has('cdvPluginPostBuildExtras') || project.ext.get('cdvPluginPostBuildExtras') == null) {
+    project.ext.set('cdvPluginPostBuildExtras', [])
+}
+project.ext.cdvPluginPostBuildExtras.add({ ->`
+    );
+    // Adjust trailing closing bracket from }; to });
+    content = content.replace(/\};\s*$/, '});\n');
+    modified = true;
+    console.log('[patch-nodejs-mobile] Patched cdvPluginPostBuildExtras to project.ext.cdvPluginPostBuildExtras.add');
+  }
+
+  // 5. Fix CMakeLists.txt path for Capacitor
+  if (content.includes('path "libs/cdvnodejsmobile/CMakeLists.txt"')) {
+    content = content.replace(
+      'path "libs/cdvnodejsmobile/CMakeLists.txt"',
+      'path "${rootProject.projectDir}/../node_modules/@red-mobile/nodejs-mobile-cordova/src/android/CMakeLists.txt"'
+    );
+    modified = true;
+    console.log('[patch-nodejs-mobile] Patched CMakeLists.txt path for Capacitor');
+  }
+
+  // Also ensure libs/cdvnodejsmobile/CMakeLists.txt exists in app and plugins for safety
+  const cmakeSrc = path.join(rootDir, 'node_modules', '@red-mobile', 'nodejs-mobile-cordova', 'src', 'android', 'CMakeLists.txt');
+  if (fs.existsSync(cmakeSrc)) {
+    const targets = [
+      path.join(rootDir, 'android', 'app', 'libs', 'cdvnodejsmobile', 'CMakeLists.txt'),
+      path.join(rootDir, 'android', 'capacitor-cordova-android-plugins', 'libs', 'cdvnodejsmobile', 'CMakeLists.txt'),
+      path.join(rootDir, 'android', 'app', 'src', 'main', 'libs', 'cdvnodejsmobile', 'CMakeLists.txt')
+    ];
+    for (const t of targets) {
+      fs.mkdirSync(path.dirname(t), { recursive: true });
+      fs.copyFileSync(cmakeSrc, t);
+    }
+    console.log('[patch-nodejs-mobile] Mirrored CMakeLists.txt to app and plugin libs');
   }
 
   if (modified) {
