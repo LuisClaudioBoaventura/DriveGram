@@ -13,6 +13,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![Telegram MTProto](https://img.shields.io/badge/Telegram-MTProto%20GramJS-2CA5E0.svg)](https://telegram.org/)
 [![Android Capacitor](https://img.shields.io/badge/Android-Capacitor%208-brightgreen.svg)](https://capacitorjs.com/)
+[![Desktop Tauri v2](https://img.shields.io/badge/Desktop-Tauri%20v2%20(Rust)-24C8D8.svg)](https://tauri.app/)
 [![Node.js Mobile](https://img.shields.io/badge/Node.js%20Mobile-Embedded%20Engine-orange.svg)](https://github.com/red-mobile/nodejs-mobile-cordova)
 
 </div>
@@ -28,6 +29,18 @@ Esqueça as limitações de espaço dos serviços tradicionais pagos. No DriveGr
 - **Streaming Instantâneo sem Download Prévio**: Assista a filmes, aulas e ouça músicas/audiolivros direto da nuvem via protocolo *HTTP 206 (Partial Content)*.
 - **Ecossistema Multiplataforma (Desktop & Android APK)**: Funciona no computador (Windows/Mac/Linux) e possui aplicativo nativo Android (`.apk`) com servidor Node.js embutido que roda 100% independente no celular (sem precisar do PC ligado).
 - **Sincronização Ativa & Backup Contínuo**: Seus dados e pastas são sintetizados em manifestos seguros (`#drivegram_metadata_sync`) no Telegram, com restauração em 1 clique e política inteligente de retenção.
+
+---
+
+## 📥 Downloads Prontos para Uso (Instalação Fácil)
+
+Não quer compilar nada? Baixe os instaladores oficiais prontos para o seu dispositivo:
+
+| Plataforma | Pacote / Instalador | Tamanho | Descrição |
+| :--- | :--- | :--- | :--- |
+| 💻 **Windows Desktop** | [**`DriveGram_1.0.0_x64-setup.exe`**](installers/DriveGram_1.0.0_x64-setup.exe) | **`3,95 MB`** | **Recomendado**. Instalador executável leve nativo (Tauri v2) com assistente de instalação e atalho na Área de Trabalho. |
+| 🏢 **Windows Corporativo** | [**`DriveGram_1.0.0_x64_en-US.msi`**](installers/DriveGram_1.0.0_x64_en-US.msi) | **`10,69 MB`** | Pacote de instalação corporativa Windows Installer (.msi). |
+| 📱 **Android** | [**`DriveGram.apk`**](DriveGram.apk) | **`72 MB`** | APK com servidor Node.js embutido de alta performance para smartphones e tablets. |
 
 ---
 
@@ -163,8 +176,9 @@ O arquivo final compilado estará disponível na raiz do projeto como **`DriveGr
 
 | Camada | Tecnologias |
 | :--- | :--- |
+| **Desktop Nativo (Windows)** | **Tauri v2**, Rust 2021, Microsoft Edge WebView2, Node.js Sidecar |
 | **Frontend** | React 18, TypeScript, Tailwind CSS, Lucide Icons, Vite |
-| **Backend** | Node.js, Express, TypeScript, GramJS (Telegram MTProto Client) |
+| **Backend** | Node.js, Express, TypeScript, GramJS (Telegram MTProto Client), esbuild |
 | **Mobile (Android)** | Capacitor 8, Node.js Mobile (`@red-mobile/nodejs-mobile-cordova`), esbuild |
 | **Descompactação & Formatos** | WebAssembly `node-unrar-js` (`unrar.wasm`), `jszip`, `pdfjs-dist`, `epubjs` |
 | **Banco de Dados Local** | Persistência em JSON com sincronização em nuvem e deduplicação semântica |
@@ -173,28 +187,62 @@ O arquivo final compilado estará disponível na raiz do projeto como **`DriveGr
 
 ---
 
-## 🚀 Guia de Instalação e Execução (Desktop)
+## 🚀 Guia de Instalação e Uso
 
-### 📋 Pré-requisitos Básicos
-- **Node.js (Versão 18 ou superior)**: [nodejs.org](https://nodejs.org/) (Versão LTS recomendada).
-- **Git** (Opcional): [git-scm.com](https://git-scm.com/).
+### 💻 1. Como Instalar no Windows (Aplicativo Desktop Nativo)
 
-### 📥 1. Clonar ou Baixar o Repositório
+O DriveGram Desktop foi construído com **Tauri v2**, tornando-o ultraleve: consome apenas **~70 MB a 100 MB de RAM** (ao contrário de aplicativos tradicionais em Electron que exigem mais de 350 MB) e o instalador tem apenas **~3,95 MB**!
+
+1. **Baixar o Instalador**: Baixe o arquivo [**`DriveGram_1.0.0_x64-setup.exe`**](installers/DriveGram_1.0.0_x64-setup.exe) na pasta `installers/` (ou [versão MSI corporativa](installers/DriveGram_1.0.0_x64_en-US.msi)).
+2. **Executar a Instalação**:
+   - Dê um duplo clique no arquivo `.exe`.
+   - *Nota de Segurança:* Se o Windows SmartScreen exibir um aviso de *"O Windows protegeu o seu computador"*, clique em **"Mais informações"** e depois em **"Executar assim mesmo"** (isso ocorre pois o instalador é novo e de código aberto).
+3. **Pronto para Usar**: O DriveGram criará um atalho oficial no seu Menu Iniciar e na Área de Trabalho.
+4. **🛠️ Recursos de Diagnóstico & Depuração (Debug)**:
+   - **Atalho F12 (DevTools)**: Pressione `F12` em qualquer tela do app para abrir o console de desenvolvedor (DevTools) e inspecionar requisições, erros ou elementos visuais.
+   - **Logs do Servidor**: Nas configurações do servidor, clique em **"Pasta de Logs"** para acessar diretamente o arquivo `drivegram.log`.
+
+---
+
+### 📱 2. Como Instalar no Android (.APK)
+
+O aplicativo Android funciona de forma 100% autônoma, sem necessitar de nenhum computador ligado por perto, graças ao seu servidor Node.js embutido.
+
+1. **Baixar o APK**: Baixe o arquivo [**`DriveGram.apk`**](DriveGram.apk) diretamente no seu smartphone Android.
+2. **Autorizar Instalação**:
+   - Abra o arquivo baixado.
+   - Se o Android solicitar, permita a instalação a partir do navegador ou gerenciador de arquivos em *"Instalar apps desconhecidos"*.
+3. **Abrir o Aplicativo**:
+   - Ao abrir pela primeira vez, o DriveGram aguarda cerca de 3 a 5 segundos enquanto o servidor interno inicializa (`/api/health`).
+   - A tela inicial se abrirá pronta para você conectar sua conta do Telegram!
+
+---
+
+### 👨‍💻 3. Execução para Desenvolvedores (Código Fonte)
+
+Se você deseja rodar ou modificar o código-fonte:
+
+#### Pré-requisitos:
+- **Node.js (v18+)** e **npm**
+- **Rust e Cargo** (necessários para compilar o Tauri Desktop)
+
+#### Comandos Rápidos:
 ```bash
-git clone https://github.com/LuisClaudioBoaventura/DriveGram.git
-cd DriveGram
-```
-
-### 📦 2. Instalar Dependências
-```bash
+# 1. Instalar as dependências
 npm install
-```
 
-### ⚡ 3. Iniciar o DriveGram
-```bash
+# 2. Rodar o App Desktop em modo Desenvolvimento (Tauri + Hot-reload)
+npm run desktop:dev
+# (Ou dê dois cliques no arquivo 'iniciar_desktop.bat')
+
+# 3. Rodar a versão Web tradicional no Navegador
 npm start
+# Acesse http://localhost:3000
+
+# 4. Compilar um novo Instalador Windows Desktop (.exe e .msi)
+npm run desktop:build
+# (Ou dê dois cliques no arquivo 'build_desktop.bat')
 ```
-Acesse no seu navegador: **`http://localhost:3000`** (backend na porta `5000`).
 
 ---
 
@@ -209,14 +257,6 @@ Para utilizar o armazenamento ilimitado em nuvem:
    - **Opção B (Código SMS/Telegram)**: Insira seu telefone com DDD (ex: `+55 11 99999-9999`) e informe o código recebido no app do Telegram (com suporte a senha de 2 Fatores / 2FA).
 
 > 🔒 **Privacidade Absoluta**: O DriveGram roda **100% localmente no seu dispositivo**. Nenhuma credencial, token ou arquivo passa por servidores de terceiros.
-
----
-
-## 🖥️ Atalho na Área de Trabalho (Windows)
-
-Para iniciar o aplicativo com apenas 1 clique:
-- Dê dois cliques no arquivo **`Criar_Atalho_Desktop.bat`**.
-- Um atalho **DriveGram** será criado na sua Área de Trabalho, iniciando automaticamente os servidores e abrindo a aplicação.
 
 ---
 

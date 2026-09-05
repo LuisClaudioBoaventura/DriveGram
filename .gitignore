@@ -67,3 +67,7 @@ android/app/src/main/assets/nodejs-project/
 android/app/src/main/assets/nodejs-mobile-cordova-assets/
 android/app/src/main/assets/www/
 
+# Tauri build outputs & schemas
+src-tauri/target/
+src-tauri/gen/schemas/
+

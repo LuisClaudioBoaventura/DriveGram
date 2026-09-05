@@ -10,6 +10,9 @@
     "server": "tsx watch server/index.ts",
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "package:embedded": "node scripts/build-embedded-server.js",
+    "desktop:dev": "concurrently \"npm run server\" \"tauri dev\"",
+    "desktop:build": "npm run build && npm run package:embedded && tauri build",
+    "tauri": "tauri",
     "mobile:build-frontend": "npm run build",
     "mobile:sync": "npm run mobile:build-frontend && npm run package:embedded && npx cap sync android",
     "mobile:open": "npx cap open android",
@@ -23,6 +26,7 @@
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
     "@red-mobile/nodejs-mobile-cordova": "^3.4.2",
+    "@tauri-apps/api": "^2.11.1",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jszip": "^3.4.0",
@@ -56,6 +60,7 @@
     "vite": "^6.4.3"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "esbuild": "^0.25.0"
   },
   "overrides": {

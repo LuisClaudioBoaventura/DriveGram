@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Smartphone, Server, CheckCircle2, AlertCircle, RefreshCw, X, Wifi, Save, Radio } from 'lucide-react';
-import { getCustomServerUrl, setCustomServerUrl } from '../utils/mobileBridge.js';
+import { Smartphone, Server, CheckCircle2, AlertCircle, RefreshCw, X, Wifi, Save, Radio, Terminal, FolderOpen, Monitor } from 'lucide-react';
+import { getCustomServerUrl, setCustomServerUrl, isTauriPlatform, toggleDevTools, openLogsFolder } from '../utils/mobileBridge.js';
 
 interface MobileServerSettingsModalProps {
   isOpen: boolean;
@@ -157,6 +157,37 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               )}
               <span>{testResult.message}</span>
+            </div>
+          )}
+
+          {/* Desktop Diagnostic Tools */}
+          {isTauriPlatform() && (
+            <div className="pt-3 border-t border-gray-100 dark:border-drive-darkBorder space-y-2">
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Monitor className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Diagnóstico do Sistema Desktop</span>
+                </span>
+                <span className="text-[10px] text-gray-400 font-normal">Atalho: F12</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleDevTools()}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gray-100 dark:bg-drive-darkBg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium transition-colors"
+                >
+                  <Terminal className="w-3.5 h-3.5 text-blue-500" />
+                  <span>DevTools (F12)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openLogsFolder()}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gray-100 dark:bg-drive-darkBg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium transition-colors"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Pasta de Logs</span>
+                </button>
+              </div>
             </div>
           )}
 

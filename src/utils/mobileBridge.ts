@@ -4,13 +4,18 @@ import { App as CapApp } from '@capacitor/app';
 
 const SERVER_URL_KEY = 'drivegram_custom_server_url';
 
+export function isTauriPlatform(): boolean {
+  return typeof (window as any).__TAURI_INTERNALS__ !== 'undefined' ||
+         typeof (window as any).__TAURI__ !== 'undefined';
+}
+
 export function getCustomServerUrl(): string {
   const saved = localStorage.getItem(SERVER_URL_KEY);
   if (saved && saved.trim()) {
     return saved.trim().replace(/\/+$/, '');
   }
-  // If running in Capacitor Android/iOS, default to internal embedded server
-  if (Capacitor.isNativePlatform()) {
+  // If running in Capacitor (Android/iOS) or Tauri (Desktop), default to internal embedded server
+  if (Capacitor.isNativePlatform() || isTauriPlatform()) {
     return 'http://127.0.0.1:5000';
   }
   return '';
@@ -73,8 +78,10 @@ export function initMobileBridge(onHardwareBack?: () => boolean): void {
         console.warn('[DriveGram Mobile] CapApp addListener failed:', e);
       }
     }
+  }
 
-    // Intercept fetch calls if needed to prepend base server URL
+  // Intercept fetch calls if running natively (Mobile or Tauri Desktop)
+  if (Capacitor.isNativePlatform() || isTauriPlatform()) {
     const originalFetch = window.fetch;
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -93,4 +100,38 @@ export function initMobileBridge(onHardwareBack?: () => boolean): void {
       return originalFetch(input, init);
     };
   }
+
+  // Setup F12 shortcut for Desktop DevTools
+  if (isTauriPlatform() && typeof window !== 'undefined') {
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'F12') {
+        toggleDevTools();
+      }
+    });
+  }
+}
+
+export async function toggleDevTools(): Promise<void> {
+  if (isTauriPlatform()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_devtools');
+    } catch (e) {
+      console.warn('[DriveGram Desktop] Failed to toggle DevTools:', e);
+    }
+  }
+}
+
+export async function openLogsFolder(): Promise<string | null> {
+  if (isTauriPlatform()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<string>('open_logs_folder');
+      return res;
+    } catch (e) {
+      console.warn('[DriveGram Desktop] Failed to open logs folder:', e);
+      return null;
+    }
+  }
+  return null;
 }
