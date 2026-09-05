@@ -41,6 +41,15 @@ class TelegramService {
   private qrStatus: 'idle' | 'waiting_scan' | 'scanned' | 'confirmed' | 'error' = 'idle';
   private qrError: string = '';
 
+  // Startup Sync & Cloud Protection Lock
+  private isInitialSyncCompleted: boolean = false;
+  private activeStartupSyncPromise: Promise<{ success: boolean; message: string; details?: any }> | null = null;
+  private isSyncingMetadata: boolean = false;
+
+  public isInitialSyncDone(): boolean {
+    return this.isInitialSyncCompleted;
+  }
+
   constructor() {
     // Check if session was previously stored
     const settings = db.getData().settings;
@@ -408,6 +417,9 @@ class TelegramService {
       totalSavedFiles: 0,
       storageUsedBytes: 0
     };
+    this.isInitialSyncCompleted = false;
+    this.activeStartupSyncPromise = null;
+    this.isSyncingMetadata = false;
     db.updateSettings({
       telegramSession: undefined
     });
@@ -501,22 +513,114 @@ class TelegramService {
   }
 
   /**
-   * Sync and backup DriveGram metadata manifest to Telegram Saved Messages
+   * Localiza de forma resiliente o backup de metadados mais recente nas Mensagens Salvas ('me').
+   * Combina busca indexada com varredura direta de documentos como fallback confiável.
    */
-  public async syncMetadataToTelegram(): Promise<{ success: boolean; message: string; messageId?: number }> {
-    const manifest = db.exportManifest();
-    const manifestJson = JSON.stringify(manifest, null, 2);
-    const courseCount = manifest.courses ? manifest.courses.length : 0;
-    const bookCount = manifest.books ? manifest.books.length : 0;
-    const caption = `📁 #drivegram_metadata_sync\n📅 Atualizado em: ${new Date().toLocaleString('pt-BR')}\nPastas: ${manifest.folders.length} | Arquivos: ${manifest.files.length} | Cursos: ${courseCount} | Livros: ${bookCount}`;
-
-    const client = await this.ensureClient();
-    if (!client || !this.authState.isConnected) {
-      db.updateSettings({ lastSyncDate: new Date().toISOString() });
-      return { success: true, message: 'Metadados salvos localmente e preparados para envio em nuvem (Conecte o Telegram para backup automático nas Mensagens Salvas).' };
+  public async findLatestMetadataMessage(client: TelegramClient): Promise<any | null> {
+    try {
+      // 1. Tentar busca indexada por hashtag
+      const searchMessages = await client.getMessages('me', {
+        search: '#drivegram_metadata_sync',
+        limit: 5
+      });
+      if (searchMessages && searchMessages.length > 0) {
+        const sorted = [...searchMessages].sort((a, b) => b.id - a.id);
+        return sorted[0];
+      }
+    } catch (err: any) {
+      console.warn('[DriveGram Metadata Search] Busca textual no Telegram falhou, tentando varredura recente:', err?.message || err);
     }
 
     try {
+      // 2. Fallback: listar mensagens recentes do chat 'me' e procurar por anexo 'drivegram_metadata.json' ou caption
+      const recentMessages = await client.getMessages('me', {
+        limit: 35
+      });
+      if (recentMessages && recentMessages.length > 0) {
+        for (const msg of recentMessages) {
+          const caption = msg.message || '';
+          if (caption.includes('drivegram_metadata_sync') || caption.includes('#drivegram')) {
+            return msg;
+          }
+          // Verificar se tem documento anexado chamado drivegram_metadata.json
+          if (msg.media && (msg.media as any).document) {
+            const doc = (msg.media as any).document;
+            const fileNameAttr = doc.attributes?.find((attr: any) => attr.fileName);
+            if (fileNameAttr && fileNameAttr.fileName === 'drivegram_metadata.json') {
+              return msg;
+            }
+          }
+        }
+      }
+    } catch (fallbackErr: any) {
+      console.warn('[DriveGram Metadata Search] Varredura recente também falhou:', fallbackErr?.message || fallbackErr);
+    }
+
+    return null;
+  }
+
+  /**
+   * Sync and backup DriveGram metadata manifest to Telegram Saved Messages
+   * Possui proteção anti-wipeout: impede que um app recém-iniciado com base limpa sobrescreva a nuvem.
+   */
+  public async syncMetadataToTelegram(options?: { force?: boolean; skipInitialCheck?: boolean }): Promise<{ success: boolean; message: string; messageId?: number }> {
+    const force = options?.force === true;
+    const skipInitialCheck = options?.skipInitialCheck === true;
+
+    // Se a reconciliação inicial ainda não foi concluída e não é ação forçada, aborta para não atropelar o startup
+    if (!this.isInitialSyncCompleted && !skipInitialCheck && !force) {
+      console.log('[DriveGram Auto-Backup] Backup ignorado: aguardando conclusão da reconciliação de inicialização...');
+      return { success: false, message: 'Sincronização de inicialização ainda em andamento. Backup cancelado preventivamente.' };
+    }
+
+    if (this.isSyncingMetadata) {
+      console.log('[DriveGram Auto-Backup] Já existe um envio de metadados em andamento. Ignorando chamada concorrente.');
+      return { success: false, message: 'Envio de metadados já em andamento.' };
+    }
+
+    this.isSyncingMetadata = true;
+
+    try {
+      const manifest = db.exportManifest();
+      const localFileCount = manifest.files.length;
+      const courseCount = manifest.courses ? manifest.courses.length : 0;
+      const bookCount = manifest.books ? manifest.books.length : 0;
+
+      const client = await this.ensureClient();
+      if (!client || !this.authState.isConnected) {
+        db.updateSettings({ lastSyncDate: new Date().toISOString() });
+        return { success: true, message: 'Metadados salvos localmente e preparados para envio em nuvem (Conecte o Telegram para backup automático nas Mensagens Salvas).' };
+      }
+
+      // SALVAGUARDA ANTI-WIPEOUT:
+      // Se a base local tiver 0 arquivos e NÃO for forçado, checar se a nuvem possui um backup populado.
+      if (localFileCount === 0 && !force) {
+        console.log('[DriveGram Cloud Guard] Base local possui 0 arquivos. Verificando se existe backup populado na nuvem antes de prosseguir...');
+        const remoteMsg = await this.findLatestMetadataMessage(client);
+        if (remoteMsg) {
+          const remoteBuffer = await client.downloadMedia(remoteMsg) as Buffer;
+          if (remoteBuffer) {
+            try {
+              const remoteManifest: DriveGramSyncManifest = JSON.parse(remoteBuffer.toString('utf-8'));
+              if (remoteManifest.files && remoteManifest.files.length > 0) {
+                console.warn(`[DriveGram Cloud Guard] BLOQUEIO DE SOBRESCRITA PREVENTIVO: A nuvem possui ${remoteManifest.files.length} arquivos, mas o Desktop está com 0! Executando reconciliação em vez de sobrescrever.`);
+                const recRes = db.reconcileManifest(remoteManifest);
+                this.isInitialSyncCompleted = true;
+                return {
+                  success: true,
+                  message: `Proteção anti-sobrescrita ativada: ${recRes.addedFiles} arquivos e ${recRes.addedFolders} pastas recuperados da nuvem!`
+                };
+              }
+            } catch (parseErr) {
+              console.warn('[DriveGram Cloud Guard] Erro ao analisar manifesto remoto:', parseErr);
+            }
+          }
+        }
+      }
+
+      const manifestJson = JSON.stringify(manifest, null, 2);
+      const caption = `📁 #drivegram_metadata_sync\n📅 Atualizado em: ${new Date().toLocaleString('pt-BR')}\nPastas: ${manifest.folders.length} | Arquivos: ${manifest.files.length} | Cursos: ${courseCount} | Livros: ${bookCount}`;
+
       const buffer = Buffer.from(manifestJson, 'utf-8');
       (buffer as any).name = 'drivegram_metadata.json';
 
@@ -536,6 +640,8 @@ class TelegramService {
     } catch (e: any) {
       console.error('Error syncing metadata to Telegram:', e);
       return { success: false, message: e.message || 'Falha ao sincronizar metadados no Telegram' };
+    } finally {
+      this.isSyncingMetadata = false;
     }
   }
 
@@ -551,10 +657,24 @@ class TelegramService {
     const maxKeep = Math.max(1, keepCount ?? db.getMetadataRetentionCount() ?? 1);
 
     try {
-      const messages = await client.getMessages('me', {
+      let messages = await client.getMessages('me', {
         search: '#drivegram_metadata_sync',
         limit: 100
       });
+
+      // Se a busca textual não retornar tudo, faz varredura recente como fallback
+      if (!messages || messages.length === 0) {
+        const recent = await client.getMessages('me', { limit: 50 });
+        messages = (recent || []).filter(m => {
+          const cap = m.message || '';
+          if (cap.includes('drivegram_metadata_sync')) return true;
+          if (m.media && (m.media as any).document) {
+            const fileNameAttr = (m.media as any).document.attributes?.find((attr: any) => attr.fileName);
+            return fileNameAttr && fileNameAttr.fileName === 'drivegram_metadata.json';
+          }
+          return false;
+        });
+      }
 
       if (!messages || messages.length <= maxKeep) {
         return { 
@@ -595,16 +715,12 @@ class TelegramService {
     }
 
     try {
-      const messages = await client.getMessages('me', {
-        search: '#drivegram_metadata_sync',
-        limit: 5
-      });
+      const latestMsg = await this.findLatestMetadataMessage(client);
 
-      if (!messages || messages.length === 0) {
+      if (!latestMsg) {
         return { success: false, message: 'Nenhum manifesto de backup do DriveGram foi encontrado nas suas Mensagens Salvas.' };
       }
 
-      const latestMsg = messages[0];
       const buffer = await client.downloadMedia(latestMsg) as Buffer;
 
       if (!buffer) {
@@ -614,6 +730,7 @@ class TelegramService {
       const manifestText = buffer.toString('utf-8');
       const manifest: DriveGramSyncManifest = JSON.parse(manifestText);
       db.importManifest(manifest);
+      this.isInitialSyncCompleted = true;
 
       const courseCount = manifest.courses ? manifest.courses.length : 0;
       const bookCount = manifest.books ? manifest.books.length : 0;
@@ -630,58 +747,82 @@ class TelegramService {
 
   /**
    * Processo ativo de sincronização de metadados na inicialização do aplicativo
+   * Garante reconciliação antes de qualquer backup e evita race conditions.
    */
   public async performStartupMetadataSync(): Promise<{ success: boolean; message: string; details?: any }> {
-    const client = await this.ensureClient();
-    if (!client || !this.authState.isConnected) {
-      return { success: false, message: 'Telegram não conectado para sincronização ativa de inicialização.' };
+    if (this.activeStartupSyncPromise) {
+      return this.activeStartupSyncPromise;
     }
 
-    try {
-      console.log('[DriveGram Startup Sync] Verificando backups no Telegram (Mensagens Salvas)...');
-      const messages = await client.getMessages('me', {
-        search: '#drivegram_metadata_sync',
-        limit: 3
-      });
+    this.activeStartupSyncPromise = (async () => {
+      const client = await this.ensureClient();
+      if (!client || !this.authState.isConnected) {
+        return { success: false, message: 'Telegram não conectado para sincronização ativa de inicialização.' };
+      }
 
-      if (!messages || messages.length === 0) {
-        console.log('[DriveGram Startup Sync] Nenhum backup prévio encontrado. Enviando manifesto inicial...');
-        const initialSync = await this.syncMetadataToTelegram();
+      try {
+        console.log('[DriveGram Startup Sync] Verificando backups no Telegram (Mensagens Salvas)...');
+        const latestMsg = await this.findLatestMetadataMessage(client);
+
+        if (!latestMsg) {
+          console.log('[DriveGram Startup Sync] Nenhum backup prévio encontrado nas Mensagens Salvas.');
+          const localFiles = db.getAllFiles();
+
+          // Se a base local estiver vazia, NÃO envia backup vazio para a nuvem!
+          if (localFiles.length === 0) {
+            console.log('[DriveGram Startup Sync] Armazenamento local vazio. Aguardando conteúdo antes de criar backup na nuvem.');
+            this.isInitialSyncCompleted = true;
+            return {
+              success: true,
+              message: 'Nenhum backup prévio na nuvem e base local limpa. Pronto para uso.',
+              details: { initial: false, empty: true }
+            };
+          }
+
+          // Se a base local possuir arquivos reais, aí sim salva o manifesto inicial
+          console.log(`[DriveGram Startup Sync] Base local possui ${localFiles.length} arquivos. Enviando manifesto inicial...`);
+          const initialSync = await this.syncMetadataToTelegram({ force: true, skipInitialCheck: true });
+          this.isInitialSyncCompleted = true;
+          return {
+            success: true,
+            message: 'Manifesto inicial sincronizado com o Telegram com sucesso!',
+            details: { initial: true, messageId: initialSync.messageId }
+          };
+        }
+
+        const buffer = await client.downloadMedia(latestMsg) as Buffer;
+        if (!buffer) {
+          return { success: false, message: 'Falha ao baixar mensagem de metadados do Telegram.' };
+        }
+
+        const manifestText = buffer.toString('utf-8');
+        const remoteManifest: DriveGramSyncManifest = JSON.parse(manifestText);
+
+        const reconcileResult = db.reconcileManifest(remoteManifest);
+        console.log(`[DriveGram Startup Sync] Reconciliação concluída: +${reconcileResult.addedFiles} arquivos, +${reconcileResult.addedFolders} pastas.`);
+
+        this.isInitialSyncCompleted = true;
+
+        // Se houver arquivos novos locais que não existiam na nuvem, atualiza o manifesto no Telegram
+        if (reconcileResult.localHasNewerChanges) {
+          console.log('[DriveGram Startup Sync] Dados locais possuem novos itens. Atualizando backup na nuvem...');
+          await this.syncMetadataToTelegram({ force: true, skipInitialCheck: true });
+        }
+
         return {
           success: true,
-          message: 'Manifesto inicial sincronizado com o Telegram com sucesso!',
-          details: { initial: true, messageId: initialSync.messageId }
+          message: `Sincronização ativa concluída com sucesso! (${reconcileResult.addedFiles} arquivos, ${reconcileResult.addedFolders} pastas integrados)`,
+          details: reconcileResult
         };
+      } catch (e: any) {
+        console.error('[DriveGram Startup Sync] Erro durante a sincronização de inicialização:', e);
+        return { success: false, message: e.message || 'Erro durante a sincronização de inicialização' };
+      } finally {
+        this.activeStartupSyncPromise = null;
       }
+    })();
 
-      const latestMsg = messages[0];
-      const buffer = await client.downloadMedia(latestMsg) as Buffer;
-
-      if (!buffer) {
-        return { success: false, message: 'Falha ao baixar mensagem de metadados do Telegram.' };
-      }
-
-      const manifestText = buffer.toString('utf-8');
-      const remoteManifest: DriveGramSyncManifest = JSON.parse(manifestText);
-
-      const reconcileResult = db.reconcileManifest(remoteManifest);
-      console.log(`[DriveGram Startup Sync] Reconciliação concluída: +${reconcileResult.addedFiles} arquivos, +${reconcileResult.addedFolders} pastas.`);
-
-      // Se houver novos arquivos locais que não existiam na nuvem, atualiza o manifesto no Telegram
-      if (reconcileResult.localHasNewerChanges) {
-        console.log('[DriveGram Startup Sync] Dados locais possuem novos itens. Atualizando backup na nuvem...');
-        await this.syncMetadataToTelegram();
-      }
-
-      return {
-        success: true,
-        message: `Sincronização ativa concluída com sucesso! (${reconcileResult.addedFiles} arquivos, ${reconcileResult.addedFolders} pastas integrados)`,
-        details: reconcileResult
-      };
-    } catch (e: any) {
-      console.error('[DriveGram Startup Sync] Erro durante a sincronização de inicialização:', e);
-      return { success: false, message: e.message || 'Erro durante a sincronização de inicialização' };
-    }
+    return this.activeStartupSyncPromise;
   }
 
   private inFlightDownloads = new Map<string, Promise<Buffer | null>>();

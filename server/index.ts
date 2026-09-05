@@ -44,6 +44,10 @@ db.setCloudBackupCallback(async () => {
   try {
     const client = await telegramService.ensureClient();
     if (client && telegramService.getAuthState().isConnected) {
+      if (!telegramService.isInitialSyncDone()) {
+        console.log('[DriveGram Auto-Backup] Backup preventivamente suspenso: aguardando reconciliação inicial com a nuvem.');
+        return;
+      }
       console.log('[DriveGram Auto-Backup] Salvando alterações de metadados nas Mensagens Salvas do Telegram...');
       await telegramService.syncMetadataToTelegram();
     }
@@ -4174,35 +4178,6 @@ function purgeExpiredCacheRoutine() {
 // Run 10s after startup, then every 2 minutes
 setTimeout(purgeExpiredCacheRoutine, 10000);
 setInterval(purgeExpiredCacheRoutine, 2 * 60 * 1000);
-
-// ---------------- PROCESSO AUTOMÁTICO DE BACKUP E ATUALIZAÇÃO ATIVA DE METADADOS ----------------
-db.setCloudBackupCallback(async () => {
-  try {
-    const client = await telegramService.ensureClient();
-    if (client && telegramService.getAuthState().isConnected) {
-      console.log('[DriveGram Auto-Backup] Arquivo ou metadado alterado. Disparando backup no Telegram...');
-      telegramService.syncMetadataToTelegram().catch(err => {
-        console.warn('[DriveGram Auto-Backup] Aviso no envio automático ao Telegram:', err?.message || err);
-      });
-    }
-  } catch (e: any) {
-    console.warn('[DriveGram Auto-Backup] Erro ao verificar estado para backup:', e?.message || e);
-  }
-});
-
-// Processo ativo de sincronização de metadados ao iniciar o aplicativo (Desktop & Mobile)
-setTimeout(async () => {
-  try {
-    const client = await telegramService.ensureClient();
-    if (client && telegramService.getAuthState().isConnected) {
-      console.log('[DriveGram Startup] Executando processo ativo de sincronização de metadados...');
-      const res = await telegramService.performStartupMetadataSync();
-      console.log('[DriveGram Startup]', res.message);
-    }
-  } catch (err: any) {
-    console.warn('[DriveGram Startup] Aviso na sincronização ativa de inicialização:', err?.message || err);
-  }
-}, 3500);
 
 // ---------------- SERVIR FRONTEND ESTÁTICO (PRODUÇÃO / RENDER / ANDROID) ----------------
 const candidateDirs = [

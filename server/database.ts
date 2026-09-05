@@ -432,7 +432,7 @@ class Database {
 
     if (removedFolders > 0 || removedFiles > 0) {
       console.log(`[DriveGram Deduplication] Removidas ${removedFolders} pastas duplicadas/demo e ${removedFiles} arquivos demo.`);
-      this.save(this.data);
+      this.save(this.data, false);
     }
 
     return { removedFolders, removedFiles };
@@ -485,7 +485,7 @@ class Database {
     }
 
     if (modified) {
-      this.save(this.data);
+      this.save(this.data, false);
     }
   }
 
@@ -508,7 +508,7 @@ class Database {
     }
   }
 
-  public executeAutoBackup() {
+  public executeAutoBackup(triggerCloudCallback: boolean = true) {
     try {
       const backupDir = path.join(DATA_DIR, 'backups');
       if (!fs.existsSync(backupDir)) {
@@ -518,7 +518,7 @@ class Database {
       const backupFile = path.join(backupDir, 'drivegram_metadata_backup.json');
       fs.writeFileSync(backupFile, JSON.stringify(manifest, null, 2), 'utf-8');
 
-      if (this.cloudBackupCallback) {
+      if (triggerCloudCallback && this.cloudBackupCallback) {
         this.cloudBackupCallback();
       }
     } catch (err: any) {
@@ -526,10 +526,15 @@ class Database {
     }
   }
 
-  private save(data: DatabaseSchema) {
+  private save(data: DatabaseSchema, triggerAutoBackup: boolean = true) {
     try {
       fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
-      this.scheduleAutoBackup();
+      if (triggerAutoBackup) {
+        this.scheduleAutoBackup();
+      } else {
+        // Grava apenas o snapshot local sem acionar callback na nuvem
+        this.executeAutoBackup(false);
+      }
     } catch (e) {
       console.error('Error saving database:', e);
     }
@@ -2741,7 +2746,7 @@ class Database {
     this.syncAudioShowsWithFolderStructure();
     this.syncAdultVideosWithFolderStructure();
     this.data.settings.lastSyncDate = new Date().toISOString();
-    this.save(this.data);
+    this.save(this.data, false);
     return true;
   }
 
@@ -2819,7 +2824,7 @@ class Database {
       this.deduplicateFolders();
       this.syncAllLibrariesWithFolderStructure();
       this.data.settings.lastSyncDate = new Date().toISOString();
-      this.save(this.data);
+      this.save(this.data, false);
     }
 
     return { addedFiles, addedFolders, updated, localHasNewerChanges };
