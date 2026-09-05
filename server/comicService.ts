@@ -1,7 +1,12 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import JSZip from 'jszip';
-import { createExtractorFromData } from 'node-unrar-js';
+import { createExtractorFromData, createExtractorFromFile } from 'node-unrar-js';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Natural sort for comic book pages (e.g. 1.jpg, 2.jpg, 10.jpg, 01_02.png)
 function naturalCompare(a: string, b: string): number {
@@ -36,12 +41,41 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 function toArrayBuffer(buffer: Buffer): ArrayBuffer {
-  const ab = new ArrayBuffer(buffer.byteLength);
-  const view = new Uint8Array(ab);
-  for (let i = 0; i < buffer.byteLength; ++i) {
-    view[i] = buffer[buffer.byteOffset + i];
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+}
+
+let cachedWasmBinary: ArrayBuffer | undefined = undefined;
+
+function findUnrarWasmBinary(): ArrayBuffer | undefined {
+  if (cachedWasmBinary) return cachedWasmBinary;
+
+  const dir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+  const dataDir = process.env.DRIVEGRAM_DATA_DIR || '';
+  const candidates = [
+    path.join(dir, 'unrar.wasm'),
+    path.join(process.cwd(), 'unrar.wasm'),
+    path.join(dir, 'public', 'unrar.wasm'),
+    path.join(dir, '..', 'unrar.wasm'),
+    dataDir ? path.join(dataDir, 'unrar.wasm') : '',
+    path.join(process.cwd(), 'node_modules', 'node-unrar-js', 'dist', 'js', 'unrar.wasm'),
+    path.join(dir, 'node_modules', 'node-unrar-js', 'dist', 'js', 'unrar.wasm'),
+    path.join(dir, '..', 'node_modules', 'node-unrar-js', 'dist', 'js', 'unrar.wasm'),
+  ].filter(Boolean);
+
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) {
+        console.log('[DriveGram Comic] Loaded unrar.wasm from:', c);
+        const buf = fs.readFileSync(c);
+        cachedWasmBinary = toArrayBuffer(buf);
+        return cachedWasmBinary;
+      }
+    } catch (e: any) {
+      console.warn('[DriveGram Comic] Warning checking wasm path ' + c + ':', e.message);
+    }
   }
-  return ab;
+  console.warn('[DriveGram Comic] Warning: unrar.wasm not found in candidate paths, relying on fallback');
+  return undefined;
 }
 
 export const comicService = {
@@ -87,8 +121,17 @@ export const comicService = {
     // If not ZIP or 0 pages found, try RAR via node-unrar-js
     if (pages.length === 0) {
       try {
-        const arrayBuf = toArrayBuffer(fileBuffer);
-        const extractor = await createExtractorFromData({ data: arrayBuf });
+        const wasmBinary = findUnrarWasmBinary();
+        let extractor: any = null;
+
+        try {
+          const arrayBuf = toArrayBuffer(fileBuffer);
+          extractor = await createExtractorFromData({ data: arrayBuf, wasmBinary } as any);
+        } catch (dataErr: any) {
+          console.warn('[DriveGram Comic] createExtractorFromData fallback:', dataErr?.message);
+          extractor = await createExtractorFromFile({ filepath: filePath, wasmBinary } as any);
+        }
+
         const list = extractor.getFileList();
         const rarPages: string[] = [];
 
@@ -109,8 +152,8 @@ export const comicService = {
           pages = rarPages.sort(naturalCompare);
           format = 'cbr';
         }
-      } catch (rarErr) {
-        console.error('[DriveGram Comic] Error extracting RAR comic:', rarErr);
+      } catch (rarErr: any) {
+        console.error('[DriveGram Comic] Error extracting RAR comic:', rarErr?.message || rarErr);
       }
     }
 
@@ -185,18 +228,59 @@ export const comicService = {
         pageBuffer = await zipEntry.async('nodebuffer');
       }
     } else {
-      const arrayBuf = toArrayBuffer(fileBuffer);
-      const extractor = await createExtractorFromData({ data: arrayBuf });
-      const extracted = extractor.extract({ files: [pagePath] });
+      const wasmBinary = findUnrarWasmBinary();
+      let extractor: any = null;
+      let tempDir: string | null = null;
+
+      try {
+        const arrayBuf = toArrayBuffer(fileBuffer);
+        extractor = await createExtractorFromData({ data: arrayBuf, wasmBinary } as any);
+      } catch (dataErr: any) {
+        console.warn('[DriveGram Comic] createExtractorFromData failed, falling back to temp file extraction:', dataErr?.message);
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'drivegram-cbr-'));
+        extractor = await createExtractorFromFile({ filepath: filePath, targetPath: tempDir, wasmBinary } as any);
+      }
+
+      const matchVariants = [
+        pagePath,
+        pagePath.replace(/\//g, '\\'),
+        pagePath.replace(/\\/g, '/'),
+        path.basename(pagePath)
+      ];
+
+      const extracted = extractor.extract({ files: matchVariants });
       const filesList: any[] = extracted?.files 
         ? Array.from(extracted.files as any)
         : (Array.isArray(extracted) && (extracted as any)[1] ? Array.from((extracted as any)[1]) : []);
 
-      const fileData = filesList.find((f: any) => f?.fileHeader?.name === pagePath) || filesList[0];
-      if (!fileData || !fileData.extraction) {
-        throw new Error(`Página ${pagePath} não encontrada no arquivo RAR`);
+      const normTarget = pagePath.replace(/\\/g, '/').toLowerCase();
+      const fileData = filesList.find((f: any) => {
+        const name = (f?.fileHeader?.name || '').replace(/\\/g, '/').toLowerCase();
+        return name === normTarget || path.basename(name) === path.basename(normTarget);
+      }) || filesList[0];
+
+      if (fileData?.extraction) {
+        pageBuffer = Buffer.from(fileData.extraction);
+      } else if (tempDir) {
+        const candidatePaths = [
+          path.join(tempDir, pagePath),
+          path.join(tempDir, fileData?.fileHeader?.name || pagePath),
+          path.join(tempDir, path.basename(pagePath))
+        ];
+        for (const cp of candidatePaths) {
+          if (fs.existsSync(cp)) {
+            pageBuffer = fs.readFileSync(cp);
+            break;
+          }
+        }
+        // Clean up tempDir
+        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
       }
-      pageBuffer = Buffer.from(fileData.extraction);
+
+      if (!pageBuffer || pageBuffer.length === 0) {
+        throw new Error(`Página ${pagePath} não encontrada ou não pôde ser extraída do arquivo RAR`);
+      }
+      console.log(`[DriveGram Comic] Page ${pageIndex} extracted successfully (${pageBuffer.length} bytes)`);
     }
 
     const result = { buffer: pageBuffer, mimeType };

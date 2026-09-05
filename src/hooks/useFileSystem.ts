@@ -44,6 +44,14 @@ export function useFileSystem() {
     fetchItems();
   }, [fetchItems]);
 
+  useEffect(() => {
+    const handleMetadataUpdated = () => {
+      fetchItems();
+    };
+    window.addEventListener('drivegram-metadata-updated', handleMetadataUpdated);
+    return () => window.removeEventListener('drivegram-metadata-updated', handleMetadataUpdated);
+  }, [fetchItems]);
+
   // Compute breadcrumb path
   const getBreadcrumbPath = useCallback(() => {
     const path: FolderItem[] = [];

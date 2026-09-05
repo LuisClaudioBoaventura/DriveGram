@@ -5,12 +5,19 @@ const config: CapacitorConfig = {
   appName: 'DriveGram',
   webDir: 'dist',
   server: {
-    // Point the WebView directly at the embedded Express server.
-    // The server serves both the React frontend and /api/* routes.
-    url: 'http://localhost:5000',
+    // Note: Do NOT set premature url here to prevent cold-start net::ERR_CONNECTION_REFUSED.
+    // MainActivity handles smooth transition to http://127.0.0.1:5000 after /api/health responds OK.
     cleartext: true,
     androidScheme: 'http',
-    allowNavigation: ['localhost', 'localhost:5000', '192.168.*.*', '10.*.*.*']
+    hostname: 'drivegram.internal',
+    allowNavigation: [
+      'localhost',
+      'localhost:5000',
+      '127.0.0.1',
+      '127.0.0.1:5000',
+      '192.168.*.*',
+      '10.*.*.*'
+    ]
   },
   plugins: {
     SplashScreen: {

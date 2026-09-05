@@ -151,16 +151,17 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
   // PRIORITY SYSTEM (ONLINE FIRST):
   // 1. If original remote source (audioUrl) is available AND no stream error -> PRIORITIZE ONLINE WEB SOURCE
   // 2. Fallback: If online source fails or is missing AND file is saved on Telegram -> PLAY FROM TELEGRAM (/api/stream/:id)
-  const isSavedOnTelegram = Boolean(activeAudioFile || activeTrack?.fileId);
+  const streamFileId = activeAudioFile?.id || activeTrack?.fileId;
+  const isSavedOnTelegram = Boolean(streamFileId);
   const isOnlineSourceAvailable = Boolean(activeTrack?.audioUrl && !hasStreamError);
   const isPlayingOnline = isOnlineSourceAvailable;
-  const isPlayingFromTelegram = !isOnlineSourceAvailable && Boolean(activeAudioFile);
+  const isPlayingFromTelegram = !isOnlineSourceAvailable && Boolean(streamFileId);
   const audioSource = isOnlineSourceAvailable
     ? activeTrack!.audioUrl
-    : (activeAudioFile ? `/api/stream/${activeAudioFile.id}` : activeTrack?.audioUrl);
+    : (streamFileId ? `/api/stream/${streamFileId}` : activeTrack?.audioUrl);
 
   const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
-    if (isOnlineSourceAvailable && activeAudioFile) {
+    if (isOnlineSourceAvailable && streamFileId) {
       console.warn(`[DriveGram Audio] Falha na reprodução online para "${activeTrack?.title}". Alternando para a versão salva no Telegram...`);
       setHasStreamError(true);
       setTimeout(() => {

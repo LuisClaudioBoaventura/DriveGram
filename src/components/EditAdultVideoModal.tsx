@@ -394,7 +394,6 @@ export const EditAdultVideoModal: React.FC<EditAdultVideoModalProps> = ({
                 <div className="relative aspect-video rounded-xl overflow-hidden bg-black shadow-inner border border-gray-800 flex items-center justify-center">
                   <video
                     ref={previewVideoRef}
-                    crossOrigin="anonymous"
                     controls
                     playsInline
                     src={`/api/stream/${targetVideoFile.id}`}

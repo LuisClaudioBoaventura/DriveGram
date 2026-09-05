@@ -308,15 +308,14 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
         {/* Cinema Video Player Container */}
         <div className="flex-1 w-full flex flex-col items-center">
           <div className="relative w-full max-h-[70vh] aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-800/90 flex items-center justify-center group">
-            {videoFile ? (
+            {(videoFile || video.fileId) ? (
               <video
                 ref={videoRef}
-                key={videoFile.id}
-                src={`/api/stream/${videoFile.id}`}
+                key={videoFile?.id || video.fileId}
+                src={`/api/stream/${videoFile?.id || video.fileId}`}
                 controls
                 autoPlay
                 playsInline
-                crossOrigin="anonymous"
                 onTimeUpdate={handleTimeUpdate}
                 onPause={() => handlePauseOrEnded(false)}
                 onEnded={() => handlePauseOrEnded(true)}

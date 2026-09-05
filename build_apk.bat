@@ -7,17 +7,7 @@ echo         DriveGram - Gerador de APK Android
 echo ========================================================
 echo.
 
-echo [1/4] Compilando e empacotando servidor (TypeScript - bundle)...
-call node scripts/build-embedded-server.js
-if %errorlevel% neq 0 (
-    echo.
-    echo [ERRO] Falha ao compilar o servidor. Verifique os erros acima.
-    if "%CI%"=="" pause
-    exit /b %errorlevel%
-)
-
-echo.
-echo [2/4] Compilando frontend React (Vite)...
+echo [1/4] Compilando frontend React (Vite)...
 call npm run build
 if %errorlevel% neq 0 (
     echo.
@@ -27,11 +17,21 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [3/4] Copiando assets para o projeto Android (Capacitor)...
-call npx cap copy android
+echo [2/4] Compilando e empacotando servidor backend (Node.js Mobile + assets)...
+call node scripts/build-embedded-server.js
 if %errorlevel% neq 0 (
     echo.
-    echo [ERRO] Falha ao copiar assets Capacitor para Android.
+    echo [ERRO] Falha ao compilar o servidor. Verifique os erros acima.
+    if "%CI%"=="" pause
+    exit /b %errorlevel%
+)
+
+echo.
+echo [3/4] Sincronizando assets para o projeto Android (Capacitor)...
+call npx cap sync android
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERRO] Falha ao sincronizar assets Capacitor para Android.
     if "%CI%"=="" pause
     exit /b %errorlevel%
 )

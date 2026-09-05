@@ -85,19 +85,18 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
     setMagnifierPos(null);
   }, [currentPage, viewMode]);
 
-  // Magnifier mouse move handler
-  const handleImageMouseMove = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+  // Universal position updater for mouse, pointer and touch
+  const updateMagnifierPosition = useCallback((
+    clientX: number,
+    clientY: number,
+    img: HTMLImageElement,
+    isTouch: boolean = false
+  ) => {
     if (!isMagnifierActive) return;
-    const img = e.currentTarget;
     const rect = img.getBoundingClientRect();
 
-    const cursorX = e.clientX - rect.left;
-    const cursorY = e.clientY - rect.top;
-
-    if (cursorX < 0 || cursorX > rect.width || cursorY < 0 || cursorY > rect.height) {
-      setMagnifierPos(prev => prev ? { ...prev, visible: false } : null);
-      return;
-    }
+    const cursorX = Math.max(0, Math.min(clientX - rect.left, rect.width));
+    const cursorY = Math.max(0, Math.min(clientY - rect.top, rect.height));
 
     const radius = lensSize / 2;
     const bgWidth = rect.width * magnifierZoom;
@@ -109,10 +108,13 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
     const bgPosX = -(targetX - radius);
     const bgPosY = -(targetY - radius);
 
+    // On mobile touch, offset the lens above the finger so the thumb does not cover the zoomed content
+    const displayY = isTouch ? Math.max(radius + 10, clientY - 75) : clientY;
+
     setMagnifierPos({
       visible: true,
-      x: e.clientX,
-      y: e.clientY,
+      x: clientX,
+      y: displayY,
       bgPosX,
       bgPosY,
       bgWidth,
@@ -121,9 +123,70 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
     });
   }, [isMagnifierActive, magnifierZoom, lensSize]);
 
+  // Pointer event handlers (mouse, stylus & modern touch)
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLImageElement>) => {
+    if (!isMagnifierActive) return;
+    try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch (_) {}
+    const isTouch = e.pointerType === 'touch';
+    updateMagnifierPosition(e.clientX, e.clientY, e.currentTarget, isTouch);
+  }, [isMagnifierActive, updateMagnifierPosition]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLImageElement>) => {
+    if (!isMagnifierActive) return;
+    const isTouch = e.pointerType === 'touch';
+    if (isTouch && e.buttons === 0) return;
+    updateMagnifierPosition(e.clientX, e.clientY, e.currentTarget, isTouch);
+  }, [isMagnifierActive, updateMagnifierPosition]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLImageElement>) => {
+    if (!isMagnifierActive) return;
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch (_) {}
+  }, [isMagnifierActive]);
+
+  // Touch event handlers (direct fallback for mobile WebViews)
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLImageElement>) => {
+    if (!isMagnifierActive) return;
+    if (e.touches && e.touches.length > 0) {
+      const touch = e.touches[0];
+      updateMagnifierPosition(touch.clientX, touch.clientY, e.currentTarget, true);
+    }
+  }, [isMagnifierActive, updateMagnifierPosition]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLImageElement>) => {
+    if (!isMagnifierActive) return;
+    if (e.touches && e.touches.length > 0) {
+      const touch = e.touches[0];
+      updateMagnifierPosition(touch.clientX, touch.clientY, e.currentTarget, true);
+    }
+  }, [isMagnifierActive, updateMagnifierPosition]);
+
+  // Desktop mouse handlers
+  const handleImageMouseMove = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+    if (!isMagnifierActive) return;
+    updateMagnifierPosition(e.clientX, e.clientY, e.currentTarget, false);
+  }, [isMagnifierActive, updateMagnifierPosition]);
+
   const handleImageMouseLeave = useCallback(() => {
-    setMagnifierPos(prev => prev ? { ...prev, visible: false } : null);
+    // Keep visible on touch, only hide if leaving on desktop mouse
   }, []);
+
+  // Auto-activate & center magnifier on screen immediately when Lupa is toggled on
+  useEffect(() => {
+    if (isMagnifierActive) {
+      const timer = setTimeout(() => {
+        const img = scrollContainerRef.current?.querySelector('img') as HTMLImageElement | null;
+        if (img) {
+          const rect = img.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          updateMagnifierPosition(centerX, centerY, img, false);
+        }
+      }, 60);
+      return () => clearTimeout(timer);
+    } else {
+      setMagnifierPos(null);
+    }
+  }, [isMagnifierActive, currentPage, viewMode, updateMagnifierPosition]);
 
   const [downloadProgress, setDownloadProgress] = useState<{
     progress: number;
@@ -499,8 +562,8 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
             ))}
           </div>
 
-          <span className="text-[10px] text-gray-400 hidden sm:inline border-l border-gray-800 pl-2">
-            Passe o mouse na página
+          <span className="text-[10px] text-pink-300 border-l border-gray-800 pl-2">
+            Toque e arraste na página
           </span>
 
           <button
@@ -531,10 +594,16 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
                   loading="lazy"
                   draggable={false}
                   onDragStart={(e) => e.preventDefault()}
+                  onPointerDown={isMagnifierActive ? handlePointerDown : undefined}
+                  onPointerMove={isMagnifierActive ? handlePointerMove : undefined}
+                  onPointerUp={isMagnifierActive ? handlePointerUp : undefined}
+                  onPointerCancel={isMagnifierActive ? handlePointerUp : undefined}
+                  onTouchStart={isMagnifierActive ? handleTouchStart : undefined}
+                  onTouchMove={isMagnifierActive ? handleTouchMove : undefined}
                   onMouseMove={isMagnifierActive ? handleImageMouseMove : undefined}
                   onMouseLeave={isMagnifierActive ? handleImageMouseLeave : undefined}
                   className={`w-full h-auto object-contain rounded shadow-2xl select-none ${
-                    isMagnifierActive ? 'cursor-crosshair' : 'pointer-events-auto'
+                    isMagnifierActive ? 'cursor-crosshair touch-none' : 'pointer-events-auto'
                   }`}
                 />
                 <span className="text-[10px] text-gray-500 font-mono py-1">
@@ -556,10 +625,16 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
               alt={`Página ${currentPage + 1}`}
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
+              onPointerDown={isMagnifierActive ? handlePointerDown : undefined}
+              onPointerMove={isMagnifierActive ? handlePointerMove : undefined}
+              onPointerUp={isMagnifierActive ? handlePointerUp : undefined}
+              onPointerCancel={isMagnifierActive ? handlePointerUp : undefined}
+              onTouchStart={isMagnifierActive ? handleTouchStart : undefined}
+              onTouchMove={isMagnifierActive ? handleTouchMove : undefined}
               onMouseMove={isMagnifierActive ? handleImageMouseMove : undefined}
               onMouseLeave={isMagnifierActive ? handleImageMouseLeave : undefined}
               className={`max-h-[82vh] max-w-[92vw] object-contain rounded-lg shadow-2xl select-none ${
-                isMagnifierActive ? 'cursor-crosshair' : 'pointer-events-auto'
+                isMagnifierActive ? 'cursor-crosshair touch-none' : 'pointer-events-auto'
               }`}
             />
           </div>
@@ -576,10 +651,16 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
               alt={`Página ${currentPage + 1}`}
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
+              onPointerDown={isMagnifierActive ? handlePointerDown : undefined}
+              onPointerMove={isMagnifierActive ? handlePointerMove : undefined}
+              onPointerUp={isMagnifierActive ? handlePointerUp : undefined}
+              onPointerCancel={isMagnifierActive ? handlePointerUp : undefined}
+              onTouchStart={isMagnifierActive ? handleTouchStart : undefined}
+              onTouchMove={isMagnifierActive ? handleTouchMove : undefined}
               onMouseMove={isMagnifierActive ? handleImageMouseMove : undefined}
               onMouseLeave={isMagnifierActive ? handleImageMouseLeave : undefined}
               className={`max-h-[82vh] max-w-[46vw] object-contain rounded-l-lg shadow-2xl select-none ${
-                isMagnifierActive ? 'cursor-crosshair' : 'pointer-events-auto'
+                isMagnifierActive ? 'cursor-crosshair touch-none' : 'pointer-events-auto'
               }`}
             />
             {currentPage + 1 < totalPages && (
@@ -588,10 +669,16 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
                 alt={`Página ${currentPage + 2}`}
                 draggable={false}
                 onDragStart={(e) => e.preventDefault()}
+                onPointerDown={isMagnifierActive ? handlePointerDown : undefined}
+                onPointerMove={isMagnifierActive ? handlePointerMove : undefined}
+                onPointerUp={isMagnifierActive ? handlePointerUp : undefined}
+                onPointerCancel={isMagnifierActive ? handlePointerUp : undefined}
+                onTouchStart={isMagnifierActive ? handleTouchStart : undefined}
+                onTouchMove={isMagnifierActive ? handleTouchMove : undefined}
                 onMouseMove={isMagnifierActive ? handleImageMouseMove : undefined}
                 onMouseLeave={isMagnifierActive ? handleImageMouseLeave : undefined}
                 className={`max-h-[82vh] max-w-[46vw] object-contain rounded-r-lg shadow-2xl select-none ${
-                  isMagnifierActive ? 'cursor-crosshair' : 'pointer-events-auto'
+                  isMagnifierActive ? 'cursor-crosshair touch-none' : 'pointer-events-auto'
                 }`}
               />
             )}
@@ -599,7 +686,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
         )}
 
         {/* Previous / Next Side Floating Click Zones */}
-        {viewMode !== 'webtoon' && (
+        {viewMode !== 'webtoon' && !isMagnifierActive && (
           <>
             {currentPage > 0 && (
               <button

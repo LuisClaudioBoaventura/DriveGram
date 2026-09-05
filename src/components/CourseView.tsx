@@ -227,12 +227,14 @@ export const CourseView: React.FC<CourseViewProps> = ({
     ? allFiles.find(f => f.id === activeLesson.fileId)
     : allFiles.find(f => f.name === activeLesson?.title || f.name.includes(activeLesson?.title || ''));
 
-  const streamUrl = activeMediaFile
-    ? `${window.location.origin}/api/stream/${activeMediaFile.id}`
+  const streamFileId = activeMediaFile?.id || activeLesson?.fileId;
+
+  const streamUrl = streamFileId
+    ? `/api/stream/${streamFileId}`
     : '';
 
-  const lanStreamUrl = networkLanIp && activeMediaFile
-    ? `${networkLanIp}/api/stream/${activeMediaFile.id}`
+  const lanStreamUrl = networkLanIp && streamFileId
+    ? `${networkLanIp}/api/stream/${streamFileId}`
     : streamUrl;
 
   const fetchNetworkDevices = async () => {
@@ -943,9 +945,8 @@ export const CourseView: React.FC<CourseViewProps> = ({
                     key={activeLesson.id}
                     className="w-full h-full object-contain"
                     controls
-                    crossOrigin="anonymous"
                     playsInline
-                    src={activeMediaFile ? `/api/stream/${activeMediaFile.id}` : (activeLesson.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4')}
+                    src={streamFileId ? `/api/stream/${streamFileId}` : (activeLesson.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4')}
                     onLoadedMetadata={() => {
                       if (videoRef.current && (activeLesson.lastPositionSeconds || 0) > 0) {
                         videoRef.current.currentTime = activeLesson.lastPositionSeconds || 0;

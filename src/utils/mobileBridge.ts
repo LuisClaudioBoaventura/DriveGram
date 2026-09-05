@@ -30,11 +30,13 @@ export function setCustomServerUrl(url: string): void {
 
 export function initMobileBridge(onHardwareBack?: () => boolean): void {
   if (Capacitor.isNativePlatform()) {
-    try {
-      StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
-      StatusBar.setBackgroundColor({ color: '#0f172a' }).catch(() => {});
-    } catch (e) {
-      console.warn('StatusBar config not available', e);
+    if (Capacitor.isPluginAvailable('StatusBar')) {
+      try {
+        StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+        StatusBar.setBackgroundColor({ color: '#0f172a' }).catch(() => {});
+      } catch (e) {
+        console.warn('StatusBar config not available', e);
+      }
     }
 
     // Start Embedded Local Node.js Mobile Server if available
@@ -53,16 +55,24 @@ export function initMobileBridge(onHardwareBack?: () => boolean): void {
     }
 
     // Handle Android Hardware Back Button
-    CapApp.addListener('backButton', ({ canGoBack }) => {
-      if (onHardwareBack && onHardwareBack()) {
-        return; // Consumed by modal or custom handler
+    if (Capacitor.isPluginAvailable('App')) {
+      try {
+        CapApp.addListener('backButton', ({ canGoBack }) => {
+          if (onHardwareBack && onHardwareBack()) {
+            return; // Consumed by modal or custom handler
+          }
+          if (canGoBack) {
+            window.history.back();
+          } else {
+            CapApp.exitApp().catch(() => {});
+          }
+        }).catch((err) => {
+          console.warn('[DriveGram Mobile] backButton listener error:', err);
+        });
+      } catch (e) {
+        console.warn('[DriveGram Mobile] CapApp addListener failed:', e);
       }
-      if (canGoBack) {
-        window.history.back();
-      } else {
-        CapApp.exitApp();
-      }
-    });
+    }
 
     // Intercept fetch calls if needed to prepend base server URL
     const originalFetch = window.fetch;

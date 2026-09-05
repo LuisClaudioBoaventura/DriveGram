@@ -103,12 +103,14 @@ export const FloatingAudiobookPlayer: React.FC<FloatingAudiobookPlayerProps> = (
 
   const speedOptions = [1, 1.25, 1.5, 2];
 
+  const streamFileId = activeAudioFile?.id || activeChapter?.fileId;
+
   return (
     <>
       {/* Persistent Global Audio Element */}
       <audio
         ref={audioRef}
-        src={activeAudioFile ? `/api/stream/${activeAudioFile.id}` : undefined}
+        src={streamFileId ? `/api/stream/${streamFileId}` : undefined}
         onTimeUpdate={(e) => {
           onTimeUpdate((e.target as HTMLAudioElement).currentTime);
         }}

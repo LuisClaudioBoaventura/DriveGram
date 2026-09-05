@@ -1601,7 +1601,7 @@ export function App() {
       )}
 
       {/* Persistent Global Floating Podcast / Music Player with Vinyl Disc */}
-      {audioShows.activeAudioShow && audioShows.isFloatingOpen && (
+      {audioShows.activeAudioShow && (
         <FloatingPodcastPlayer
           show={audioShows.activeAudioShow}
           activeTrack={audioShows.activeTrack}
@@ -1635,7 +1635,7 @@ export function App() {
           onPause={() => audioShows.setIsPlaying(false)}
           hasNextTrack={!!audioShows.getNextTrack()}
           hasPreviousTrack={!!audioShows.getPreviousTrack()}
-          isCardVisible={selectedAudioForView === null}
+          isCardVisible={selectedAudioForView === null && audioShows.isFloatingOpen}
           onBackupTrack={(track) => audioShows.backupTrackToTelegram(track, fs.trackRemoteTask)}
         />
       )}

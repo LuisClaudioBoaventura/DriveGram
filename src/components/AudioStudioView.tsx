@@ -195,18 +195,17 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   }, [activeTrack?.id, activeTrack?.fileId]);
 
   // PRIORITY SYSTEM (ONLINE FIRST):
-  // 1. If original remote source (audioUrl) exists AND no stream error -> PRIORITIZE ONLINE WEB SOURCE
-  // 2. Fallback: If online source fails or is not available -> PLAY FROM TELEGRAM (/api/stream/:id)
-  const isSavedOnTelegram = Boolean(activeFile || activeTrack?.fileId);
+  const streamFileId = activeFile?.id || activeTrack?.fileId;
+  const isSavedOnTelegram = Boolean(streamFileId);
   const isOnlineSourceAvailable = Boolean(activeTrack?.audioUrl && !hasStudioStreamError);
   const isPlayingOnline = isOnlineSourceAvailable;
-  const isPlayingFromTelegram = !isOnlineSourceAvailable && Boolean(activeFile);
+  const isPlayingFromTelegram = !isOnlineSourceAvailable && Boolean(streamFileId);
   const studioAudioSource = isOnlineSourceAvailable
     ? activeTrack!.audioUrl
-    : (activeFile ? `/api/stream/${activeFile.id}` : activeTrack?.audioUrl);
+    : (streamFileId ? `/api/stream/${streamFileId}` : activeTrack?.audioUrl);
 
   const handleStudioAudioError = () => {
-    if (isOnlineSourceAvailable && activeFile) {
+    if (isOnlineSourceAvailable && streamFileId) {
       console.warn(`[AudioStudioView] Erro na reprodução online para "${activeTrack?.title}". Alternando para a versão salva no Telegram...`);
       setHasStudioStreamError(true);
       setTimeout(() => {

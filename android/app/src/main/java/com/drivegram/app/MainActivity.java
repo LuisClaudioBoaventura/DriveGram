@@ -1,8 +1,11 @@
 package com.drivegram.app;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
-import android.view.WindowManager;
+import android.view.KeyEvent;
 
 import androidx.core.splashscreen.SplashScreen;
 
@@ -18,7 +21,10 @@ import java.net.URL;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "DriveGram";
+    private static final String PREFS_NAME = "DriveGramPrefs";
+    private static final String KEY_STORAGE_MODE = "storage_mode";
     private static boolean isNodeStarted = false;
+    private static boolean isServerReady = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -27,16 +33,27 @@ public class MainActivity extends BridgeActivity {
 
         super.onCreate(savedInstanceState);
 
-        // Enable hardware acceleration for WebView (improves video playback)
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        );
+        Log.d(TAG, "MainActivity onCreate started");
 
         try {
-            // Set writable Android storage paths
-            File filesDir = getFilesDir();
-            File dataDir = new File(filesDir, "drivegram-data");
+            // Determine storage directory safely
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            String mode = prefs.getString(KEY_STORAGE_MODE, "internal");
+
+            File baseDir;
+            if ("shared".equalsIgnoreCase(mode)) {
+                try {
+                    File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    baseDir = new File(downloadsDir, "DriveGram");
+                } catch (Throwable t) {
+                    baseDir = getFilesDir();
+                }
+            } else {
+                File extFiles = getExternalFilesDir(null);
+                baseDir = (extFiles != null) ? extFiles : getFilesDir();
+            }
+
+            File dataDir = new File(baseDir, "drivegram-data");
             File uploadsDir = new File(dataDir, "uploads");
 
             if (!dataDir.exists()) dataDir.mkdirs();
@@ -47,8 +64,9 @@ public class MainActivity extends BridgeActivity {
                 android.system.Os.setenv("DRIVEGRAM_UPLOADS_DIR", uploadsDir.getAbsolutePath(), true);
                 android.system.Os.setenv("PORT", "5000", true);
                 android.system.Os.setenv("NODE_ENV", "production", true);
+                android.system.Os.setenv("DRIVEGRAM_EMBEDDED", "1", true);
             } catch (Throwable t) {
-                Log.w(TAG, "Os.setenv warning: " + t.getMessage());
+                Log.w(TAG, "Os.setenv notice: " + t.getMessage());
             }
 
             System.setProperty("DRIVEGRAM_DATA_DIR", dataDir.getAbsolutePath());
@@ -57,16 +75,38 @@ public class MainActivity extends BridgeActivity {
             Log.d(TAG, "Data dir: " + dataDir.getAbsolutePath());
             Log.d(TAG, "Uploads dir: " + uploadsDir.getAbsolutePath());
 
-            // Start embedded Node.js in background thread
-            startEmbeddedNodeServer(filesDir);
+            // Start embedded Node.js Mobile engine in background thread
+            startEmbeddedNodeServer(getFilesDir());
 
-            Log.d(TAG, "MainActivity initialized successfully");
+            // Load bootstrap loading screen in WebView immediately
+            loadBootstrapPage();
 
-            // Monitor local Express server and reload WebView when ready
+            // Monitor /api/health and transition to http://localhost:5000 once ready
             waitForServerAndLoad();
         } catch (Throwable t) {
-            Log.e(TAG, "Error initializing MainActivity: " + t.getMessage(), t);
+            Log.e(TAG, "Error in onCreate: " + t.getMessage(), t);
         }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (!isServerReady) {
+            loadBootstrapPage();
+        }
+    }
+
+    private void loadBootstrapPage() {
+        runOnUiThread(() -> {
+            try {
+                if (bridge != null && bridge.getWebView() != null && !isServerReady) {
+                    bridge.getWebView().loadUrl("file:///android_asset/public/loading.html");
+                    Log.d(TAG, "Loaded bootstrap loading.html in WebView");
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "Notice loading bootstrap page: " + t.getMessage());
+            }
+        });
     }
 
     private void startEmbeddedNodeServer(File filesDir) {
@@ -75,11 +115,11 @@ public class MainActivity extends BridgeActivity {
 
         new Thread(() -> {
             try {
-                Log.d(TAG, "Preparing Node.js Mobile assets...");
+                Log.d(TAG, "Preparing Node.js Mobile runtime assets...");
                 File nodeProjectDir = new File(filesDir, "www/nodejs-project");
                 nodeProjectDir.mkdirs();
 
-                // Copy nodejs assets from APK to writable filesDir
+                // Copy nodejs assets from APK to writable storage
                 copyAssetFolder("www/nodejs-project", nodeProjectDir.getAbsolutePath());
                 copyAssetFolder("nodejs-project", nodeProjectDir.getAbsolutePath());
 
@@ -94,7 +134,7 @@ public class MainActivity extends BridgeActivity {
                     return;
                 }
 
-                // Use reflection to invoke NodeJS native methods without needing CordovaPlugin compile dependency
+                // Reflectively invoke Node.js Mobile runtime
                 Class<?> nodeClass = Class.forName("com.janeasystems.cdvnodejsmobile.NodeJS");
                 Object node = nodeClass.getDeclaredConstructor().newInstance();
 
@@ -108,12 +148,18 @@ public class MainActivity extends BridgeActivity {
                 String scriptPath = mainJs.getAbsolutePath();
                 String nodePath = nodeProjectDir.getAbsolutePath();
 
-                Log.d(TAG, "Starting Node.js Mobile runtime with script: " + scriptPath);
+                Log.d(TAG, "Starting Node.js Mobile engine with: " + scriptPath);
                 nodeClass.getMethod("startNodeWithArguments", String[].class, String.class, boolean.class)
                          .invoke(node, new String[]{"node", scriptPath}, nodePath, true);
-                Log.d(TAG, "Node.js Mobile engine process started.");
+                Log.d(TAG, "Node.js Mobile engine started successfully.");
+
+                try {
+                    java.lang.reflect.Field field = nodeClass.getDeclaredField("engineAlreadyStarted");
+                    field.setAccessible(true);
+                    field.setBoolean(null, true);
+                } catch (Throwable ignored) {}
             } catch (Throwable t) {
-                Log.e(TAG, "Failed to start embedded Node.js engine: " + t.getMessage(), t);
+                Log.e(TAG, "Failed to start Node.js engine: " + t.getMessage(), t);
             }
         }).start();
     }
@@ -121,44 +167,58 @@ public class MainActivity extends BridgeActivity {
     private void waitForServerAndLoad() {
         new Thread(() -> {
             int attempts = 0;
-            int maxAttempts = 30; // 15 seconds max (500ms intervals)
-            boolean serverReady = false;
+            int maxAttempts = 60; // 24 seconds max (400ms intervals)
 
-            while (attempts < maxAttempts && !serverReady) {
+            while (attempts < maxAttempts && !isServerReady) {
                 try {
-                    Thread.sleep(500);
+                    Thread.sleep(400);
                     attempts++;
-                    URL url = new URL("http://127.0.0.1:5000/api/folders");
+                    URL url = new URL("http://127.0.0.1:5000/api/health");
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setConnectTimeout(800);
-                    conn.setReadTimeout(800);
+                    conn.setConnectTimeout(600);
+                    conn.setReadTimeout(600);
                     conn.setRequestMethod("GET");
                     int responseCode = conn.getResponseCode();
                     conn.disconnect();
-                    if (responseCode >= 200 && responseCode < 500) {
-                        serverReady = true;
-                        Log.d(TAG, "Local Express server responded with HTTP " + responseCode + " after " + (attempts * 500) + "ms");
+
+                    if (responseCode >= 200 && responseCode < 400) {
+                        isServerReady = true;
+                        Log.d(TAG, "DriveGram server is ready (HTTP " + responseCode + ") after " + (attempts * 400) + "ms");
+                        break;
                     }
                 } catch (Exception ignored) {
-                    // Server not ready yet
+                    // Server still booting
                 }
             }
 
-            if (serverReady) {
+            if (isServerReady) {
                 runOnUiThread(() -> {
                     try {
                         if (bridge != null && bridge.getWebView() != null) {
-                            Log.d(TAG, "Reloading WebView to http://localhost:5000");
-                            bridge.getWebView().loadUrl("http://localhost:5000");
+                            Log.d(TAG, "Transitioning WebView to http://127.0.0.1:5000");
+                            bridge.getWebView().loadUrl("http://127.0.0.1:5000");
                         }
                     } catch (Throwable t) {
-                        Log.e(TAG, "Error reloading WebView: " + t.getMessage(), t);
+                        Log.e(TAG, "Error transitioning WebView: " + t.getMessage(), t);
                     }
                 });
             } else {
-                Log.w(TAG, "Timed out waiting for local Express server on port 5000");
+                Log.w(TAG, "Timed out waiting for DriveGram server on port 5000");
             }
         }).start();
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            try {
+                if (bridge != null && bridge.getWebView() != null && bridge.getWebView().canGoBack()) {
+                    bridge.getWebView().goBack();
+                    return true;
+                }
+            } catch (Throwable ignored) {}
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     private void copyAssetFolder(String srcFolder, String destPath) {
@@ -180,22 +240,20 @@ public class MainActivity extends BridgeActivity {
                 }
             }
         } catch (IOException e) {
-            Log.d(TAG, "Asset copy notice for: " + srcFolder + " (" + e.getMessage() + ")");
+            Log.d(TAG, "Asset copy notice for " + srcFolder + ": " + e.getMessage());
         }
     }
 
     private void copyAssetFile(String srcAsset, String destPath) {
+        File destFile = new File(destPath);
         try (InputStream in = getAssets().open(srcAsset);
-             OutputStream out = new FileOutputStream(destPath)) {
+             OutputStream out = new FileOutputStream(destFile)) {
             byte[] buffer = new byte[8192];
             int read;
             while ((read = in.read(buffer)) != -1) {
                 out.write(buffer, 0, read);
             }
             out.flush();
-        } catch (IOException e) {
-            // Ignored if asset does not exist as file
-        }
+        } catch (IOException ignored) {}
     }
 }
-

@@ -39,7 +39,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [isGenerateMarkersModalOpen, setIsGenerateMarkersModalOpen] = useState(false);
 
-  const videoFile = video.fileId ? allFiles.find(f => f.id === video.fileId) : null;
+  const videoFile = (video.fileId ? allFiles.find(f => f.id === video.fileId) : null) ||
+    (video.folderId ? allFiles.find(f => f.parentId === video.folderId && !f.isTrash && (f.type === 'video' || (f.mimeType && f.mimeType.startsWith('video/')) || ['mp4', 'mkv', 'webm', 'mov', 'avi'].includes((f.extension || '').toLowerCase()))) : null);
   const subtitles = video.subtitles || videoFile?.subtitles || [];
   const [localTimestamps, setLocalTimestamps] = useState<VideoTimestamp[]>(() => {
     const raw = video.timestamps || videoFile?.timestamps || [];
@@ -341,15 +342,14 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
       {/* Main Cinema Player Container */}
       <div className={isPiPHidden ? 'w-px h-px overflow-hidden' : 'flex-1 flex flex-col items-center justify-center p-2 sm:p-4 max-w-6xl w-full mx-auto space-y-4'}>
-        {videoFile ? (
+        {(videoFile || video.fileId) ? (
           <div className={isPiPHidden ? 'w-px h-px' : 'relative w-full max-h-[72vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center group'}>
             <video
               ref={videoRef}
-              src={`/api/stream/${videoFile.id}`}
+              src={`/api/stream/${videoFile?.id || video.fileId}`}
               controls={!isPiPHidden}
               autoPlay
               playsInline
-              crossOrigin="anonymous"
               onLoadedMetadata={() => {
                 if (videoRef.current && (video.lastPositionSeconds || 0) > 0) {
                   videoRef.current.currentTime = video.lastPositionSeconds || 0;

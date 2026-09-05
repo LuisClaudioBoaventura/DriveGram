@@ -28,15 +28,22 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
     setIsTesting(true);
     setTestResult(null);
     try {
-      const target = serverUrl.trim().replace(/\/+$/, '') || 'http://192.168.0.6:5000';
+      const target = serverUrl.trim().replace(/\/+$/, '') || 'http://127.0.0.1:5000';
+      let healthData: any = null;
+      try {
+        const hRes = await fetch(`${target}/api/health`, { signal: AbortSignal.timeout(4000) });
+        if (hRes.ok) healthData = await hRes.json();
+      } catch (ignored) {}
+
       const res = await fetch(`${target}/api/telegram/status`, {
         signal: AbortSignal.timeout(6000)
       });
       if (res.ok) {
         const data = await res.json();
+        const details = healthData ? ` | Armazenamento: ${healthData.uploadsDir ? 'Configurado' : 'Padrão'}` : '';
         setTestResult({
           success: true,
-          message: `Conectado com sucesso! Servidor ativo. Telegram: ${data.isConnected ? 'Conectado' : 'Aguardando Login'}`
+          message: `Conectado com sucesso! Servidor ativo${details}. Telegram: ${data.isConnected ? 'Conectado' : 'Aguardando Login'}`
         });
       } else {
         setTestResult({
@@ -47,7 +54,7 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
     } catch (e: any) {
       setTestResult({
         success: false,
-        message: 'Não foi possível conectar ao servidor (Failed to fetch). Verifique se o backend do DriveGram está em execução no PC e se o celular está no mesmo Wi-Fi.'
+        message: 'Não foi possível conectar ao servidor. Verifique se o servidor interno do aplicativo está em execução ou se o IP está correto.'
       });
     } finally {
       setIsTesting(false);
@@ -120,17 +127,17 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
               <span className="text-[10px] text-gray-400 self-center mr-1">Sugestões:</span>
               <button
                 type="button"
-                onClick={() => setServerUrl('http://192.168.0.6:5000')}
+                onClick={() => setServerUrl('http://127.0.0.1:5000')}
                 className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-blue-100/80 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
               >
-                192.168.0.6:5000 (Seu PC)
+                📱 Servidor do Celular (127.0.0.1:5000)
               </button>
               <button
                 type="button"
-                onClick={() => setServerUrl('http://127.0.0.1:5000')}
+                onClick={() => setServerUrl('http://192.168.0.6:5000')}
                 className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
               >
-                Localhost
+                💻 PC Local (192.168.0.6:5000)
               </button>
             </div>
           </div>

@@ -11,9 +11,9 @@
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "package:embedded": "node scripts/build-embedded-server.js",
     "mobile:build-frontend": "npm run build",
-    "mobile:sync": "npm run package:embedded && npm run mobile:build-frontend && npx cap copy android",
+    "mobile:sync": "npm run mobile:build-frontend && npm run package:embedded && npx cap sync android",
     "mobile:open": "npx cap open android",
-    "mobile:apk": "npm run mobile:sync && cd android && gradlew assembleDebug && cd .."
+    "mobile:apk": "npm run mobile:sync && cd android && gradlew assembleDebug && cd .. && copy /Y android\\app\\build\\outputs\\apk\\debug\\app-debug.apk DriveGram.apk"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

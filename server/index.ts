@@ -39,6 +39,41 @@ export function getSafeUploadPath(fileName: string): string {
   return resolved;
 }
 
+// Configurar o callback de backup automático contínuo na nuvem (Telegram)
+db.setCloudBackupCallback(async () => {
+  try {
+    const client = await telegramService.ensureClient();
+    if (client && telegramService.getAuthState().isConnected) {
+      console.log('[DriveGram Auto-Backup] Salvando alterações de metadados nas Mensagens Salvas do Telegram...');
+      await telegramService.syncMetadataToTelegram();
+    }
+  } catch (err: any) {
+    console.warn('[DriveGram Auto-Backup] Erro ao sincronizar metadados no Telegram em segundo plano:', err?.message || err);
+  }
+});
+
+// Helper para localizar arquivos locais existentes testando múltiplos nomes possíveis
+export function resolveExistingLocalFilePath(file: any): string | null {
+  if (!file) return null;
+  const candidates = [
+    file.telegramMeta?.telegramFileName,
+    `${file.id}.${file.extension}`,
+    file.name,
+    `${file.id}_${file.name}`,
+    file.extension ? `${file.id}.${file.extension.toLowerCase()}` : null
+  ].filter(Boolean) as string[];
+
+  for (const name of candidates) {
+    try {
+      const candidatePath = getSafeUploadPath(name);
+      if (fs.existsSync(candidatePath) && fs.statSync(candidatePath).size > 0) {
+        return candidatePath;
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
@@ -77,6 +112,18 @@ function getFileType(extension: string): FileType {
   if (['js', 'ts', 'jsx', 'tsx', 'html', 'css', 'json', 'py', 'java', 'c', 'cpp', 'go', 'rs', 'php', 'sql'].includes(ext)) return 'code';
   return 'other';
 }
+
+// ---------------- HEALTH CHECK (AND READINESS PROBE) ----------------
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: Math.round(process.uptime()),
+    timestamp: Date.now(),
+    version: '1.0.0',
+    uploadsDir: UPLOADS_DIR,
+    isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
+  });
+});
 
 // ---------------- FOLDERS ----------------
 app.get('/api/folders', (req, res) => {
@@ -442,8 +489,9 @@ app.get('/api/comic/:id/manifest', async (req, res) => {
     const file = db.getAllFiles().find(f => f.id === req.params.id);
     if (!file) return res.status(404).json({ error: 'HQ/Comic não encontrada' });
 
+    const existingLocalPath = resolveExistingLocalFilePath(file);
     const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
-    const filePath = getSafeUploadPath(diskFileName);
+    const filePath = existingLocalPath || getSafeUploadPath(diskFileName);
     const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
     const fileExists = fs.existsSync(filePath);
     const fileSizeOnDisk = fileExists ? fs.statSync(filePath).size : 0;
@@ -548,10 +596,11 @@ app.get('/api/comic/:id/page/:pageIndex', async (req, res) => {
     const file = db.getAllFiles().find(f => f.id === req.params.id);
     if (!file) return res.status(404).json({ error: 'HQ/Comic não encontrada' });
 
+    const existingLocalPath = resolveExistingLocalFilePath(file);
     const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
-    const filePath = getSafeUploadPath(diskFileName);
+    const filePath = existingLocalPath || getSafeUploadPath(diskFileName);
     const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
-    const isFileComplete = fs.existsSync(filePath) && (expectedSize === 0 || fs.statSync(filePath).size >= expectedSize);
+    const isFileComplete = fs.existsSync(filePath) && (expectedSize === 0 || fs.statSync(filePath).size >= Math.floor(expectedSize * 0.95));
 
     if (!isFileComplete && file.telegramMeta?.messageId) {
       const uploadId = `comic-${file.id}`;
@@ -593,8 +642,9 @@ app.get(['/api/video/:id/cache-status', '/api/file/:id/cache-status'], (req, res
     const file = db.getAllFiles().find(f => f.id === req.params.id);
     if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
 
+    const existingLocalPath = resolveExistingLocalFilePath(file);
     const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
-    const filePath = getSafeUploadPath(diskFileName);
+    const filePath = existingLocalPath || getSafeUploadPath(diskFileName);
     const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
     const fileExists = fs.existsSync(filePath);
     const fileSizeOnDisk = fileExists ? fs.statSync(filePath).size : 0;
@@ -626,8 +676,9 @@ app.post(['/api/video/:id/cache', '/api/file/:id/cache'], async (req, res) => {
     const file = db.getAllFiles().find(f => f.id === req.params.id);
     if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
 
+    const existingLocalPath = resolveExistingLocalFilePath(file);
     const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
-    const filePath = getSafeUploadPath(diskFileName);
+    const filePath = existingLocalPath || getSafeUploadPath(diskFileName);
     const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
     const fileExists = fs.existsSync(filePath);
     const fileSizeOnDisk = fileExists ? fs.statSync(filePath).size : 0;
@@ -740,17 +791,63 @@ app.post(['/api/video/:id/cache', '/api/file/:id/cache'], async (req, res) => {
   }
 });
 
+// Helper para mapear Content-Type preciso baseado na extensão do arquivo
+function getMimeType(fileName: string, fallback?: string): string {
+  const ext = path.extname(fileName).toLowerCase();
+  const mimeMap: Record<string, string> = {
+    // Vídeo
+    '.mp4': 'video/mp4',
+    '.m4v': 'video/mp4',
+    '.mkv': 'video/x-matroska',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo',
+    '.wmv': 'video/x-ms-wmv',
+    '.flv': 'video/x-flv',
+    '.ts': 'video/mp2t',
+    '.3gp': 'video/3gpp',
+    // Áudio
+    '.mp3': 'audio/mpeg',
+    '.m4a': 'audio/mp4',
+    '.aac': 'audio/aac',
+    '.ogg': 'audio/ogg',
+    '.oga': 'audio/ogg',
+    '.opus': 'audio/opus',
+    '.wav': 'audio/wav',
+    '.flac': 'audio/flac',
+    '.weba': 'audio/webm',
+    // Documentos / Livros
+    '.pdf': 'application/pdf',
+    '.epub': 'application/epub+zip',
+    '.txt': 'text/plain; charset=utf-8',
+    '.json': 'application/json',
+    // Imagens
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.avif': 'image/avif',
+    // Quadrinhos
+    '.cbz': 'application/vnd.comicbook+zip',
+    '.cbr': 'application/vnd.comicbook-rar',
+    '.zip': 'application/zip',
+    '.rar': 'application/x-rar-compressed'
+  };
+  return mimeMap[ext] || (fallback && fallback !== 'application/octet-stream' ? fallback : (ext.endsWith('mp3') ? 'audio/mpeg' : 'video/mp4'));
+}
+
 // ---------------- STREAMING & PREVIEW (SUPPORTS CLOUD, TEMP CACHE & LOCAL CACHE) ----------------
 app.get('/api/stream/:id', async (req, res) => {
   try {
     const file = db.getAllFiles().find(f => f.id === req.params.id);
     if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
 
+    const localFilePath = resolveExistingLocalFilePath(file);
     const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
-    const filePath = getSafeUploadPath(diskFileName);
-    const streamingMode = db.getStreamingMode(); // 'cloud_direct' | 'temp_cache' | 'local_cache'
-    const isCloudDirect = req.query.mode === 'direct' || req.query.mode === 'cloud' || streamingMode === 'cloud_direct';
-    const isTempCache = req.query.mode === 'temp' || streamingMode === 'temp_cache';
+    const filePath = localFilePath || getSafeUploadPath(diskFileName);
+    const mimeType = getMimeType(file.name || `${file.id}.${file.extension}`, file.mimeType);
 
     // Subtitle handler
     if (file.type === 'subtitle' || file.extension === 'srt' || file.extension === 'vtt') {
@@ -769,95 +866,67 @@ app.get('/api/stream/:id', async (req, res) => {
       }
     }
 
-    // 1. Temporary Cache Mode (Salva em disco com expiração / auto-limpeza)
-    if (isTempCache) {
-      if (!fs.existsSync(filePath) && file.telegramMeta?.messageId) {
-        const uploadId = `video-${file.id}`;
-        const expectedSize = file.size || file.telegramMeta?.fileSize || 0;
-        const dlStart = Date.now();
-        try {
-          console.log(`[DriveGram Temp Cache] Downloading file ${file.name} to uploads for temporary caching...`);
-          activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: expectedSize, transferred: 0, progress: 0, speed: 'Conectando...', stage: 'cloud', stageLabel: `⚡ Conectando e baixando "${file.name}"...`, updatedAt: Date.now() });
-          await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath, (pct, transferred, total) => {
-            const speed = ((transferred / (1024 * 1024)) / Math.max(0.2, (Date.now() - dlStart) / 1000)).toFixed(2);
-            activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: total, transferred, progress: pct, speed: `${speed} MB/s`, stage: pct >= 100 ? 'completed' : 'cloud', stageLabel: pct >= 100 ? 'Vídeo pronto!' : `⚡ Baixando "${file.name}" (${pct}%)...`, updatedAt: Date.now() });
-          }, expectedSize);
-          if (!file.telegramMeta.telegramFileName || file.telegramMeta.telegramFileName !== diskFileName) {
-            file.telegramMeta.telegramFileName = diskFileName;
-            db.updateFile(file.id, { telegramMeta: file.telegramMeta });
-          }
-          db.touchFileCachedAt(file.id);
-          const finalSz = fs.existsSync(filePath) ? fs.statSync(filePath).size : expectedSize;
-          activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: finalSz, transferred: finalSz, progress: 100, speed: 'Concluído', stage: 'completed', stageLabel: 'Vídeo salvo na pasta uploads!', updatedAt: Date.now() });
-          setTimeout(() => activeUploadsMap.delete(uploadId), 15000);
-        } catch (e) {
-          console.warn(`[DriveGram Temp Cache] Failed to download to cache, falling back to direct stream:`, e);
-          activeUploadsMap.set(uploadId, { uploadId, fileName: file.name, size: file.size || 0, transferred: 0, progress: 0, speed: '', stage: 'error', stageLabel: (e as any)?.message || 'Falha no download', updatedAt: Date.now() });
-        }
-      }
-
-      if (fs.existsSync(filePath)) {
+    // 1. PRIORIDADE MÁXIMA: Arquivo já existe no disco local (baixado ou enviado)
+    // Se o arquivo existe e tem tamanho > 0, SEMPRE sirva localmente com suporte a Range (HTTP 206)
+    if (fs.existsSync(filePath)) {
+      const stat = fs.statSync(filePath);
+      if (stat.size > 0) {
         db.touchFileCachedAt(file.id);
-        const stat = fs.statSync(filePath);
         const fileSize = stat.size;
         const range = req.headers.range;
+
+        if (req.method === 'HEAD') {
+          res.writeHead(200, {
+            'Content-Length': fileSize,
+            'Content-Type': mimeType,
+            'Accept-Ranges': 'bytes',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Allow-Headers': '*',
+            'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges, Content-Type',
+          });
+          return res.end();
+        }
 
         if (range) {
           const parts = range.replace(/bytes=/, "").split("-");
           const start = parseInt(parts[0], 10);
           const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+          if (start >= fileSize || end >= fileSize || start > end) {
+            res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
+            return res.end();
+          }
+
           const chunksize = (end - start) + 1;
           const streamFile = fs.createReadStream(filePath, { start, end });
           res.writeHead(206, {
             'Content-Range': `bytes ${start}-${end}/${fileSize}`,
             'Accept-Ranges': 'bytes',
             'Content-Length': chunksize,
-            'Content-Type': file.mimeType || 'video/mp4',
-            'Access-Control-Allow-Origin': '*'
+            'Content-Type': mimeType,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Allow-Headers': '*',
+            'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges, Content-Type',
           });
           return streamFile.pipe(res);
         } else {
           res.writeHead(200, {
             'Content-Length': fileSize,
-            'Content-Type': file.mimeType || 'video/mp4',
-            'Access-Control-Allow-Origin': '*'
+            'Content-Type': mimeType,
+            'Accept-Ranges': 'bytes',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Allow-Headers': '*',
+            'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges, Content-Type',
           });
           return fs.createReadStream(filePath).pipe(res);
         }
       }
     }
 
-    // 2. Local Permanent Cache Mode (Salva em disco permanentemente)
-    if (fs.existsSync(filePath) && !isCloudDirect) {
-      const stat = fs.statSync(filePath);
-      const fileSize = stat.size;
-      const range = req.headers.range;
-
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunksize = (end - start) + 1;
-        const streamFile = fs.createReadStream(filePath, { start, end });
-        res.writeHead(206, {
-          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-          'Accept-Ranges': 'bytes',
-          'Content-Length': chunksize,
-          'Content-Type': file.mimeType || 'video/mp4',
-          'Access-Control-Allow-Origin': '*'
-        });
-        return streamFile.pipe(res);
-      } else {
-        res.writeHead(200, {
-          'Content-Length': fileSize,
-          'Content-Type': file.mimeType || 'video/mp4',
-          'Access-Control-Allow-Origin': '*'
-        });
-        return fs.createReadStream(filePath).pipe(res);
-      }
-    }
-
-    // 3. Pure Cloud Direct Streaming (Zero Download / Zero Disco)
+    // 2. Arquivo na Nuvem Telegram (Streaming direto ou Cache temporário)
     if (file.telegramMeta?.messageId && telegramService.getAuthState().isConnected) {
       const range = req.headers.range;
       const fileSize = file.size || file.telegramMeta.fileSize || 0;
@@ -872,7 +941,7 @@ app.get('/api/stream/:id', async (req, res) => {
         } else if (fileSize > 0) {
           end = fileSize - 1;
         } else {
-          end = start + 1024 * 1024;
+          end = start + (512 * 1024);
         }
       }
 
@@ -881,7 +950,7 @@ app.get('/api/stream/:id', async (req, res) => {
         start,
         end,
         fileSize,
-        file.mimeType || 'video/mp4',
+        mimeType,
         res
       );
 
@@ -894,39 +963,9 @@ app.get('/api/stream/:id', async (req, res) => {
       }
     }
 
-    // Fallback: If local file exists, stream it
-    if (fs.existsSync(filePath)) {
-      const stat = fs.statSync(filePath);
-      const fileSize = stat.size;
-      const range = req.headers.range;
-
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunksize = (end - start) + 1;
-        const streamFile = fs.createReadStream(filePath, { start, end });
-        res.writeHead(206, {
-          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-          'Accept-Ranges': 'bytes',
-          'Content-Length': chunksize,
-          'Content-Type': file.mimeType || 'video/mp4',
-          'Access-Control-Allow-Origin': '*'
-        });
-        return streamFile.pipe(res);
-      } else {
-        res.writeHead(200, {
-          'Content-Length': fileSize,
-          'Content-Type': file.mimeType || 'video/mp4',
-          'Access-Control-Allow-Origin': '*'
-        });
-        return fs.createReadStream(filePath).pipe(res);
-      }
-    }
-
-    // Final fallback: 404 or empty response closed properly
+    // 3. Fallback final: se não foi possível transmitir
     if (!res.headersSent) {
-      res.status(404).json({ error: 'Mídia não disponível' });
+      res.status(404).json({ error: 'Mídia não disponível no momento. Baixe o arquivo para reprodução local.' });
     } else if (!res.writableEnded && !res.closed && !res.destroyed) {
       try { res.end(); } catch (e) {}
     }
@@ -1074,8 +1113,9 @@ app.get('/api/files/download/:id', async (req, res) => {
   const file = db.getAllFiles().find(f => f.id === req.params.id);
   if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
 
+  const existingLocalPath = resolveExistingLocalFilePath(file);
   const diskFileName = file.telegramMeta?.telegramFileName || `${file.id}.${file.extension}`;
-  const filePath = getSafeUploadPath(diskFileName);
+  const filePath = existingLocalPath || getSafeUploadPath(diskFileName);
 
   if (!fs.existsSync(filePath) && file.telegramMeta?.messageId) {
     const uploadId = `download-${file.id}`;
@@ -3684,6 +3724,15 @@ app.post('/api/telegram/restore', async (_req, res) => {
   res.json(result);
 });
 
+app.post('/api/telegram/startup-sync', async (_req, res) => {
+  try {
+    const result = await telegramService.performStartupMetadataSync();
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message || 'Erro na sincronização ativa de inicialização' });
+  }
+});
+
 app.post('/api/telegram/import-saved', async (_req, res) => {
   const result = await telegramService.scanAndImportSavedMessages();
   res.json(result);
@@ -4106,29 +4155,84 @@ function purgeExpiredCacheRoutine() {
 setTimeout(purgeExpiredCacheRoutine, 10000);
 setInterval(purgeExpiredCacheRoutine, 2 * 60 * 1000);
 
+// ---------------- PROCESSO AUTOMÁTICO DE BACKUP E ATUALIZAÇÃO ATIVA DE METADADOS ----------------
+db.setCloudBackupCallback(async () => {
+  try {
+    const client = await telegramService.ensureClient();
+    if (client && telegramService.getAuthState().isConnected) {
+      console.log('[DriveGram Auto-Backup] Arquivo ou metadado alterado. Disparando backup no Telegram...');
+      telegramService.syncMetadataToTelegram().catch(err => {
+        console.warn('[DriveGram Auto-Backup] Aviso no envio automático ao Telegram:', err?.message || err);
+      });
+    }
+  } catch (e: any) {
+    console.warn('[DriveGram Auto-Backup] Erro ao verificar estado para backup:', e?.message || e);
+  }
+});
+
+// Processo ativo de sincronização de metadados ao iniciar o aplicativo (Desktop & Mobile)
+setTimeout(async () => {
+  try {
+    const client = await telegramService.ensureClient();
+    if (client && telegramService.getAuthState().isConnected) {
+      console.log('[DriveGram Startup] Executando processo ativo de sincronização de metadados...');
+      const res = await telegramService.performStartupMetadataSync();
+      console.log('[DriveGram Startup]', res.message);
+    }
+  } catch (err: any) {
+    console.warn('[DriveGram Startup] Aviso na sincronização ativa de inicialização:', err?.message || err);
+  }
+}, 3500);
+
 // ---------------- SERVIR FRONTEND ESTÁTICO (PRODUÇÃO / RENDER / ANDROID) ----------------
-// On Android (embedded): __dirname = nodejs-project/server/, so www is at ../../www/
-// On desktop (dist):     __dirname = server/, so dist is at ../dist/
-const DIST_DIR = path.join(__dirname, '..', 'dist');
-const WWW_DIR = path.join(__dirname, '..', '..', 'www');
-const STATIC_DIR = fs.existsSync(DIST_DIR)
-  ? DIST_DIR
-  : fs.existsSync(WWW_DIR)
-    ? WWW_DIR
-    : null;
+const candidateDirs = [
+  process.env.DRIVEGRAM_STATIC_DIR,
+  path.join(__dirname, 'public'),
+  path.join(__dirname, 'dist'),
+  path.join(__dirname, '..', 'dist'),
+  path.join(__dirname, '..', '..', 'www'),
+  path.join(__dirname, '..', '..', 'public'),
+  path.join(__dirname, '..', '..', 'dist')
+].filter(Boolean) as string[];
+
+let STATIC_DIR: string | null = null;
+for (const cand of candidateDirs) {
+  if (fs.existsSync(cand) && fs.existsSync(path.join(cand, 'index.html'))) {
+    STATIC_DIR = cand;
+    break;
+  }
+}
 
 if (STATIC_DIR) {
   console.log(`[DriveGram] Serving static frontend from: ${STATIC_DIR}`);
   app.use(express.static(STATIC_DIR));
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(STATIC_DIR, 'index.html'));
+      res.sendFile(path.join(STATIC_DIR!, 'index.html'));
     }
   });
+} else {
+  console.warn('[DriveGram] Warning: No static frontend index.html directory found.');
 }
 
 app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`🚀 DriveGram server running on port ${PORT}`);
   console.log(`📁 Uploads dir: ${UPLOADS_DIR}`);
   if (STATIC_DIR) console.log(`🌐 Frontend: ${STATIC_DIR}`);
+
+  // Rotina de Inicialização Ativa de Metadados (Desktop & Mobile)
+  setTimeout(async () => {
+    try {
+      console.log('[DriveGram Startup] Verificando conexão e iniciando sincronização ativa de metadados...');
+      const client = await telegramService.ensureClient();
+      if (client && telegramService.getAuthState().isConnected) {
+        const syncRes = await telegramService.performStartupMetadataSync();
+        console.log('[DriveGram Startup] Resultado da sincronização de inicialização:', syncRes.message);
+      } else {
+        console.log('[DriveGram Startup] Telegram não conectado ainda. Sincronização de inicialização aguardando login.');
+      }
+    } catch (e: any) {
+      console.warn('[DriveGram Startup] Erro na sincronização de inicialização:', e?.message || e);
+    }
+  }, 3500);
 });

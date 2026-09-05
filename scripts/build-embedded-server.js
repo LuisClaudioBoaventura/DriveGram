@@ -34,7 +34,13 @@ await build({
   outfile: bundleOutPath,
   target: ['node18'],
   banner: {
-    js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+    js: `import { createRequire as __esbuild_createRequire } from 'module';
+import { fileURLToPath as __esbuild_fileURLToPath } from 'url';
+import __esbuild_path from 'path';
+const require = __esbuild_createRequire(import.meta.url);
+const __filename = __esbuild_fileURLToPath(import.meta.url);
+const __dirname = __esbuild_path.dirname(__filename);
+`,
   },
   // Packages with native binaries must stay external
   external: [
@@ -103,6 +109,12 @@ process.on('unhandledRejection', (reason) => {
   console.error('[NodeJS-Mobile] Unhandled rejection:', reason);
 });
 
+const staticDir = path.join(__dirname, 'public');
+if (fs.existsSync(staticDir)) {
+  process.env.DRIVEGRAM_STATIC_DIR = staticDir;
+  console.log('[NodeJS-Mobile] Static frontend dir detected:', staticDir);
+}
+
 try {
   await import('./server.bundle.js');
   console.log('[NodeJS-Mobile] Server initialized successfully.');
@@ -113,6 +125,9 @@ try {
 `;
 
 // ---- 3. Deploy to all target directories ----
+const distDir = path.join(rootDir, 'dist');
+const hasDist = fs.existsSync(distDir) && fs.existsSync(path.join(distDir, 'index.html'));
+
 for (const targetDir of targetDirs) {
   fs.mkdirSync(targetDir, { recursive: true });
 
@@ -137,6 +152,21 @@ for (const targetDir of targetDirs) {
   // server.bundle.js — the compiled, self-contained server
   fs.writeFileSync(path.join(targetDir, 'server.bundle.js'), bundleContent);
 
+  // Copy dist to public/ inside nodejs-project
+  if (hasDist) {
+    const publicTarget = path.join(targetDir, 'public');
+    fs.mkdirSync(publicTarget, { recursive: true });
+    fs.cpSync(distDir, publicTarget, { recursive: true });
+    console.log('[build-embedded] Copied frontend dist to:', publicTarget);
+  }
+
+  // Copy unrar.wasm for CBR comic extraction if available
+  const unrarWasmSrc = path.join(rootDir, 'node_modules', 'node-unrar-js', 'dist', 'js', 'unrar.wasm');
+  if (fs.existsSync(unrarWasmSrc)) {
+    fs.copyFileSync(unrarWasmSrc, path.join(targetDir, 'unrar.wasm'));
+    console.log('[build-embedded] Copied unrar.wasm to:', targetDir);
+  }
+
   console.log('[build-embedded] Deployed to:', targetDir);
 }
 
@@ -145,6 +175,22 @@ fs.unlinkSync(bundleOutPath);
 
 const bundleSize = (Buffer.byteLength(bundleContent) / 1024 / 1024).toFixed(2);
 console.log(`[build-embedded] ✅ Server bundle ready: ${bundleSize} MB`);
+
+// ---- 3.1 Copy builtin cordova-bridge assets ----
+const cordovaAssetsSrc = path.join(rootDir, 'node_modules', '@red-mobile', 'nodejs-mobile-cordova', 'install', 'nodejs-mobile-cordova-assets');
+const cordovaAssetTargets = [
+  path.join(rootDir, 'android', 'app', 'src', 'main', 'assets', 'nodejs-mobile-cordova-assets'),
+  path.join(rootDir, 'android', 'capacitor-cordova-android-plugins', 'src', 'main', 'assets', 'nodejs-mobile-cordova-assets'),
+  path.join(rootDir, 'www', 'nodejs-mobile-cordova-assets'),
+];
+
+if (fs.existsSync(cordovaAssetsSrc)) {
+  for (const cat of cordovaAssetTargets) {
+    fs.mkdirSync(cat, { recursive: true });
+    fs.cpSync(cordovaAssetsSrc, cat, { recursive: true });
+    console.log('[build-embedded] Synchronized cordova assets to:', cat);
+  }
+}
 
 // ---- 4. Extract native libnode.so for Android ABIs ----
 import zlib from 'zlib';

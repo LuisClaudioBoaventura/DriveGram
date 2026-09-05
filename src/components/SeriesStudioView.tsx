@@ -521,15 +521,14 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
           {/* Cinema Video Player Container */}
           <div className="relative w-full aspect-video max-h-[70vh] bg-black rounded-2xl sm:rounded-3xl overflow-hidden border border-gray-800 shadow-2xl flex items-center justify-center group shrink-0">
             {playingEpisode ? (
-              playingFile ? (
+              (playingFile || playingEpisode.fileId) ? (
                 <video
                   ref={videoRef}
-                  key={playingFile.id}
-                  src={`/api/stream/${playingFile.id}`}
+                  key={playingFile?.id || playingEpisode.fileId}
+                  src={`/api/stream/${playingFile?.id || playingEpisode.fileId}`}
                   controls
                   autoPlay
                   playsInline
-                  crossOrigin="anonymous"
                   onEnded={handleEpisodeEnded}
                   className="w-full h-full object-contain"
                 />

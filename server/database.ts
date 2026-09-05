@@ -550,9 +550,44 @@ class Database {
     }
   }
 
+  private cloudBackupCallback: (() => void) | null = null;
+  private autoBackupDebounceTimer: NodeJS.Timeout | null = null;
+
+  public setCloudBackupCallback(cb: () => void) {
+    this.cloudBackupCallback = cb;
+  }
+
+  public scheduleAutoBackup(debounceMs = 3500) {
+    if (this.autoBackupDebounceTimer) {
+      clearTimeout(this.autoBackupDebounceTimer);
+    }
+    this.autoBackupDebounceTimer = setTimeout(() => {
+      this.executeAutoBackup();
+    }, debounceMs);
+  }
+
+  public executeAutoBackup() {
+    try {
+      const backupDir = path.join(DATA_DIR, 'backups');
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+      const manifest = this.exportManifest();
+      const backupFile = path.join(backupDir, 'drivegram_metadata_backup.json');
+      fs.writeFileSync(backupFile, JSON.stringify(manifest, null, 2), 'utf-8');
+
+      if (this.cloudBackupCallback) {
+        this.cloudBackupCallback();
+      }
+    } catch (err: any) {
+      console.warn('[DriveGram Auto-Backup] Erro ao gravar snapshot local:', err?.message || err);
+    }
+  }
+
   private save(data: DatabaseSchema) {
     try {
       fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      this.scheduleAutoBackup();
     } catch (e) {
       console.error('Error saving database:', e);
     }
@@ -2766,6 +2801,85 @@ class Database {
     this.data.settings.lastSyncDate = new Date().toISOString();
     this.save(this.data);
     return true;
+  }
+
+  public reconcileManifest(manifest: DriveGramSyncManifest): { 
+    addedFiles: number; 
+    addedFolders: number; 
+    updated: boolean;
+    localHasNewerChanges: boolean;
+  } {
+    if (!manifest || !manifest.folders || !manifest.files) {
+      return { addedFiles: 0, addedFolders: 0, updated: false, localHasNewerChanges: false };
+    }
+
+    let addedFolders = 0;
+    let addedFiles = 0;
+    let updated = false;
+
+    // 1. Reconciliar Pastas: Adicionar pastas remotas que não existem localmente
+    const localFolderMap = new Map<string, FolderItem>(this.data.folders.map(f => [f.id, f]));
+    for (const rFolder of manifest.folders) {
+      if (!localFolderMap.has(rFolder.id)) {
+        this.data.folders.push(rFolder);
+        localFolderMap.set(rFolder.id, rFolder);
+        addedFolders++;
+        updated = true;
+      }
+    }
+
+    // 2. Reconciliar Arquivos: Adicionar arquivos remotos ausentes ou atualizar metadados do Telegram
+    const localFileMap = new Map<string, DriveItem>(this.data.files.map(f => [f.id, f]));
+    for (const rFile of manifest.files) {
+      const localFile = localFileMap.get(rFile.id);
+      if (!localFile) {
+        this.data.files.push(rFile);
+        localFileMap.set(rFile.id, rFile);
+        addedFiles++;
+        updated = true;
+      } else {
+        if (rFile.telegramMeta?.messageId && !localFile.telegramMeta?.messageId) {
+          localFile.telegramMeta = rFile.telegramMeta;
+          updated = true;
+        }
+      }
+    }
+
+    // 3. Reconciliar Coleções Especializadas (Cursos, Livros, HQs, Séries, Músicas/Podcasts, Vídeos, Red Locker)
+    const reconcileCollection = <T extends { id: string }>(localList: T[], remoteList: T[] | undefined): boolean => {
+      if (!remoteList || !Array.isArray(remoteList)) return false;
+      let colUpdated = false;
+      const idMap = new Set(localList.map(item => item.id));
+      for (const item of remoteList) {
+        if (!idMap.has(item.id)) {
+          localList.push(item);
+          idMap.add(item.id);
+          colUpdated = true;
+        }
+      }
+      return colUpdated;
+    };
+
+    if (reconcileCollection(this.data.courses, manifest.courses)) updated = true;
+    if (reconcileCollection(this.data.books, manifest.books)) updated = true;
+    if (reconcileCollection(this.data.comics, manifest.comics)) updated = true;
+    if (reconcileCollection(this.data.videos, manifest.videos)) updated = true;
+    if (reconcileCollection(this.data.series, manifest.series)) updated = true;
+    if (reconcileCollection(this.data.audioShows, manifest.audioShows)) updated = true;
+    if (reconcileCollection(this.data.adultVideos, manifest.adultVideos)) updated = true;
+    if (reconcileCollection(this.data.adultPerformers, manifest.adultPerformers)) updated = true;
+
+    // Verificar se o armazenamento local possui arquivos que ainda não foram sincronizados para o Telegram
+    const remoteFileIds = new Set(manifest.files.map(f => f.id));
+    const localHasNewerChanges = this.data.files.some(f => !remoteFileIds.has(f.id) && !f.isTrash);
+
+    if (updated) {
+      this.syncAllLibrariesWithFolderStructure();
+      this.data.settings.lastSyncDate = new Date().toISOString();
+      this.save(this.data);
+    }
+
+    return { addedFiles, addedFolders, updated, localHasNewerChanges };
   }
 
   public getStreamingMode(): StreamingMode {

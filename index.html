@@ -15,6 +15,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+      // Garante compatibilidade com o ciclo de vida do Capacitor (pause/resume) ao rodar no host local
+      window.Capacitor = window.Capacitor || {};
+      if (typeof window.Capacitor.triggerEvent !== 'function') {
+        window.Capacitor.triggerEvent = function(eventName, target, data) {
+          try {
+            const evt = new CustomEvent(eventName, { detail: data });
+            (target === 'document' ? document : window).dispatchEvent(evt);
+          } catch (_) {}
+          return true;
+        };
+      }
+    </script>
   </head>
   <body class="bg-drive-lightBg dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 font-sans antialiased select-none overscroll-none">
     <div id="root" class="h-full w-full"></div>

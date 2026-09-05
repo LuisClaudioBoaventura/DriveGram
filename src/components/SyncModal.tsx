@@ -51,8 +51,28 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   const [importingSaved, setImportingSaved] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
   const [syncingPending, setSyncingPending] = useState(false);
+  const [performingStartupSync, setPerformingStartupSync] = useState(false);
   const [pendingInfo, setPendingInfo] = useState<{ totalPending: number; totalBytesFormatted: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleActiveStartupSync = async () => {
+    setPerformingStartupSync(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/telegram/startup-sync', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFeedback({ type: 'success', message: data.message || 'Sincronização ativa e reconciliação concluídas com sucesso!' });
+        onRefreshItems();
+      } else {
+        setFeedback({ type: 'error', message: data.error || data.message || 'Erro ao executar sincronização ativa.' });
+      }
+    } catch (e: any) {
+      setFeedback({ type: 'error', message: e.message || 'Falha na conexão com o servidor.' });
+    } finally {
+      setPerformingStartupSync(false);
+    }
+  };
 
   const fetchPendingInfo = async () => {
     try {
@@ -514,15 +534,32 @@ export const SyncModal: React.FC<SyncModalProps> = ({
             )}
           </div>
 
-          {/* 3. Sincronização Automática com Telegram (Mensagens Salvas) */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-drive-darkBg dark:to-drive-darkBg border border-blue-100 dark:border-drive-darkBorder">
-            <div className="flex items-center gap-2 font-bold text-xs text-blue-700 dark:text-blue-400 mb-1">
-              <Send className="w-3.5 h-3.5" />
-              <span>Sincronização Automática com Mensagens Salvas</span>
+          {/* 3. Sincronização Automática & Contínua com Telegram (Mensagens Salvas) */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/50 via-sky-50/40 to-indigo-50/50 dark:from-drive-darkBg dark:to-drive-darkBg border border-blue-200 dark:border-blue-900/60 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2 font-bold text-xs text-blue-700 dark:text-blue-400">
+                <Send className="w-4 h-4" />
+                <span>Sincronização Ativa & Backup Contínuo de Metadados</span>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 self-start sm:self-auto">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Backup Automático Ativo (3.5s)
+              </span>
             </div>
-            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-              Os metadados das suas pastas, subpastas, cursos e anotações são salvos em uma mensagem especial nas suas Mensagens Salvas do Telegram.
+            
+            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
+              Ao iniciar o app no Desktop ou no celular, os metadados são reconciliados automaticamente com o Telegram. Qualquer alteração (inclusão, renomeação, exclusão de pastas ou arquivos) é salva em segundo plano de forma contínua em disco e nas suas Mensagens Salvas.
             </p>
+
+            {/* Sincronização Ativa Manual / Forçada */}
+            <button
+              onClick={handleActiveStartupSync}
+              disabled={performingStartupSync || syncing || !telegramState.isConnected}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-40 mb-3"
+            >
+              <RefreshCw className={`w-4 h-4 ${performingStartupSync ? 'animate-spin' : ''}`} />
+              <span>{performingStartupSync ? 'Reconciliando Metadados com o Telegram...' : '🔄 Executar Sincronização Ativa Agora (Reconciliar com Nuvem)'}</span>
+            </button>
 
             <div className="flex flex-col sm:flex-row gap-2">
               <button

@@ -540,7 +540,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
       {!onTogglePlayProp && (
         <audio
           ref={audioRef}
-          src={activeAudioFile ? `/api/stream/${activeAudioFile.id}` : undefined}
+          src={(activeAudioFile?.id || activeChapter?.fileId) ? `/api/stream/${activeAudioFile?.id || activeChapter?.fileId}` : undefined}
           onTimeUpdate={(e) => setLocalCurrentTime((e.target as HTMLAudioElement).currentTime)}
           onLoadedMetadata={(e) => setLocalDuration((e.target as HTMLAudioElement).duration)}
           onEnded={handleAudioEnded}

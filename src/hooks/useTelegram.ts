@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TelegramAuthState, StreamingMode, CacheDurationConfig } from '../types/index.js';
 
 export function useTelegram() {
@@ -18,6 +18,7 @@ export function useTelegram() {
   });
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const startupSyncTriggered = useRef(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -25,6 +26,18 @@ export function useTelegram() {
       if (res.ok) {
         const data = await res.json();
         setAuthState(data);
+        if (data.isConnected && !startupSyncTriggered.current) {
+          startupSyncTriggered.current = true;
+          fetch('/api/telegram/startup-sync', { method: 'POST' })
+            .then(r => r.json())
+            .then(syncRes => {
+              if (syncRes.success) {
+                console.log('[DriveGram] Sincronização ativa concluída:', syncRes.message);
+                window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: syncRes }));
+              }
+            })
+            .catch(() => {});
+        }
       }
     } catch (e) {
       console.warn('Backend offline, using local state');
@@ -100,11 +113,14 @@ export function useTelegram() {
   const disconnect = async () => {
     setLoading(true);
     try {
-      await fetch('/api/telegram/disconnect', { method: 'POST' });
+      const res = await fetch('/api/telegram/disconnect', { method: 'POST' });
+      const data = await res.json().catch(() => ({ success: true }));
       await fetchStatus();
       setLoading(false);
-    } catch (e) {
+      return data;
+    } catch (e: any) {
       setLoading(false);
+      return { success: false, message: e.message };
     }
   };
 
@@ -129,6 +145,7 @@ export function useTelegram() {
       const data = await res.json();
       await fetchStatus();
       setSyncing(false);
+      return data;
     } catch (e: any) {
       setSyncing(false);
       return { success: false, message: e.message };

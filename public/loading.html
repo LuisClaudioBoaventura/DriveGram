@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>DriveGram</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    body {
+      background-color: #0b0f19;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow: hidden;
+    }
+    .container {
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .logo-glow {
+      position: relative;
+      margin-bottom: 24px;
+    }
+    .logo-glow::before {
+      content: '';
+      position: absolute;
+      inset: -16px;
+      background: radial-gradient(circle, rgba(37, 99, 235, 0.35) 0%, rgba(37, 99, 235, 0) 70%);
+      border-radius: 50%;
+      animation: pulse-glow 2.5s ease-in-out infinite alternate;
+    }
+    @keyframes pulse-glow {
+      0% { transform: scale(0.9); opacity: 0.5; }
+      100% { transform: scale(1.15); opacity: 0.9; }
+    }
+    .logo-box {
+      position: relative;
+      width: 84px;
+      height: 84px;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      fill: none;
+      stroke: #38bdf8;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 2px 8px rgba(56, 189, 248, 0.5));
+    }
+    h1 {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 36px;
+      font-weight: 500;
+    }
+    .status-card {
+      width: 100%;
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 16px 18px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .spinner {
+      width: 22px;
+      height: 22px;
+      border: 2.5px solid rgba(56, 189, 248, 0.2);
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .status-content {
+      text-align: left;
+      flex: 1;
+      overflow: hidden;
+    }
+    .status-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .status-sub {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .progress-bar-bg {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 99px;
+      margin-top: 20px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      width: 25%;
+      height: 100%;
+      background: linear-gradient(90deg, #2563eb, #38bdf8);
+      border-radius: 99px;
+      transition: width 0.3s ease;
+      animation: progress-indeterminate 2s infinite ease-in-out;
+    }
+    @keyframes progress-indeterminate {
+      0% { transform: translateX(-100%); width: 30%; }
+      50% { transform: translateX(50%); width: 50%; }
+      100% { transform: translateX(200%); width: 30%; }
+    }
+    .error-container {
+      display: none;
+      margin-top: 20px;
+      width: 100%;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .retry-btn {
+      width: 100%;
+      padding: 12px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .log-text {
+      font-size: 10px;
+      font-family: monospace;
+      color: #94a3b8;
+      background: rgba(0,0,0,0.4);
+      padding: 8px;
+      border-radius: 8px;
+      text-align: left;
+      max-height: 80px;
+      overflow-y: auto;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo-glow">
+      <div class="logo-box">
+        <!-- Cloud Storage + Media Icon -->
+        <svg class="logo-icon" viewBox="0 0 24 24">
+          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+          <polygon points="12 11 12 15 15 13" fill="#38bdf8" stroke="none" />
+        </svg>
+      </div>
+    </div>
+
+    <h1>DriveGram</h1>
+    <p class="subtitle">Servidor & Nuvem Local Android</p>
+
+    <div class="status-card">
+      <div class="spinner" id="spinner"></div>
+      <div class="status-content">
+        <div class="status-title" id="statusTitle">Iniciando servidor local...</div>
+        <div class="status-sub" id="statusSub">Carregando motor interno Node.js</div>
+      </div>
+    </div>
+
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill"></div>
+    </div>
+
+    <div class="error-container" id="errorContainer">
+      <p style="font-size: 12px; color: #f87171; margin-bottom: 4px;">Demorando mais do que o esperado para iniciar.</p>
+      <button class="retry-btn" onclick="retryConnection()">Tentar Novamente</button>
+      <div class="log-text" id="logBox"></div>
+    </div>
+  </div>
+
+  <script>
+    let attempts = 0;
+    const maxAttempts = 75; // ~15 seconds total
+    const statusTitle = document.getElementById('statusTitle');
+    const statusSub = document.getElementById('statusSub');
+    const spinner = document.getElementById('spinner');
+    const errorContainer = document.getElementById('errorContainer');
+    const logBox = document.getElementById('logBox');
+
+    function log(msg) {
+      if (logBox) {
+        logBox.style.display = 'block';
+        logBox.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + msg + '</div>';
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+    }
+
+    async function checkHealth() {
+      attempts++;
+      try {
+        if (attempts === 5) {
+          statusTitle.textContent = 'Carregando banco local...';
+          statusSub.textContent = 'Preparando arquivos e pastas';
+        } else if (attempts === 12) {
+          statusTitle.textContent = 'Conectando interface...';
+          statusSub.textContent = 'Sincronizando rotas locais';
+        }
+
+        const res = await fetch('http://127.0.0.1:5000/api/health', {
+          signal: AbortSignal.timeout(600)
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          statusTitle.textContent = 'Servidor Pronto!';
+          statusSub.textContent = 'Abrindo DriveGram...';
+          spinner.style.borderTopColor = '#34d399';
+          log('Healthcheck OK: ' + JSON.stringify(data));
+          
+          setTimeout(() => {
+            window.location.replace('http://127.0.0.1:5000/');
+          }, 300);
+          return;
+        }
+      } catch (err) {
+        // Still booting
+      }
+
+      if (attempts < maxAttempts) {
+        setTimeout(checkHealth, 200);
+      } else {
+        spinner.style.display = 'none';
+        statusTitle.textContent = 'Aguardando inicialização';
+        statusSub.textContent = 'O motor local ainda está processando';
+        errorContainer.style.display = 'flex';
+        log('Timeout atingido após ' + attempts + ' tentativas');
+      }
+    }
+
+    function retryConnection() {
+      attempts = 0;
+      spinner.style.display = 'block';
+      errorContainer.style.display = 'none';
+      statusTitle.textContent = 'Tentando reconectar...';
+      statusSub.textContent = 'Checando porta 5000';
+      checkHealth();
+    }
+
+    // Iniciar verificação 200ms após carregar a tela
+    setTimeout(checkHealth, 200);
+  </script>
+</body>
+</html>

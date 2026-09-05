@@ -393,7 +393,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   controls
                   autoPlay
                   playsInline
-                  crossOrigin="anonymous"
                   onEnded={handleMediaEnded}
                   onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
                   src={`/api/stream/${file.id}`}

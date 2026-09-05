@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+// @ts-ignore
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -17,10 +19,10 @@ import {
 } from 'lucide-react';
 import { DriveItem } from '../types/index.js';
 
-// Setup pdf.js worker using unpkg / cdnjs or local module worker
-if (typeof window !== 'undefined' && 'Worker' in window) {
+// Setup pdf.js worker using local bundled asset from Vite
+if (typeof window !== 'undefined') {
   try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
   } catch (e) {
     console.warn('Failed to set PDF worker src', e);
   }
@@ -73,10 +75,15 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
 
     const loadPdf = async () => {
       try {
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Erro ao baixar PDF: HTTP ${response.status}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        if (isCancelled) return;
+
         const loadingTask = pdfjsLib.getDocument({
-          url: fileUrl,
-          cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/cmaps/`,
-          cMapPacked: true,
+          data: new Uint8Array(arrayBuffer)
         });
 
         const doc = await loadingTask.promise;

@@ -8,6 +8,11 @@ import QRCode from 'qrcode';
 import { TelegramAuthState, DriveGramSyncManifest } from '../src/types/index.js';
 import { db } from './database.js';
 
+const toBigInt = (v: any) => {
+  const fn = typeof bigInt === 'function' ? bigInt : (bigInt as any).default;
+  return fn(v);
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -560,6 +565,62 @@ class TelegramService {
     }
   }
 
+  /**
+   * Processo ativo de sincronização de metadados na inicialização do aplicativo
+   */
+  public async performStartupMetadataSync(): Promise<{ success: boolean; message: string; details?: any }> {
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) {
+      return { success: false, message: 'Telegram não conectado para sincronização ativa de inicialização.' };
+    }
+
+    try {
+      console.log('[DriveGram Startup Sync] Verificando backups no Telegram (Mensagens Salvas)...');
+      const messages = await client.getMessages('me', {
+        search: '#drivegram_metadata_sync',
+        limit: 3
+      });
+
+      if (!messages || messages.length === 0) {
+        console.log('[DriveGram Startup Sync] Nenhum backup prévio encontrado. Enviando manifesto inicial...');
+        const initialSync = await this.syncMetadataToTelegram();
+        return {
+          success: true,
+          message: 'Manifesto inicial sincronizado com o Telegram com sucesso!',
+          details: { initial: true, messageId: initialSync.messageId }
+        };
+      }
+
+      const latestMsg = messages[0];
+      const buffer = await client.downloadMedia(latestMsg) as Buffer;
+
+      if (!buffer) {
+        return { success: false, message: 'Falha ao baixar mensagem de metadados do Telegram.' };
+      }
+
+      const manifestText = buffer.toString('utf-8');
+      const remoteManifest: DriveGramSyncManifest = JSON.parse(manifestText);
+
+      const reconcileResult = db.reconcileManifest(remoteManifest);
+      console.log(`[DriveGram Startup Sync] Reconciliação concluída: +${reconcileResult.addedFiles} arquivos, +${reconcileResult.addedFolders} pastas.`);
+
+      // Se houver novos arquivos locais que não existiam na nuvem, atualiza o manifesto no Telegram
+      if (reconcileResult.localHasNewerChanges) {
+        console.log('[DriveGram Startup Sync] Dados locais possuem novos itens. Atualizando backup na nuvem...');
+        await this.syncMetadataToTelegram();
+      }
+
+      return {
+        success: true,
+        message: `Sincronização ativa concluída com sucesso! (${reconcileResult.addedFiles} arquivos, ${reconcileResult.addedFolders} pastas integrados)`,
+        details: reconcileResult
+      };
+    } catch (e: any) {
+      console.error('[DriveGram Startup Sync] Erro durante a sincronização de inicialização:', e);
+      return { success: false, message: e.message || 'Erro durante a sincronização de inicialização' };
+    }
+  }
+
   private inFlightDownloads = new Map<string, Promise<Buffer | null>>();
   private inFlightCallbacks = new Map<string, Set<(progressPct: number, transferred: number, total: number) => void>>();
 
@@ -873,6 +934,41 @@ class TelegramService {
       const media = msg.media as any;
       const contentLength = (end - start) + 1;
 
+      // Build proper InputFileLocation from document or photo
+      const { Api } = await import('telegram');
+      let fileLocation: any = null;
+      let dcId: number | undefined = undefined;
+
+      if (media?.document || media?.className === 'MessageMediaDocument') {
+        const doc = media.document || media;
+        fileLocation = new Api.InputDocumentFileLocation({
+          id: doc.id,
+          accessHash: doc.accessHash,
+          fileReference: doc.fileReference,
+          thumbSize: ''
+        });
+        dcId = doc.dcId;
+      } else if (media?.photo || media?.className === 'MessageMediaPhoto') {
+        const photo = media.photo || media;
+        const lastSize = (photo.sizes || []).at(-1);
+        fileLocation = new Api.InputPhotoFileLocation({
+          id: photo.id,
+          accessHash: photo.accessHash,
+          fileReference: photo.fileReference,
+          thumbSize: lastSize?.type || 's'
+        });
+        dcId = photo.dcId;
+      }
+
+      if (!fileLocation) {
+        return false;
+      }
+
+      // MTProto upload.getFile strictly requires offset to be aligned to 4096 (4 KB)
+      const CHUNK_ALIGN = 4096;
+      const alignedStart = Math.floor(start / CHUNK_ALIGN) * CHUNK_ALIGN;
+      const skipPrefix = start - alignedStart;
+
       if (!res.headersSent) {
         res.writeHead(206, {
           'Content-Range': `bytes ${start}-${end}/${fileSize || contentLength}`,
@@ -880,59 +976,79 @@ class TelegramService {
           'Content-Length': contentLength,
           'Content-Type': mimeType || 'application/octet-stream',
           'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+          'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges, Content-Type',
           'Cache-Control': 'no-cache'
         });
       }
 
-      // Build proper InputFileLocation from document or photo
       try {
-        const { Api } = await import('telegram');
-        let fileLocation: any = null;
-
-        if (media?.document || media?.className === 'MessageMediaDocument') {
-          const doc = media.document || media;
-          fileLocation = new Api.InputDocumentFileLocation({
-            id: doc.id,
-            accessHash: doc.accessHash,
-            fileReference: doc.fileReference,
-            thumbSize: ''
-          });
-        } else if (media?.photo || media?.className === 'MessageMediaPhoto') {
-          const photo = media.photo || media;
-          const lastSize = (photo.sizes || []).at(-1);
-          fileLocation = new Api.InputPhotoFileLocation({
-            id: photo.id,
-            accessHash: photo.accessHash,
-            fileReference: photo.fileReference,
-            thumbSize: lastSize?.type || 's'
-          });
-        }
-
-        if (!fileLocation) {
-          if (!res.writableEnded && !res.destroyed) try { res.end(); } catch (_) {}
-          return false;
-        }
-
-        const iter = (client as any).iterDownload({
-          file: fileLocation,
-          offset: bigInt(start || 0),
-          requestSize: 256 * 1024
-        });
-
+        const CHUNK_SIZE = 128 * 1024; // 128 KB chunks
+        let currentOffset = alignedStart;
+        let skipped = 0;
         let bytesSent = 0;
-        for await (const chunk of iter) {
+        let sender = dcId ? await client.getSender(dcId) : undefined;
+
+        while (bytesSent < contentLength) {
           if (res.destroyed || (res as any).closed || res.writableEnded) break;
+
+          let chunk: Buffer;
+          try {
+            const req = new Api.upload.GetFile({
+              location: fileLocation,
+              offset: toBigInt(currentOffset),
+              limit: CHUNK_SIZE,
+            });
+
+            const result: any = sender
+              ? await client.invokeWithSender(req, sender)
+              : await client.invoke(req);
+
+            if (!result || !result.bytes || result.bytes.length === 0) {
+              break; // EOF
+            }
+            chunk = result.bytes;
+          } catch (invokeErr: any) {
+            if (invokeErr.errorMessage === 'FILEREF_UPGRADE_NEEDED' || invokeErr.name === 'FileMigrateError') {
+              if (invokeErr.newDc) {
+                sender = await client.getSender(invokeErr.newDc);
+                continue;
+              }
+            }
+            throw invokeErr;
+          }
+
+          currentOffset += chunk.length;
+
+          let dataToSend = chunk;
+          if (skipped < skipPrefix) {
+            const needToSkip = skipPrefix - skipped;
+            if (dataToSend.length <= needToSkip) {
+              skipped += dataToSend.length;
+              continue;
+            } else {
+              dataToSend = dataToSend.subarray(needToSkip);
+              skipped = skipPrefix;
+            }
+          }
+
           const remaining = contentLength - bytesSent;
           if (remaining <= 0) break;
-          const chunkToSend = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+          const chunkToSend = dataToSend.length > remaining ? dataToSend.subarray(0, remaining) : dataToSend;
+
           res.write(chunkToSend);
           bytesSent += chunkToSend.length;
-          if (bytesSent >= contentLength) break;
+
+          if (chunk.length < CHUNK_SIZE) {
+            break; // last chunk reached
+          }
         }
+
         if (!res.writableEnded && !res.destroyed) res.end();
         return true;
-      } catch (iterErr: any) {
-        console.warn(`[DriveGram Direct Stream] error for msg ${messageId}:`, iterErr?.message);
+      } catch (streamErr: any) {
+        console.warn(`[DriveGram Direct Stream] error for msg ${messageId}:`, streamErr?.message);
         if (!res.writableEnded && !res.destroyed) try { res.end(); } catch (_) {}
         return false;
       }
