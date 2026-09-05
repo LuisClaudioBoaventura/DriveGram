@@ -2,9 +2,7 @@
 
 <div align="center">
 
-
 <img width="1855" height="917" alt="DriveGram - Home" src="https://github.com/user-attachments/assets/02e37ab8-f9ef-4908-9eff-5abc638a7db4" />
-
 
 **Seu ecossistema completo de armazenamento em nuvem ilimitado, streaming e bibliotecas digitais — com interface moderna inspirada no Google Drive e OneDrive, potencializado pela infraestrutura do Telegram.**
 
@@ -14,6 +12,8 @@
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-3.4-38B2AC.svg)](https://tailwindcss.com/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![Telegram MTProto](https://img.shields.io/badge/Telegram-MTProto%20GramJS-2CA5E0.svg)](https://telegram.org/)
+[![Android Capacitor](https://img.shields.io/badge/Android-Capacitor%208-brightgreen.svg)](https://capacitorjs.com/)
+[![Node.js Mobile](https://img.shields.io/badge/Node.js%20Mobile-Embedded%20Engine-orange.svg)](https://github.com/red-mobile/nodejs-mobile-cordova)
 
 </div>
 
@@ -25,8 +25,9 @@ O **DriveGram** transforma as **Mensagens Salvas (*Saved Messages*)** do seu **T
 
 Esqueça as limitações de espaço dos serviços tradicionais pagos. No DriveGram você conta com:
 - **Armazenamento 100% Ilimitado e Gratuito**: Arquivos de até **2 GB** cada (ou até **4 GB** por arquivo para usuários do Telegram Premium).
-- **Streaming Instantâneo sem Download**: Assista a vídeos e ouça áudios direto da nuvem via protocolo *HTTP 206 (Partial Content)*.
-- **Zero Risco de Perda de Dados**: Seus arquivos ficam salvos nos servidores seguros do Telegram. O DriveGram mantém um manifesto de sincronização (`#drivegram_metadata_sync`) para reconstruir toda a sua estrutura de pastas, cursos e bibliotecas em qualquer novo dispositivo com 1 clique.
+- **Streaming Instantâneo sem Download Prévio**: Assista a filmes, aulas e ouça músicas/audiolivros direto da nuvem via protocolo *HTTP 206 (Partial Content)*.
+- **Ecossistema Multiplataforma (Desktop & Android APK)**: Funciona no computador (Windows/Mac/Linux) e possui aplicativo nativo Android (`.apk`) com servidor Node.js embutido que roda 100% independente no celular (sem precisar do PC ligado).
+- **Sincronização Ativa & Backup Contínuo**: Seus dados e pastas são sintetizados em manifestos seguros (`#drivegram_metadata_sync`) no Telegram, com restauração em 1 clique e política inteligente de retenção.
 
 ---
 
@@ -36,7 +37,8 @@ O DriveGram é dividido em módulos inteligentes e dedicados para cada tipo de m
 
 ### 📁 1. Meu Drive (Gerenciador de Arquivos Completo)
 - **Árvore de Diretórios Ilimitada**: Crie pastas e subpastas sem limite de profundidade, com cores personalizáveis e navegação por *Breadcrumbs* (migalhas de pão).
-- **Upload Inteligente (Drag & Drop)**: Arraste e solte arquivos individuais ou pastas inteiras diretamente para o navegador.
+- **Deduplicação Inteligente de Pastas**: Algoritmo semântico que identifica pastas padrão, remove duplicatas vazias e preserva com segurança todos os seus arquivos.
+- **Upload Inteligente (Drag & Drop)**: Arraste e solte arquivos individuais ou pastas inteiras diretamente para o aplicativo.
 - **Upload Manager Flutuante**: Gerenciador de uploads em segundo plano com barra de progresso, taxa de transferência e controle de fila.
 - **Modos de Exibição**: Alterne entre **Grade (Cards)** com miniaturas e **Lista Detalhada** com ordenação por Nome, Tamanho, Data e Tipo.
 - **Busca e Filtros Rápidos**: Encontre qualquer item instantaneamente e filtre por Vídeos, Áudios, PDFs, Documentos, Imagens, Códigos e Arquivos Compactados.
@@ -46,16 +48,14 @@ O DriveGram é dividido em módulos inteligentes e dedicados para cada tipo de m
 
 ---
 
-### 🎓 2. Cursos & Estudos (Ambiente Virtual de Aprendizagem)
+### 🎓 2. Cursos & Estudos (Ambiente Virtual de Aprendizagem - AVA)
 - **Estruturação por Módulos & Aulas**: Organize seus cursos em pastas por módulos com contagem automática de aulas e duração total.
-- **Reprodução Sequencial Automática (*Autoplay*)**:
-  - Contagem regressiva visual de 5 segundos ao término de uma aula antes de passar automaticamente para a próxima.
-  - Botões rápidos "Aula Anterior" e "Próxima Aula".
+- **Reprodução Sequencial Automática (*Autoplay*)**: Contagem regressiva visual de 5 segundos ao término de uma aula antes de avançar para a próxima.
 - **Memorização de Progresso**: O sistema memoriza o segundo exato onde você parou de assistir em cada vídeo.
 - **Marcadores de Tempo (*Timestamps*)**: Salve capítulos ou momentos importantes da aula com link clicável.
-- **Suporte a Legendas (.vtt/.srt)**: Renderização de legendas personalizadas sincronizadas.
-- **Materiais de Apoio**: Acesso direto a PDFs de slides e materiais complementares anexados ao curso.
-- **Bloco de Anotações Sincronizado**: Escreva notas de estudo individuais por aula que ficam salvas em tempo real.
+- **Legendas Automáticas (.vtt/.srt)**: Detecção e renderização automática de legendas localizadas na mesma pasta.
+- **Materiais de Apoio & PDFs**: Acesso direto a slides e apostilas anexadas ao curso.
+- **Bloco de Anotações Sincronizado**: Escreva notas individuais por aula com salvamento em tempo real.
 - **Controle de Conclusão**: Marque aulas como concluídas (check verde) e acompanhe a barra de progresso do curso.
 
 ---
@@ -64,54 +64,98 @@ O DriveGram é dividido em módulos inteligentes e dedicados para cada tipo de m
 - **Interface Estilo Netflix/Prime**: Pôsteres cinematográficos, badges de qualidade, gêneros, ano e duração.
 - **Integração com API OMDb**: Busca automática por título ou código IMDb para preencher sinopse, diretor, elenco, prêmios, classificação indicativa e notas do **IMDb** e **Metascore**.
 - **Player de Cinema Avançado**:
-  - **Picture-in-Picture (PiP) Contínuo**: Coloque o filme em janela flutuante e navegue livremente por outras abas. O botão *"Voltar para a Guia"* restaura a tela cheia instantaneamente sem recarregar nem travar.
-  - **Legendas Customizadas**: Adicione ou selecione faixas de legenda.
-  - **Capítulos & Timestamps**: Navegação direta por cenas.
+  - **Picture-in-Picture (PiP) Contínuo**: Assista em janela flutuante enquanto navega por outras abas. O botão *"Voltar para a Guia"* restaura a tela cheia instantaneamente.
+  - **Legendas Customizadas**: Seleção e upload de faixas de legendas.
+  - **Capítulos & Timestamps**: Navegação direta por cenas e momentos-chave.
   - **Atalhos de Teclado**: Espaço (Play/Pause), Setas (Avançar/Retroceder 10s), `F` (Tela Cheia), `M` (Mudo).
-- **Gerenciador de Categorias**: Crie e personalize seus próprios gêneros (Ficção, Ação, Clássicos, etc.).
+- **Gerenciador de Categorias**: Crie e personalize seus próprios gêneros cinematográficos.
 
 ---
 
 ### 📹 4. Vídeos & Mídias Pessoais (Memórias de Família e Vlogs)
 - **Biblioteca Dedicada**: Espaço próprio para vídeos de viagens, família, eventos, vlogs e gravações pessoais.
 - **Filtros Avançados**: Filtre por Categorias, Pessoas presentes, Local do evento, Data e Tags personalizadas.
-- **Banner Padronizado**: Visual clean e premium integrado ao tema.
-- **Player com Histórico**: Retoma o vídeo do ponto exato onde você pausou.
+- **Player com Histórico**: Retoma cada vídeo do ponto exato onde você pausou.
 
 ---
 
 ### 🎧 5. Livros & Audiolivros (Estúdio Hi-Fi & Leitor de E-books)
-- **Suporte Híbrido**: Áudios (MP3, M4A, AAC) + Livros Digitais (PDF, EPUB, CBR, CBZ).
+- **Suporte Híbrido**: Áudios (MP3, M4A, AAC, FLAC) + Livros Digitais (PDF, EPUB, CBR, CBZ).
 - **3 Modos de Visualização**:
-  1. **Modo Apenas Áudio (Padrão)**:
-     - **Layout Adaptativo Inteligente**: Quando a coluna de capítulos é colapsada, a tela se expande em um formato *Widescreen de Estúdio Hi-Fi* de 2 colunas com capa em destaque, iluminação dinâmica no play, barra de progresso ampla e botões de transporte grandes.
-     - Seletor rápido de velocidade (`0.75x`, `1x`, `1.25x`, `1.5x`, `2x`).
-     - Criador direto de marcadores/citações por tempo.
+  1. **Modo Apenas Áudio (Padrão)**: Layout adaptativo inteligente estilo *Widescreen de Estúdio Hi-Fi* com capa em destaque, iluminação dinâmica, barra de progresso ampla e seletor de velocidade (`0.75x` a `2x`).
   2. **Modo Ouvir & Ler (Dividido / Split)**: Player de áudio compacto à esquerda e leitor de PDF à direita para leitura acompanhada.
-  3. **Modo Leitor PDF/E-book**: Leitor de tela cheia para leitura sem áudio.
-- **Miniplayer Flutuante Global**: Continue ouvindo o audiolivro em uma barra flutuante no canto da tela enquanto navega em outras páginas do DriveGram.
-- **Temporizador de Sono (*Sleep Timer*)**: Programe para pausar o áudio automaticamente após 15, 30, 45 ou 60 minutos.
+  3. **Modo Leitor de E-book/PDF**: Leitor imersivo de tela cheia.
+- **Miniplayer Flutuante Global**: Continue ouvindo o audiolivro em uma barra flutuante enquanto navega em qualquer outra aba.
+- **Temporizador de Sono (*Sleep Timer*)**: Pausa o áudio automaticamente após 15, 30, 45 ou 60 minutos.
+- **Integração Google Books**: Busca automática de capas e metadados literários.
 
 ---
 
-### 📚 6. Quadrinhos, HQs & Mangás
-- **Leitor Dedicado**: Suporte completo a leitura de quadrinhos e mangás em formatos **.cbr**, **.cbz**, **.pdf** e **.epub**.
-- **Modo Leitura**: Ajuste de zoom, modo noturno, ferramenta de lupa/ampliação, transição suave entre páginas e leitor interativo de EPUB.
+### 📚 6. Quadrinhos, HQs & Mangás (Comics Studio)
+- **Suporte Completo a Formatos**: Leitura direta de arquivos **.cbr**, **.cbz**, **.pdf** e **.epub**.
+- **Descompactação em Tempo Real**: Descompactação nativa de arquivos compactados no backend via WebAssembly (`node-unrar-js` + `unrar.wasm`) e `jszip`.
+- **Ferramenta de Lupa Interativa (Magnifier Tool)**: Lupa com ampliação ajustável sob o cursor ou toque, ideal para ler balões de fala e detalhes de arte no Desktop e no APK Android.
+- **Modos de Visualização**: Ajuste de largura, modo tela cheia, navegação por miniaturas e transição suave entre páginas.
 
 ---
 
 ### 📺 7. Séries & Animes
 - **Organização em Temporadas & Episódios**: Painel de exibição com sinopse, capa, contagem de episódios e controle de episódios já assistidos.
+- **Histórico de Reprodução**: Retomada automática de onde parou em cada episódio.
 
 ---
 
 ### 🎙️ 8. Podcasts & Programas de Áudio
-- **Gerenciador de Episódios**: Controle de audição, notas, marcadores e histórico de reprodução.
+- **Gerenciador de Episódios**: Controle de audição, notas, marcadores de tempo e histórico de reprodução.
+- **Player Flutuante Dedicado**: Navegue livremente pelo app enquanto ouve seus podcasts favoritos.
 
 ---
 
-### 🔒 9. Cofre Privado (Pasta Segura)
-- **Proteção por Senha**: Área restrita com senha e bloqueio automático para proteger arquivos e pastas confidenciais.
+### 📥 9. Importador do YouTube
+- **Download & Envio Direto**: Baixe vídeos ou faixas de áudio do YouTube colando a URL no modal de importação.
+- **Destino Personalizado**: Escolha em qual pasta do "Meu Drive" o arquivo será salvo antes de ser sincronizado com a nuvem do Telegram.
+
+---
+
+### 🔐 10. Red Locker (Cofre Seguro)
+- **Área Protegida por Senha/PIN**: Acesso restrito com bloqueio automático por tempo de inatividade.
+- **Catálogo Especializado**: Gestão de atores/performers, estúdios, categorias e tags personalizadas.
+- **Estrutura Isolada**: Mantém mídias confidenciais totalmente separadas da navegação pública.
+
+---
+
+## 🔄 Sincronização Inteligente & Política de Retenção
+
+O DriveGram possui uma arquitetura de sincronização de metadados de última geração:
+
+1. **Startup Sync Ativo**:
+   - Ao iniciar o aplicativo (Desktop ou APK Android), se já houver uma sessão ativa do Telegram, o app verifica imediatamente as Mensagens Salvas por manifestos mais recentes (`#drivegram_metadata_sync`), trazendo atualizações feitas em outros dispositivos.
+2. **Auto-Backup Reativo**:
+   - Sempre que você criar, editar, mover ou excluir um arquivo/pasta, um backup automático em segundo plano é agendado com debounce inteligente (3.5s) e gravado na nuvem.
+3. **Política de Retenção & Limpeza de Histórico**:
+   - Para não sobrecarregar as Mensagens Salvas com dezenas de mensagens antigas, o DriveGram aplica uma política de retenção configurável (`metadataRetentionCount`, padrão = 1). Ele apaga automaticamente as mensagens de sincronização anteriores, mantendo apenas a versão mais atualizada.
+4. **Primeira Inicialização Limpa**:
+   - Em novas instalações sem login, a base de dados inicia 100% zerada (0 arquivos, 0 MB), sem carregar dados fictícios antigos. Após o primeiro login, os metadados são restaurados automaticamente da sua nuvem.
+
+---
+
+## 📱 Aplicativo Android Nativo (.APK)
+
+O DriveGram conta com suporte nativo a Android com **Capacitor 8** e **Node.js Mobile**:
+
+- **Servidor Node.js Embutido**: O backend Express + GramJS roda localmente dentro do próprio dispositivo Android através do `libnode.so` (compilado para arquiteturas `arm64-v8a`, `armeabi-v7a` e `x86_64`).
+- **Independência Total**: O APK não depende de nenhum computador ligado nem de servidores externos intermediários.
+- **Health Check de Inicialização**: A Activity principal do Android monitora o boot do servidor embutido via `/api/health` antes de exibir a interface, evitando telas brancas ou erros de conexão.
+
+### Como Gerar o APK do Android:
+```bash
+# 1. Compilar o frontend e sincronizar o servidor embutido
+npm run mobile:sync
+
+# 2. Gerar o APK de instalação diretamente (requer Android SDK / Gradle)
+npm run mobile:apk
+```
+O arquivo final compilado estará disponível na raiz do projeto como **`DriveGram.apk`**.
 
 ---
 
@@ -121,166 +165,95 @@ O DriveGram é dividido em módulos inteligentes e dedicados para cada tipo de m
 | :--- | :--- |
 | **Frontend** | React 18, TypeScript, Tailwind CSS, Lucide Icons, Vite |
 | **Backend** | Node.js, Express, TypeScript, GramJS (Telegram MTProto Client) |
-| **Banco de Dados Local** | SQLite com persistência em JSON e sincronização em nuvem |
-| **Streaming** | Suporte a HTTP 206 (Partial Content) para streaming sem buffering |
-| **APIs Externas** | OMDb API (Open Movie Database) |
+| **Mobile (Android)** | Capacitor 8, Node.js Mobile (`@red-mobile/nodejs-mobile-cordova`), esbuild |
+| **Descompactação & Formatos** | WebAssembly `node-unrar-js` (`unrar.wasm`), `jszip`, `pdfjs-dist`, `epubjs` |
+| **Banco de Dados Local** | Persistência em JSON com sincronização em nuvem e deduplicação semântica |
+| **Streaming** | Protocolo HTTP 206 (Partial Content) com suporte a streaming direto e cache local |
+| **APIs Externas** | OMDb API (Filmes), Google Books API (Livros) |
 
 ---
 
-## 🚀 Guia de Instalação e Execução Passo a Passo (Para Iniciantes)
-
-Este guia foi feito para que **qualquer pessoa, mesmo sem conhecimento prévio de programação**, consiga instalar e rodar o DriveGram no seu computador em poucos minutos.
+## 🚀 Guia de Instalação e Execução (Desktop)
 
 ### 📋 Pré-requisitos Básicos
+- **Node.js (Versão 18 ou superior)**: [nodejs.org](https://nodejs.org/) (Versão LTS recomendada).
+- **Git** (Opcional): [git-scm.com](https://git-scm.com/).
 
-Antes de começar, você precisa ter instalado no seu computador:
-
-1. **Node.js (Versão 18 ou superior)**:
-   - Acesse [nodejs.org](https://nodejs.org/) e baixe a versão **LTS** (Recomendada).
-   - Execute o instalador baixado e avance clicando em *Next* até concluir.
-2. **Git (Opcional, mas recomendado)**:
-   - Acesse [git-scm.com](https://git-scm.com/) e instale a versão para seu sistema operacional.
-
----
-
-### 📥 Passo 1: Baixar o Projeto
-
-#### Opção A (Com Git - Mais Rápido):
-Abra o **Prompt de Comando (CMD)** ou o **PowerShell** no Windows (ou Terminal no Mac/Linux) e execute:
+### 📥 1. Clonar ou Baixar o Repositório
 ```bash
 git clone https://github.com/LuisClaudioBoaventura/DriveGram.git
+cd DriveGram
 ```
 
-#### Opção B (Sem Git - Download Direto):
-1. No topo desta página do GitHub, clique no botão verde **`<> Code`**.
-2. Clique em **`Download ZIP`**.
-3. Extraia o arquivo `.zip` para uma pasta de sua preferência (ex: em `Documentos` ou `Downloads`).
+### 📦 2. Instalar Dependências
+```bash
+npm install
+```
 
----
-
-### 📦 Passo 2: Acessar a Pasta e Instalar as Dependências
-
-1. Abra o terminal (PowerShell, CMD ou Terminal) dentro da pasta onde o projeto foi descompactado/clonado:
-   ```bash
-   cd "caminho/para/o/Projeto - DriveGram"
-   ```
-2. Execute o comando para baixar todas as dependências automaticamente:
-   ```bash
-   npm install
-   ```
-   > ⏳ *Aguarde alguns instantes enquanto o instalador baixa os pacotes necessários.*
-
----
-
-### ⚡ Passo 3: Iniciar o DriveGram
-
-Para rodar o backend e o frontend juntos com um único comando, digite no terminal:
+### ⚡ 3. Iniciar o DriveGram
 ```bash
 npm start
 ```
-*(ou se preferir o modo de desenvolvimento: `npm run dev`)*
-
-Assim que os servidores iniciarem, você verá mensagens parecidas com:
-- `Backend rodando na porta 5000: http://localhost:5000`
-- `Frontend disponível em: http://localhost:3000`
+Acesse no seu navegador: **`http://localhost:3000`** (backend na porta `5000`).
 
 ---
 
-### 🌐 Passo 4: Acessar no Navegador
-
-Abra o seu navegador de internet (Google Chrome, Edge, Firefox, Brave, Safari, etc.) e acesse o endereço:
-👉 **[http://localhost:3000](http://localhost:3000)**
-
-Pronto! O DriveGram estará aberto e pronto para uso! 🎉
-
----
-
-## 🔑 Passo 5: Conectar sua Conta do Telegram
+## 🔑 Conexão com o Telegram
 
 Para utilizar o armazenamento ilimitado em nuvem:
 
-1. Acesse o portal oficial do Telegram: **[my.telegram.org](https://my.telegram.org)**.
-2. Faça login informando seu número de telefone (com código do país e DDD, ex: `+55 11 99999-9999`) e confirme com o código recebido no seu aplicativo Telegram.
-3. Clique na opção **"API Development Tools"**.
-4. Crie uma aplicação preenchendo os campos básicos (App title e Short name podem ser `DriveGram`).
-5. Copie os dois valores gerados:
-   - **`api_id`** (número)
-   - **`api_hash`** (código de letras e números)
-6. No DriveGram, clique no botão **"Conectar Telegram"** no canto superior direito:
-   - Insira o `api_id`, `api_hash` e o seu número de telefone.
-   - Digite o código de confirmação que o Telegram enviará para o seu app.
-   - *(Se você tiver autenticação de 2 fatores ativada, insira sua senha quando solicitado).*
+1. Acesse **[my.telegram.org](https://my.telegram.org)** e faça login com seu número de telefone.
+2. Acesse **"API Development Tools"** e crie uma aplicação para obter o **`api_id`** e o **`api_hash`**.
+3. No DriveGram, clique em **"Conectar Telegram"**:
+   - **Opção A (QR Code)**: Escaneie o QR Code diretamente pelo aplicativo do Telegram no celular (*Configurações ➔ Dispositivos ➔ Conectar dispositivo*).
+   - **Opção B (Código SMS/Telegram)**: Insira seu telefone com DDD (ex: `+55 11 99999-9999`) e informe o código recebido no app do Telegram (com suporte a senha de 2 Fatores / 2FA).
 
-> 🔒 **Sua privacidade é total**: O DriveGram roda **100% localmente na sua máquina**. Suas credenciais e dados nunca são enviados para servidores de terceiros.
+> 🔒 **Privacidade Absoluta**: O DriveGram roda **100% localmente no seu dispositivo**. Nenhuma credencial, token ou arquivo passa por servidores de terceiros.
 
 ---
 
-## 🎬 Passo 6: Configurar a Chave do OMDb (Opcional - Para Pôsteres de Filmes)
+## 🖥️ Atalho na Área de Trabalho (Windows)
 
-Para que o DriveGram busque automaticamente sinopses, pôsteres e notas do IMDb para os seus filmes:
-
-1. Acesse **[omdbapi.com/apikey.aspx](https://www.omdbapi.com/apikey.aspx)**.
-2. Selecione **"FREE (1,000 daily requests)"**, digite seu e-mail e nome.
-3. Você receberá a chave no seu e-mail (clique no link de ativação enviado).
-4. Na biblioteca de **Filmes** do DriveGram, clique em **"Chave OMDb"** e cole sua chave.
+Para iniciar o aplicativo com apenas 1 clique:
+- Dê dois cliques no arquivo **`Criar_Atalho_Desktop.bat`**.
+- Um atalho **DriveGram** será criado na sua Área de Trabalho, iniciando automaticamente os servidores e abrindo a aplicação.
 
 ---
 
-## 🖥️ Passo 7: Criar um Atalho na Área de Trabalho (Iniciar com 1 Clique)
-
-Para não precisar abrir o terminal toda vez que quiser usar o DriveGram, você pode criar um atalho prático na sua Área de Trabalho:
-
-### ⚡ Método A: Criador Automático de Atalho (Windows)
-1. Abra a pasta do projeto no seu computador.
-2. Dê **dois cliques** no arquivo **`Criar_Atalho_Desktop.bat`**.
-3. Um atalho com o nome **DriveGram** será criado instantaneamente na sua Área de Trabalho!
-4. **Como usar**: Basta dar 2 cliques no atalho `DriveGram` no seu Desktop. Ele iniciará automaticamente os servidores e abrirá a aplicação no seu navegador!
-
-### 🖱️ Método B: Criar Atalho Manual (Windows)
-1. Dentro da pasta do projeto, clique com o **botão direito** no arquivo **`iniciar.bat`**.
-2. Selecione **`Enviar para`** ➔ **`Área de trabalho (criar atalho)`**.
-3. Pronto! Renomeie o atalho para **DriveGram** e execute quando quiser.
-
-### 🌐 Método C: Instalar como Aplicativo Nativo (Chrome / Edge / Brave)
-Você também pode transformar o DriveGram em um aplicativo de janela independente (sem barras de navegação):
-1. Com o DriveGram aberto no navegador (`http://localhost:3000`), clique no menu de **3 pontinhos** no canto superior direito do navegador.
-2. Vá em **"Salvar e Compartilhar"** (ou "Mais Ferramentas") ➔ **"Instalar DriveGram"** ou **"Criar Atalho..."**.
-3. Marque a opção **"Abrir como janela"** e clique em **Criar / Instalar**.
-4. O DriveGram agora aparecerá como um aplicativo nativo na sua barra de tarefas e no menu Iniciar!
-
----
-
-## ❓ Perguntas Frequentes (FAQ & Dicas)
+## ❓ Perguntas Frequentes (FAQ)
 
 <details>
 <summary><b>1. Os arquivos realmente ficam salvos no Telegram?</b></summary>
-Sim! Todos os arquivos enviados pelo DriveGram são gravados nas suas <i>Mensagens Salvas</i> do Telegram de forma privada, segura e ilimitada.
+Sim! Todos os arquivos enviados pelo DriveGram são gravados nas suas <i>Mensagens Salvas</i> do Telegram de forma privada, criptografada e ilimitada.
 </details>
 
 <details>
-<summary><b>2. O que acontece se eu formatar o computador ou mudar de PC?</b></summary>
-Basta instalar o DriveGram no novo computador, conectar a mesma conta do Telegram e clicar em <b>"Restaurar do Telegram"</b>. O DriveGram lerá o manifesto <code>#drivegram_metadata_sync</code> e restaurará instantaneamente todas as suas pastas, cursos, anotações e filmes.
+<summary><b>2. O que acontece se eu formatar o dispositivo ou mudar de aparelho?</b></summary>
+Basta instalar o DriveGram no novo dispositivo e conectar a mesma conta do Telegram. O aplicativo detectará o manifesto <code>#drivegram_metadata_sync</code> e restaurará automaticamente todas as suas pastas, cursos, livros, anotações e mídias.
 </details>
 
 <details>
-<summary><b>3. Qual o tamanho máximo por arquivo?</b></summary>
-- Contas gratuitas do Telegram: até <b>2.0 GB</b> por arquivo individual.<br>
-- Contas Telegram Premium: até <b>4.0 GB</b> por arquivo individual.<br>
+<summary><b>3. Posso criar novas pastas livremente no "Meu Drive"?</b></summary>
+Sim! Você pode criar quantas pastas e subpastas quiser na raiz do "Meu Drive" e organizá-las como desejar. As 9 categorias padrão servem apenas para alimentar as abas do catálogo.
+</details>
+
+<details>
+<summary><b>4. Qual o tamanho máximo por arquivo?</b></summary>
+- Contas gratuitas do Telegram: até <b>2.0 GB</b> por arquivo.<br>
+- Contas Telegram Premium: até <b>4.0 GB</b> por arquivo.<br>
 Não há limite para a quantidade total de arquivos que você pode armazenar.
 </details>
 
 <details>
-<summary><b>4. Como parar a aplicação quando terminar de usar?</b></summary>
-Basta ir no terminal onde o comando foi executado e pressionar as teclas <code>Ctrl + C</code> no teclado.
+<summary><b>5. O APK Android precisa do computador ligado para funcionar?</b></summary>
+Não! O APK do Android possui um motor Node.js embutido de alta performance que roda localmente no smartphone, permitindo uso 100% independente.
 </details>
 
 ---
 
 ## 📄 Licença
 
-Este projeto é de código aberto sob a licença **[MIT](LICENSE)**. Sinta-se livre para usar, estudar, modificar e distribuir!
-
----
+Este projeto é de código aberto sob a licença **[MIT](LICENSE)**.
 
 <div align="center">
 Feito com dedicação para transformar a forma como você armazena e consome suas mídias. 🚀
