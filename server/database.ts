@@ -223,11 +223,25 @@ export function deepSanitizeUtf8<T>(obj: T): T {
   return obj;
 }
 
+export function normalizeFolderName(name: string): string {
+  return (name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/^[\p{Emoji}\p{Symbol}\p{Punctuation}\s]+/gu, '')
+    .toLowerCase()
+    .replace(/&/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(e|and|de|do|da|dos|das)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 class Database {
   private data: DatabaseSchema;
 
   constructor() {
     this.data = this.load();
+    this.deduplicateFolders();
     this.ensureDefaultLibraryFolders();
   }
 
@@ -302,6 +316,129 @@ class Database {
     return sanitizedDemo;
   }
 
+  public deduplicateFolders(): { removedFolders: number; removedFiles: number } {
+    let removedFolders = 0;
+    let removedFiles = 0;
+
+    // 1. Limpar artefatos residuais de demonstração se existirem
+    const prevFileCount = this.data.files.length;
+    this.data.files = this.data.files.filter(f => !f.id.startsWith('file-demo-'));
+    removedFiles += prevFileCount - this.data.files.length;
+
+    const mockFolderIds = new Set(['folder-fullstack', 'folder-mod-1', 'folder-habitos-atomicos', 'folder-livros']);
+    const prevFolderCount = this.data.folders.length;
+    this.data.folders = this.data.folders.filter(f => !mockFolderIds.has(f.id));
+    removedFolders += prevFolderCount - this.data.folders.length;
+
+    if (this.data.courses) {
+      this.data.courses = this.data.courses.filter(c => c.id !== 'course-fullstack');
+    }
+    if (this.data.books) {
+      this.data.books = this.data.books.filter(b => b.id !== 'book-habitos-atomicos');
+    }
+
+    // 2. Agrupar pastas-raiz (parentId === null) pelo nome normalizado
+    const rootFolders = this.data.folders.filter(f => f.parentId === null && !f.isTrash);
+    const groups = new Map<string, FolderItem[]>();
+
+    for (const f of rootFolders) {
+      const key = normalizeFolderName(f.name);
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(f);
+    }
+
+    for (const [, list] of groups.entries()) {
+      if (list.length > 1) {
+        // Ordenar para manter a pasta original/verdadeira em primeiro lugar:
+        // Critérios:
+        // 1. Pastas com itens/filhos têm prioridade
+        // 2. Não geradas automaticamente (não começa com 'folder-lib-') têm prioridade
+        // 3. Pastas com emoji no nome têm prioridade
+        list.sort((a, b) => {
+          const aChildren = this.data.folders.filter(f => f.parentId === a.id).length + 
+                            this.data.files.filter(f => f.parentId === a.id).length;
+          const bChildren = this.data.folders.filter(f => f.parentId === b.id).length + 
+                            this.data.files.filter(f => f.parentId === b.id).length;
+          if (aChildren !== bChildren) return bChildren - aChildren;
+
+          const aIsLib = a.id.startsWith('folder-lib-');
+          const bIsLib = b.id.startsWith('folder-lib-');
+          if (aIsLib !== bIsLib) return aIsLib ? 1 : -1;
+
+          const aHasEmoji = /[\p{Emoji}\p{Symbol}]/u.test(a.name);
+          const bHasEmoji = /[\p{Emoji}\p{Symbol}]/u.test(b.name);
+          if (aHasEmoji !== bHasEmoji) return bHasEmoji ? 1 : -1;
+
+          return 0;
+        });
+
+        const primary = list[0];
+        const duplicates = list.slice(1);
+
+        for (const dup of duplicates) {
+          // Reatribuir quaisquer subpastas ou arquivos para a pasta principal
+          for (const f of this.data.folders) {
+            if (f.parentId === dup.id) {
+              f.parentId = primary.id;
+            }
+          }
+          for (const file of this.data.files) {
+            if (file.parentId === dup.id) file.parentId = primary.id;
+          }
+
+          // Atualizar referências de pastas em coleções especializadas
+          if (this.data.courses) {
+            for (const c of this.data.courses) {
+              if (c.folderId === dup.id) c.folderId = primary.id;
+            }
+          }
+          if (this.data.books) {
+            for (const b of this.data.books) {
+              if (b.folderId === dup.id) b.folderId = primary.id;
+            }
+          }
+          if (this.data.comics) {
+            for (const cm of this.data.comics) {
+              if (cm.folderId === dup.id) cm.folderId = primary.id;
+            }
+          }
+          if (this.data.videos) {
+            for (const v of this.data.videos) {
+              if (v.folderId === dup.id) v.folderId = primary.id;
+            }
+          }
+          if (this.data.series) {
+            for (const s of this.data.series) {
+              if (s.folderId === dup.id) s.folderId = primary.id;
+            }
+          }
+          if (this.data.audioShows) {
+            for (const a of this.data.audioShows) {
+              if (a.folderId === dup.id) a.folderId = primary.id;
+            }
+          }
+          if (this.data.adultVideos) {
+            for (const av of this.data.adultVideos) {
+              if (av.folderId === dup.id) av.folderId = primary.id;
+            }
+          }
+
+          // Remover a pasta duplicada
+          this.data.folders = this.data.folders.filter(f => f.id !== dup.id);
+          removedFolders++;
+        }
+      }
+    }
+
+    if (removedFolders > 0 || removedFiles > 0) {
+      console.log(`[DriveGram Deduplication] Removidas ${removedFolders} pastas duplicadas/demo e ${removedFiles} arquivos demo.`);
+      this.save(this.data);
+    }
+
+    return { removedFolders, removedFiles };
+  }
+
   public ensureDefaultLibraryFolders(): void {
     // Na primeira instalação (sem sessão do Telegram configurada e sem dados locais),
     // mantém a base totalmente limpa (0 arquivos, 0 MB) para aguardar o download do manifesto da nuvem após o login.
@@ -321,23 +458,29 @@ class Database {
     ];
 
     let modified = false;
+    const rootFolders = this.data.folders.filter(f => !f.isTrash && f.parentId === null);
+
     for (const req of requiredFolders) {
-      const exists = this.data.folders.some(f => {
-        if (f.isTrash) return false;
-        const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
-        return req.aliases.some(alias => normalized === alias.toLowerCase() || normalized.includes(alias.toLowerCase()));
+      const normalizedReq = normalizeFolderName(req.name);
+      const normalizedAliases = req.aliases.map(a => normalizeFolderName(a));
+
+      const exists = rootFolders.some(f => {
+        const norm = normalizeFolderName(f.name);
+        return norm === normalizedReq || normalizedAliases.some(alias => norm === alias || norm.includes(alias) || alias.includes(norm));
       });
 
       if (!exists) {
         const id = 'folder-lib-' + req.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-        this.data.folders.push({
+        const newFolder: FolderItem = {
           id: id,
           name: req.name,
           parentId: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           color: req.color
-        });
+        };
+        this.data.folders.push(newFolder);
+        rootFolders.push(newFolder);
         modified = true;
       }
     }
@@ -361,6 +504,9 @@ class Database {
     this.autoBackupDebounceTimer = setTimeout(() => {
       this.executeAutoBackup();
     }, debounceMs);
+    if (this.autoBackupDebounceTimer && typeof this.autoBackupDebounceTimer.unref === 'function') {
+      this.autoBackupDebounceTimer.unref();
+    }
   }
 
   public executeAutoBackup() {
@@ -2671,6 +2817,7 @@ class Database {
     const localHasNewerChanges = this.data.files.some(f => !remoteFileIds.has(f.id) && !f.isTrash);
 
     if (updated) {
+      this.deduplicateFolders();
       this.syncAllLibrariesWithFolderStructure();
       this.data.settings.lastSyncDate = new Date().toISOString();
       this.save(this.data);
