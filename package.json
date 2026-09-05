@@ -10,6 +10,7 @@
     "server": "tsx watch server/index.ts",
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "package:embedded": "node scripts/build-embedded-server.js",
+    "postinstall": "node scripts/patch-nodejs-mobile.js",
     "desktop:dev": "concurrently \"npm run server\" \"tauri dev\"",
     "desktop:build": "npm run build && npm run package:embedded && tauri build",
     "tauri": "tauri",

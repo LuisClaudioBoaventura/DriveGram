@@ -38,6 +38,9 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      - name: Apply nodejs-mobile Gradle Patch
+        run: node scripts/patch-nodejs-mobile.js
+
       - name: Build Web Frontend, Embedded Bundle & Capacitor Sync
         run: npm run mobile:sync
 

@@ -22,6 +22,13 @@ const targetDirs = [
   path.join(rootDir, 'android', 'app', 'src', 'main', 'assets', 'www', 'nodejs-project'),
 ];
 
+// ---- 0. Ensure nodejs-mobile Gradle patch is applied ----
+try {
+  await import('./patch-nodejs-mobile.js');
+} catch (err) {
+  console.warn('[build-embedded] Patch notice:', err.message);
+}
+
 // ---- 1. Bundle the server with esbuild ----
 const bundleOutPath = path.join(rootDir, '_tmp_server_bundle.mjs');
 
