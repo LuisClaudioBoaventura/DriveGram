@@ -5,8 +5,8 @@ export function useTelegram() {
   const [authState, setAuthState] = useState<TelegramAuthState>({
     isConnected: false,
     savedMessagesChatId: 'me',
-    totalSavedFiles: 3,
-    storageUsedBytes: 129000000,
+    totalSavedFiles: 0,
+    storageUsedBytes: 0,
     lastSyncDate: new Date().toISOString(),
     streamingMode: 'cloud_direct',
     cacheDuration: {
@@ -14,7 +14,8 @@ export function useTelegram() {
       unit: 'hours',
       totalMinutes: 1440
     },
-    localCacheSizeBytes: 0
+    localCacheSizeBytes: 0,
+    metadataRetentionCount: 1
   });
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);

@@ -148,10 +148,10 @@ class TelegramService {
           storageUsedBytes: db.getAllFiles().reduce((acc, f) => acc + (f.size || 0), 0)
         };
 
-        // If local database has fewer items or files, try auto-restoring from Telegram Saved Messages
-        if (db.getAllFiles().length <= 3) {
-          this.restoreMetadataFromTelegram().catch(() => {});
-        }
+        // Sincronizar metadados ativos com a nuvem do Telegram
+        this.performStartupMetadataSync().catch((e) => {
+          console.warn('[DriveGram] Startup sync error:', e?.message || e);
+        });
 
         return true;
       }
@@ -263,6 +263,11 @@ class TelegramService {
             savedMessagesChatId: 'me',
             lastSyncDate: new Date().toISOString()
           };
+
+          // Baixar o manifesto de metadados mais recente da nuvem imediatamente após login por QR Code
+          this.performStartupMetadataSync().catch((e) => {
+            console.warn('[DriveGram] Auto-sync on QR login error:', e?.message || e);
+          });
         }).catch((err) => {
           this.qrStatus = 'error';
           this.qrError = err.message;
@@ -368,6 +373,11 @@ class TelegramService {
         savedMessagesChatId: 'me',
         lastSyncDate: new Date().toISOString()
       };
+
+      // Baixar o manifesto de metadados mais recente da nuvem imediatamente após login por código
+      this.performStartupMetadataSync().catch((e) => {
+        console.warn('[DriveGram] Auto-sync on phone login error:', e?.message || e);
+      });
 
       return { success: true, message: 'Conectado com sucesso ao Telegram!' };
     } catch (e: any) {
