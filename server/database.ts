@@ -227,7 +227,6 @@ export function normalizeFolderName(name: string): string {
   return (name || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/^[\p{Emoji}\p{Symbol}\p{Punctuation}\s]+/gu, '')
     .toLowerCase()
     .replace(/&/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
@@ -366,8 +365,8 @@ class Database {
           const bIsLib = b.id.startsWith('folder-lib-');
           if (aIsLib !== bIsLib) return aIsLib ? 1 : -1;
 
-          const aHasEmoji = /[\p{Emoji}\p{Symbol}]/u.test(a.name);
-          const bHasEmoji = /[\p{Emoji}\p{Symbol}]/u.test(b.name);
+          const aHasEmoji = /[^\x00-\x7F]/.test(a.name);
+          const bHasEmoji = /[^\x00-\x7F]/.test(b.name);
           if (aHasEmoji !== bHasEmoji) return bHasEmoji ? 1 : -1;
 
           return 0;
