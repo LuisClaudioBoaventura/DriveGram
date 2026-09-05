@@ -34,13 +34,15 @@ Esqueça as limitações de espaço dos serviços tradicionais pagos. No DriveGr
 
 ## 📥 Downloads Prontos para Uso (Instalação Fácil)
 
-Não quer compilar nada? Baixe os instaladores oficiais prontos para o seu dispositivo:
+Baixe os instaladores oficiais da versão mais recente diretamente na [**Página de Releases do GitHub**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/tag/v1.1.0):
 
-| Plataforma | Pacote / Instalador | Tamanho | Descrição |
-| :--- | :--- | :--- | :--- |
-| 💻 **Windows Desktop** | [**`DriveGram_1.0.0_x64-setup.exe`**](installers/DriveGram_1.0.0_x64-setup.exe) | **`3,95 MB`** | **Recomendado**. Instalador executável leve nativo (Tauri v2) com assistente de instalação e atalho na Área de Trabalho. |
-| 🏢 **Windows Corporativo** | [**`DriveGram_1.0.0_x64_en-US.msi`**](installers/DriveGram_1.0.0_x64_en-US.msi) | **`10,69 MB`** | Pacote de instalação corporativa Windows Installer (.msi). |
-| 📱 **Android** | [**`DriveGram.apk`**](DriveGram.apk) | **`72 MB`** | APK com servidor Node.js embutido de alta performance para smartphones e tablets. |
+| Plataforma | Pacote / Instalador | Tamanho | Descrição | Link Direto |
+| :--- | :--- | :--- | :--- | :--- |
+| 💻 **Windows Desktop** | **`DriveGram_1.0.0_x64-setup.exe`** | **`3,95 MB`** | **Recomendado**. Instalador executável nativo ultraleve (Tauri v2) com assistente de instalação e atalho na Área de Trabalho. | [⬇️ **Download .EXE**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.1.0/DriveGram_1.0.0_x64-setup.exe) |
+| 🏢 **Windows Corporativo** | **`DriveGram_1.0.0_x64_en-US.msi`** | **`10,69 MB`** | Pacote de instalação corporativa Windows Installer (.msi nativo). | [⬇️ **Download .MSI**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.1.0/DriveGram_1.0.0_x64_en-US.msi) |
+| 📱 **Android** | **`DriveGram.apk`** | **`72 MB`** | Aplicativo Android oficial com servidor Node.js embutido de inicialização autônoma. | [⬇️ **Download .APK**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.1.0/DriveGram.apk) |
+
+> 🏷️ *Todos os instaladores, notas de atualização e código fonte também estão disponíveis na [Aba de Releases](https://github.com/LuisClaudioBoaventura/DriveGram/releases).*
 
 ---
 
@@ -193,7 +195,7 @@ O arquivo final compilado estará disponível na raiz do projeto como **`DriveGr
 
 O DriveGram Desktop foi construído com **Tauri v2**, tornando-o ultraleve: consome apenas **~70 MB a 100 MB de RAM** (ao contrário de aplicativos tradicionais em Electron que exigem mais de 350 MB) e o instalador tem apenas **~3,95 MB**!
 
-1. **Baixar o Instalador**: Baixe o arquivo [**`DriveGram_1.0.0_x64-setup.exe`**](installers/DriveGram_1.0.0_x64-setup.exe) na pasta `installers/` (ou [versão MSI corporativa](installers/DriveGram_1.0.0_x64_en-US.msi)).
+1. **Baixar o Instalador**: Baixe o arquivo [**`DriveGram_1.0.0_x64-setup.exe`**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.1.0/DriveGram_1.0.0_x64-setup.exe) na [Página de Releases](https://github.com/LuisClaudioBoaventura/DriveGram/releases/tag/v1.1.0) (ou [versão MSI corporativa](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.1.0/DriveGram_1.0.0_x64_en-US.msi)).
 2. **Executar a Instalação**:
    - Dê um duplo clique no arquivo `.exe`.
    - *Nota de Segurança:* Se o Windows SmartScreen exibir um aviso de *"O Windows protegeu o seu computador"*, clique em **"Mais informações"** e depois em **"Executar assim mesmo"** (isso ocorre pois o instalador é novo e de código aberto).
@@ -208,7 +210,7 @@ O DriveGram Desktop foi construído com **Tauri v2**, tornando-o ultraleve: cons
 
 O aplicativo Android funciona de forma 100% autônoma, sem necessitar de nenhum computador ligado por perto, graças ao seu servidor Node.js embutido.
 
-1. **Baixar o APK**: Baixe o arquivo [**`DriveGram.apk`**](DriveGram.apk) diretamente no seu smartphone Android.
+1. **Baixar o APK**: Baixe o arquivo [**`DriveGram.apk`**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.1.0/DriveGram.apk) na [Página de Releases](https://github.com/LuisClaudioBoaventura/DriveGram/releases/tag/v1.1.0) diretamente no seu smartphone Android.
 2. **Autorizar Instalação**:
    - Abra o arquivo baixado.
    - Se o Android solicitar, permita a instalação a partir do navegador ou gerenciador de arquivos em *"Instalar apps desconhecidos"*.
