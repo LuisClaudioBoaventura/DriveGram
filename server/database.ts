@@ -67,6 +67,7 @@ export interface DatabaseSchema {
     telegramApiHash?: string;
     telegramSession?: string;
     lastSyncDate?: string;
+    metadataRetentionCount?: number;
   };
 }
 
@@ -380,7 +381,8 @@ const initialDemoData: DatabaseSchema = {
       unit: 'hours',
       totalMinutes: 1440
     },
-    lastSyncDate: new Date().toISOString()
+    lastSyncDate: new Date().toISOString(),
+    metadataRetentionCount: 1
   }
 };
 
@@ -499,6 +501,9 @@ class Database {
         }
         if (!parsed.adultVaultSettings) {
           parsed.adultVaultSettings = { isConfigured: false };
+        }
+        if (parsed.settings && !parsed.settings.metadataRetentionCount) {
+          parsed.settings.metadataRetentionCount = 1;
         }
         const sanitized = deepSanitizeUtf8(parsed);
         return sanitized;
@@ -2993,6 +2998,18 @@ class Database {
       } catch (e) {}
     }
     return total;
+  }
+
+  public getMetadataRetentionCount(): number {
+    return this.data.settings?.metadataRetentionCount || 1;
+  }
+
+  public setMetadataRetentionCount(count: number) {
+    if (!this.data.settings) {
+      this.data.settings = initialDemoData.settings;
+    }
+    this.data.settings.metadataRetentionCount = Math.max(1, count || 1);
+    this.save(this.data);
   }
 
   public updateSettings(settings: Partial<DatabaseSchema['settings']>) {

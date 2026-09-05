@@ -52,8 +52,16 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   const [clearingCache, setClearingCache] = useState(false);
   const [syncingPending, setSyncingPending] = useState(false);
   const [performingStartupSync, setPerformingStartupSync] = useState(false);
+  const [pruningOld, setPruningOld] = useState(false);
+  const [retentionCount, setRetentionCount] = useState<number>(telegramState.metadataRetentionCount || 1);
   const [pendingInfo, setPendingInfo] = useState<{ totalPending: number; totalBytesFormatted: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (telegramState.metadataRetentionCount) {
+      setRetentionCount(telegramState.metadataRetentionCount);
+    }
+  }, [telegramState.metadataRetentionCount]);
 
   const handleActiveStartupSync = async () => {
     setPerformingStartupSync(true);
@@ -72,6 +80,48 @@ export const SyncModal: React.FC<SyncModalProps> = ({
     } finally {
       setPerformingStartupSync(false);
     }
+  };
+
+  const handlePruneOldMetadata = async () => {
+    setPruningOld(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/telegram/prune-metadata', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keepCount: retentionCount })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFeedback({ 
+          type: 'success', 
+          message: data.message || `${data.deletedCount || 0} backups antigos removidos com sucesso das Mensagens Salvas!` 
+        });
+      } else {
+        setFeedback({ type: 'error', message: data.message || 'Erro ao limpar backups antigos.' });
+      }
+    } catch (e: any) {
+      setFeedback({ type: 'error', message: e.message || 'Falha na conexão ao limpar backups antigos.' });
+    } finally {
+      setPruningOld(false);
+    }
+  };
+
+  const handleUpdateRetention = async (count: number) => {
+    setRetentionCount(count);
+    try {
+      const res = await fetch('/api/telegram/metadata-retention', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count })
+      });
+      if (res.ok) {
+        setFeedback({ 
+          type: 'success', 
+          message: `Política de retenção atualizada: Manter ${count === 1 ? 'apenas 1 backup (Mais recente)' : `os últimos ${count} backups`}.` 
+        });
+      }
+    } catch (e) {}
   };
 
   const fetchPendingInfo = async () => {
@@ -599,6 +649,52 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                 <Download className={`w-3.5 h-3.5 ${downloadingAll ? 'animate-bounce' : ''}`} />
                 <span>{downloadingAll ? 'Baixando Arquivos do Telegram...' : '📥 Baixar Todos os Arquivos para a Pasta Uploads'}</span>
               </button>
+            </div>
+
+            {/* 3.1 Política de Retenção & Faxina de Metadados nas Mensagens Salvas */}
+            <div className="mt-3 pt-3 border-t border-blue-100 dark:border-drive-darkBorder">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                  <Trash2 className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Política de Retenção (Mensagens Salvas Limpas):</span>
+                </span>
+                
+                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                  {[
+                    { label: '1 (Apenas Mais Recente)', count: 1 },
+                    { label: '3 (Segurança)', count: 3 },
+                    { label: '5 (Histórico)', count: 5 }
+                  ].map(opt => (
+                    <button
+                      key={opt.count}
+                      type="button"
+                      onClick={() => handleUpdateRetention(opt.count)}
+                      className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all ${
+                        retentionCount === opt.count
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white dark:bg-drive-darkSurface text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 bg-blue-100/50 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-200/70 dark:border-blue-900/60">
+                <span className="text-[11px] text-gray-600 dark:text-gray-300 leading-tight">
+                  Auto-limpeza ativa: ao salvar cada alteração, backups excedentes são apagados automaticamente do Telegram.
+                </span>
+                <button
+                  type="button"
+                  onClick={handlePruneOldMetadata}
+                  disabled={pruningOld || !telegramState.isConnected}
+                  className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-rose-300 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all disabled:opacity-40 shadow-sm"
+                >
+                  <Trash2 className={`w-3.5 h-3.5 text-rose-500 ${pruningOld ? 'animate-bounce' : ''}`} />
+                  <span>{pruningOld ? 'Limpando Mensagens...' : '🧹 Limpar Backups Duplicados Antigos Agora'}</span>
+                </button>
+              </div>
             </div>
           </div>
 

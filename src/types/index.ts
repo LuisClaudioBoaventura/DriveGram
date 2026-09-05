@@ -187,6 +187,7 @@ export interface TelegramAuthState {
   streamingMode?: StreamingMode;
   cacheDuration?: CacheDurationConfig;
   localCacheSizeBytes?: number;
+  metadataRetentionCount?: number;
 }
 
 export interface ComicIssue {

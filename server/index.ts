@@ -3733,6 +3733,26 @@ app.post('/api/telegram/startup-sync', async (_req, res) => {
   }
 });
 
+app.post('/api/telegram/prune-metadata', async (req, res) => {
+  try {
+    const keepCount = req.body?.keepCount !== undefined ? parseInt(req.body.keepCount, 10) : undefined;
+    const result = await telegramService.pruneOldMetadataMessages(keepCount);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message || 'Erro ao limpar backups antigos de metadados' });
+  }
+});
+
+app.post('/api/telegram/metadata-retention', (req, res) => {
+  try {
+    const count = parseInt(req.body?.count, 10) || 1;
+    db.setMetadataRetentionCount(count);
+    res.json({ success: true, metadataRetentionCount: db.getMetadataRetentionCount() });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 app.post('/api/telegram/import-saved', async (_req, res) => {
   const result = await telegramService.scanAndImportSavedMessages();
   res.json(result);

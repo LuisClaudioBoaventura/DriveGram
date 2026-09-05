@@ -171,7 +171,8 @@ class TelegramService {
       storageUsedBytes: totalFiles.reduce((acc, f) => acc + (f.size || 0), 0),
       streamingMode: db.getStreamingMode(),
       cacheDuration: db.getCacheDuration(),
-      localCacheSizeBytes: db.getLocalCacheSizeBytes(uploadsDir)
+      localCacheSizeBytes: db.getLocalCacheSizeBytes(uploadsDir),
+      metadataRetentionCount: db.getMetadataRetentionCount()
     };
   }
 
@@ -515,10 +516,62 @@ class TelegramService {
       });
 
       db.updateSettings({ lastSyncDate: new Date().toISOString() });
+
+      // Auto-pruning de metadados antigos para manter o chat de Mensagens Salvas limpo
+      this.pruneOldMetadataMessages().catch(err => {
+        console.warn('[DriveGram Pruning] Erro no auto-pruning em segundo plano:', err?.message || err);
+      });
+
       return { success: true, message: 'Metadados sincronizados e salvos com sucesso no seu Telegram (Mensagens Salvas)!', messageId: sent.id };
     } catch (e: any) {
       console.error('Error syncing metadata to Telegram:', e);
       return { success: false, message: e.message || 'Falha ao sincronizar metadados no Telegram' };
+    }
+  }
+
+  /**
+   * Remove backups antigos de metadados das Mensagens Salvas, mantendo apenas os N mais recentes.
+   */
+  public async pruneOldMetadataMessages(keepCount?: number): Promise<{ success: boolean; deletedCount: number; message: string }> {
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) {
+      return { success: false, deletedCount: 0, message: 'Telegram não conectado.' };
+    }
+
+    const maxKeep = Math.max(1, keepCount ?? db.getMetadataRetentionCount() ?? 1);
+
+    try {
+      const messages = await client.getMessages('me', {
+        search: '#drivegram_metadata_sync',
+        limit: 100
+      });
+
+      if (!messages || messages.length <= maxKeep) {
+        return { 
+          success: true, 
+          deletedCount: 0, 
+          message: `Nenhum backup excedente para remover (total de ${messages?.length || 0} encontrado(s), retenção configurada para ${maxKeep}).` 
+        };
+      }
+
+      // Ordenar por ID decrescente (o mais recente primeiro)
+      const sortedMessages = [...messages].sort((a, b) => b.id - a.id);
+      const toDelete = sortedMessages.slice(maxKeep).map(m => m.id);
+
+      if (toDelete.length > 0) {
+        console.log(`[DriveGram Pruning] Removendo ${toDelete.length} mensagem(ns) antiga(s) de metadados das Mensagens Salvas...`);
+        await client.deleteMessages('me', toDelete, { revoke: true });
+        console.log(`[DriveGram Pruning] ${toDelete.length} mensagem(ns) antiga(s) de metadados removida(s) com sucesso.`);
+      }
+
+      return {
+        success: true,
+        deletedCount: toDelete.length,
+        message: `${toDelete.length} mensagem(ns) antiga(s) de metadados removida(s) com sucesso das Mensagens Salvas!`
+      };
+    } catch (err: any) {
+      console.warn('[DriveGram Pruning] Erro ao limpar mensagens antigas de metadados:', err?.message || err);
+      return { success: false, deletedCount: 0, message: err?.message || 'Falha ao limpar mensagens antigas' };
     }
   }
 
