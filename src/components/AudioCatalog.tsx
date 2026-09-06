@@ -2,6 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Headphones, 
   Play, 
+  Pause,
+  SkipForward,
+  SkipBack,
+  Maximize2,
   Search, 
   Plus, 
   Sparkles, 
@@ -27,6 +31,7 @@ import {
 } from 'lucide-react';
 import { AudioShow, AudioTrack, FolderItem } from '../types/index.js';
 import { fetchAndParsePodcastRss } from '../utils/podcastRssParser.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
 
 interface AudioCatalogProps {
   audioShows: AudioShow[];
@@ -38,6 +43,14 @@ interface AudioCatalogProps {
   onDeleteShow?: (id: string) => void;
   onRefreshPodcasts?: () => Promise<{ success: boolean; totalNewEpisodes: number; refreshedCount: number }>;
   onOpenYouTubeModal?: () => void;
+  // Propriedades do player ativo
+  activeShow?: AudioShow | null;
+  activeTrack?: AudioTrack | null;
+  activeTrackIndex?: number;
+  isPlaying?: boolean;
+  onTogglePlay?: () => void;
+  onPlayNextTrack?: () => void;
+  onPlayPreviousTrack?: () => void;
 }
 
 interface RecentEpisodeItem {
@@ -138,7 +151,14 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   onEditShow,
   onDeleteShow,
   onRefreshPodcasts,
-  onOpenYouTubeModal
+  onOpenYouTubeModal,
+  activeShow,
+  activeTrack,
+  activeTrackIndex = 0,
+  isPlaying = false,
+  onTogglePlay,
+  onPlayNextTrack,
+  onPlayPreviousTrack
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'music_album' | 'podcast' | 'playlist'>('all');
@@ -147,7 +167,19 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   const [backingUpTrackIds, setBackingUpTrackIds] = useState<string[]>([]);
   const [syncFeedbackMessage, setSyncFeedbackMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
   const recentScrollRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const hasAutoSyncedRef = useRef(false);
+
+  // Helper para verificar se um episódio dos cards é o que está em reprodução ativa
+  const isEpisodeActive = (item: RecentEpisodeItem) => {
+    if (!activeTrack) return false;
+    if (activeTrack.id && item.track.id && activeTrack.id === item.track.id) return true;
+    if (activeTrack.id && item.show.id && activeTrack.id === `recent-${item.show.id}-${item.trackIndex}`) return true;
+    if (activeTrack.audioUrl && item.track.audioUrl && activeTrack.audioUrl === item.track.audioUrl) return true;
+    const cleanActive = (activeTrack.title || '').trim().toLowerCase();
+    const cleanItem = (item.track.title || '').trim().toLowerCase();
+    return Boolean(cleanActive && cleanItem && cleanActive === cleanItem);
+  };
 
   const handleBackupRecentEpisode = async (item: RecentEpisodeItem, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -336,12 +368,28 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
         ...item.track,
         id: item.track.id || `recent-${item.show.id}-${idx}`,
         trackNumber: idx + 1,
-        artist: item.show.title || item.track.artist || 'Podcast'
+        artist: item.show.title || item.track.artist || 'Podcast',
+        showTitle: item.show.title,
+        showId: item.show.id,
+        coverImage: item.show.coverImage || item.track.coverImage
       }))
     };
 
     onSelectShow(recentPlaylistShow, startIndex);
   };
+
+  // Efeito para deslizar suavemente para o próximo episódio quando o podcast ativo mudar
+  useEffect(() => {
+    if (!activeTrack || recentEpisodes.length === 0) return;
+    const playingIndex = recentEpisodes.findIndex(isEpisodeActive);
+    if (playingIndex !== -1 && cardRefs.current[playingIndex]) {
+      cardRefs.current[playingIndex]?.scrollIntoView({
+        behavior: 'smooth',
+        inline: 'center',
+        block: 'nearest'
+      });
+    }
+  }, [activeTrack?.id, activeTrack?.title]);
 
   const handleScrollRecent = (direction: 'left' | 'right') => {
     if (recentScrollRef.current) {
@@ -365,87 +413,248 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
 
   return (
     <div className="w-full max-w-full overflow-x-hidden flex-1 p-3 sm:p-6 lg:p-8 space-y-6 animate-in fade-in duration-200">
-      {/* Standardized Hero Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-emerald-800 via-teal-900 to-slate-900 p-5 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-emerald-700/40 shrink-0">
-        <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
-          <Headphones className="w-80 h-80" />
-        </div>
+      {/* Standardized Hero Banner / Dynamic Now Playing Spotlight Banner */}
+      {activeTrack && activeShow ? (
+        <div 
+          key={`hero-spotlight-${activeTrack.id || activeTrack.title}`}
+          className="rounded-3xl bg-gradient-to-r from-emerald-950 via-teal-950/90 to-slate-950 p-5 sm:p-7 text-white shadow-2xl relative overflow-hidden border border-emerald-500/40 shrink-0 transition-all duration-500 animate-in fade-in slide-in-from-right-4"
+        >
+          {/* Subtle Ambient Background Artwork Glow */}
+          {(activeTrack.coverImage || activeShow.coverImage) && (
+            <div 
+              className="absolute inset-0 bg-cover bg-center opacity-15 blur-2xl pointer-events-none scale-125 transition-all duration-700"
+              style={{ backgroundImage: `url(${activeTrack.coverImage || activeShow.coverImage})` }}
+            />
+          )}
+          <div className="absolute -right-10 -top-10 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="space-y-2.5 z-10 max-w-xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 backdrop-blur-md text-emerald-200 text-xs font-bold uppercase tracking-wider border border-emerald-500/30">
-            <Headphones className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Músicas, Álbuns & Podcasts</span>
-          </div>
-
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight leading-tight py-1 drop-shadow-sm">
-            Músicas & Podcasts
-          </h1>
-
-          <p className="text-xs sm:text-sm text-emerald-200/90 leading-relaxed">
-            Ouça suas músicas, discografias completas e podcasts favoritos com reprodutor de áudio dedicado, streaming online, atualização automática de episódios e backup direto no Telegram.
-          </p>
-
-          <div className="pt-2 flex flex-wrap items-center gap-3">
-            <button
-              onClick={onOpenNewModal}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
-            >
-              <Plus className="w-4 h-4 text-emerald-600" />
-              <span>Adicionar Álbum / Podcast</span>
-            </button>
-
-            {onOpenYouTubeModal && (
-              <button
-                onClick={onOpenYouTubeModal}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-900/30 transition-all hover:scale-105 active:scale-95"
+          <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-6">
+            {/* Left: Artwork + Episode / Podcast Info */}
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 flex-1 min-w-0 text-center sm:text-left">
+              {/* Artwork with play/maximize overlay */}
+              <div 
+                onClick={() => onSelectShow(activeShow, activeTrackIndex)}
+                className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-500/50 shrink-0 bg-black/60 group cursor-pointer"
+                title="Abrir no Estúdio Completo"
               >
-                <Youtube className="w-4 h-4" />
-                <span>Importar do YouTube</span>
-              </button>
-            )}
+                <img
+                  src={activeTrack.coverImage || activeShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                  alt={activeTrack.title}
+                  draggable={false}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 select-none"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-600/50">
+                    <Maximize2 className="w-4 h-4" />
+                  </div>
+                </div>
+                {/* Subtle Vinyl Ring Overlay Effect */}
+                <div className="absolute inset-0 rounded-2xl border border-white/10 pointer-events-none" />
+              </div>
 
-            {totalPodcasts > 0 && onRefreshPodcasts && (
+              {/* Text Info */}
+              <div className="space-y-2 flex-1 min-w-0">
+                <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase tracking-wider border border-emerald-500/40">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                    Em Reprodução • {activeTrack.showTitle || activeShow.title}
+                  </span>
+                  {activeTrack.duration && (
+                    <span className="px-2 py-0.5 rounded-full bg-black/40 text-gray-300 text-[10px] font-mono border border-white/10">
+                      {activeTrack.duration}
+                    </span>
+                  )}
+                  {activeTrack.releaseDate && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
+                      {formatRelativeDate(parseEpisodePublicationDate(activeTrack, activeShow) || new Date())}
+                    </span>
+                  )}
+                </div>
+
+                <div 
+                  onClick={() => onSelectShow(activeShow, activeTrackIndex)}
+                  className="min-w-0 flex-1 overflow-hidden cursor-pointer"
+                >
+                  <MarqueeTitle
+                    text={activeTrack.title}
+                    as="h2"
+                    className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight leading-tight drop-shadow-sm hover:text-emerald-300 transition-colors"
+                  />
+                </div>
+
+                <p className="text-xs sm:text-sm text-emerald-300 font-medium truncate">
+                  {activeTrack.showTitle && `${activeTrack.showTitle} • `}
+                  {activeTrack.artist || activeShow.artist || activeShow.host || 'Podcast'}
+                </p>
+
+                {/* Direct Control Buttons & Open Studio */}
+                <div className="pt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3">
+                  {onTogglePlay && (
+                    <button
+                      onClick={onTogglePlay}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                    >
+                      {isPlaying ? (
+                        <>
+                          <Pause className="w-4 h-4 fill-current" />
+                          <span>Pausar</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4 fill-current ml-0.5" />
+                          <span>Reproduzir</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {onPlayPreviousTrack && (
+                    <button
+                      onClick={onPlayPreviousTrack}
+                      className="p-2 rounded-xl bg-gray-900/80 hover:bg-emerald-900 text-gray-300 hover:text-white border border-gray-700 hover:border-emerald-500 transition-colors"
+                      title="Episódio Anterior"
+                    >
+                      <SkipBack className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {onPlayNextTrack && (
+                    <button
+                      onClick={onPlayNextTrack}
+                      className="p-2 rounded-xl bg-gray-900/80 hover:bg-emerald-900 text-gray-300 hover:text-white border border-gray-700 hover:border-emerald-500 transition-colors"
+                      title="Próximo Episódio"
+                    >
+                      <SkipForward className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => onSelectShow(activeShow, activeTrackIndex)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-all active:scale-95"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Abrir Estúdio</span>
+                  </button>
+
+                  <button
+                    onClick={onOpenNewModal}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-black/40 hover:bg-black/60 text-gray-300 hover:text-white text-xs font-bold border border-gray-700/60 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Novo</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Quick Stats Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 w-full lg:w-auto shrink-0 z-10">
+              <div className="p-2.5 rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
+                <Disc className="w-3.5 h-3.5 text-emerald-400 mb-0.5" />
+                <span className="text-sm font-black">{totalShows}</span>
+                <span className="text-[9px] text-emerald-200 uppercase font-semibold">Coleções</span>
+              </div>
+              <div className="p-2.5 rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
+                <Music2 className="w-3.5 h-3.5 text-teal-400 mb-0.5" />
+                <span className="text-sm font-black">{totalTracks}</span>
+                <span className="text-[9px] text-emerald-200 uppercase font-semibold">Faixas</span>
+              </div>
+              <div className="p-2.5 rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
+                <Disc className="w-3.5 h-3.5 text-sky-400 mb-0.5" />
+                <span className="text-sm font-black">{totalAlbums}</span>
+                <span className="text-[9px] text-emerald-200 uppercase font-semibold">Álbuns</span>
+              </div>
+              <div className="p-2.5 rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
+                <Mic className="w-3.5 h-3.5 text-purple-400 mb-0.5" />
+                <span className="text-sm font-black">{totalPodcasts}</span>
+                <span className="text-[9px] text-emerald-200 uppercase font-semibold">Podcasts</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Standardized Hero Banner */
+        <div className="rounded-3xl bg-gradient-to-r from-emerald-800 via-teal-900 to-slate-900 p-5 sm:p-8 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden border border-emerald-700/40 shrink-0">
+          <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
+            <Headphones className="w-80 h-80" />
+          </div>
+
+          <div className="space-y-2.5 z-10 max-w-xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 backdrop-blur-md text-emerald-200 text-xs font-bold uppercase tracking-wider border border-emerald-500/30">
+              <Headphones className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Músicas, Álbuns & Podcasts</span>
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight leading-tight py-1 drop-shadow-sm">
+              Músicas & Podcasts
+            </h1>
+
+            <p className="text-xs sm:text-sm text-emerald-200/90 leading-relaxed">
+              Ouça suas músicas, discografias completas e podcasts favoritos com reprodutor de áudio dedicado, streaming online, atualização automática de episódios e backup direto no Telegram.
+            </p>
+
+            <div className="pt-2 flex flex-wrap items-center gap-3">
               <button
-                onClick={handleManualRefreshPodcasts}
-                disabled={isRefreshingPodcasts}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-700/50 hover:bg-emerald-600/70 text-white border border-emerald-500/40 text-xs font-bold shadow-md backdrop-blur-md transition-all active:scale-95 disabled:opacity-50"
-                title="Sincronizar e buscar novos episódios em todos os podcasts cadastrados"
+                onClick={onOpenNewModal}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingPodcasts ? 'animate-spin text-amber-300' : 'text-emerald-300'}`} />
-                <span>{isRefreshingPodcasts ? 'Sincronizando...' : 'Atualizar Podcasts'}</span>
+                <Plus className="w-4 h-4 text-emerald-600" />
+                <span>Adicionar Álbum / Podcast</span>
               </button>
-            )}
+
+              {onOpenYouTubeModal && (
+                <button
+                  onClick={onOpenYouTubeModal}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-900/30 transition-all hover:scale-105 active:scale-95"
+                >
+                  <Youtube className="w-4 h-4" />
+                  <span>Importar do YouTube</span>
+                </button>
+              )}
+
+              {totalPodcasts > 0 && onRefreshPodcasts && (
+                <button
+                  onClick={handleManualRefreshPodcasts}
+                  disabled={isRefreshingPodcasts}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-700/50 hover:bg-emerald-600/70 text-white border border-emerald-500/40 text-xs font-bold shadow-md backdrop-blur-md transition-all active:scale-95 disabled:opacity-50"
+                  title="Sincronizar e buscar novos episódios em todos os podcasts cadastrados"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingPodcasts ? 'animate-spin text-amber-300' : 'text-emerald-300'}`} />
+                  <span>{isRefreshingPodcasts ? 'Sincronizando...' : 'Atualizar Podcasts'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full md:w-auto z-10">
+            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
+              <Disc className="w-4 h-4 text-emerald-300 mb-1" />
+              <span className="text-base font-black">{totalShows}</span>
+              <span className="text-[10px] text-emerald-200 uppercase font-semibold">Coleções</span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
+              <Music2 className="w-4 h-4 text-teal-300 mb-1" />
+              <span className="text-base font-black">{totalTracks}</span>
+              <span className="text-[10px] text-emerald-200 uppercase font-semibold">Faixas</span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
+              <Disc className="w-4 h-4 text-sky-300 mb-1" />
+              <span className="text-base font-black">{totalAlbums}</span>
+              <span className="text-[10px] text-emerald-200 uppercase font-semibold">Álbuns</span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
+              <Mic className="w-4 h-4 text-purple-300 mb-1" />
+              <span className="text-base font-black">{totalPodcasts}</span>
+              <span className="text-[10px] text-emerald-200 uppercase font-semibold">Podcasts</span>
+            </div>
           </div>
         </div>
-
-        {/* Quick Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full md:w-auto z-10">
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
-            <Disc className="w-4 h-4 text-emerald-300 mb-1" />
-            <span className="text-base font-black">{totalShows}</span>
-            <span className="text-[10px] text-emerald-200 uppercase font-semibold">Coleções</span>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
-            <Music2 className="w-4 h-4 text-teal-300 mb-1" />
-            <span className="text-base font-black">{totalTracks}</span>
-            <span className="text-[10px] text-emerald-200 uppercase font-semibold">Faixas</span>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
-            <Disc className="w-4 h-4 text-sky-300 mb-1" />
-            <span className="text-base font-black">{totalAlbums}</span>
-            <span className="text-[10px] text-emerald-200 uppercase font-semibold">Álbuns</span>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
-            <Mic className="w-4 h-4 text-purple-300 mb-1" />
-            <span className="text-base font-black">{totalPodcasts}</span>
-            <span className="text-[10px] text-emerald-200 uppercase font-semibold">Podcasts</span>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Sync Feedback Notification Banner */}
       {syncFeedbackMessage && (
@@ -544,11 +753,24 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
             style={{ scrollbarWidth: 'none' }}
           >
             {recentEpisodes.map((item, idx) => {
+              const isCurrent = isEpisodeActive(item);
+
               return (
                 <div
                   key={`ep-card-${item.show.id}-${item.track.id || 'idx'}-${idx}`}
-                  onClick={() => handlePlayRecentSequentially(idx)}
-                  className="w-72 sm:w-80 p-3.5 rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200/80 dark:border-drive-darkBorder hover:border-amber-500/60 shadow-sm hover:shadow-lg transition-all duration-200 flex flex-col justify-between shrink-0 snap-start cursor-pointer group"
+                  ref={(el) => { cardRefs.current[idx] = el; }}
+                  onClick={() => {
+                    if (isCurrent && onTogglePlay) {
+                      onTogglePlay();
+                    } else {
+                      handlePlayRecentSequentially(idx);
+                    }
+                  }}
+                  className={`w-72 sm:w-80 p-3.5 rounded-2xl border transition-all duration-300 flex flex-col justify-between shrink-0 snap-start cursor-pointer group ${
+                    isCurrent
+                      ? 'bg-emerald-50/80 dark:bg-emerald-950/50 border-emerald-500 shadow-[0_12px_30px_rgba(16,185,129,0.25)] ring-2 ring-emerald-500/80 scale-[1.02]'
+                      : 'bg-white dark:bg-drive-darkSurface border-gray-200/80 dark:border-drive-darkBorder hover:border-amber-500/60 shadow-sm hover:shadow-lg hover:scale-[1.01]'
+                  }`}
                 >
                   <div className="flex items-start gap-3">
                     {/* Podcast Cover */}
@@ -558,20 +780,49 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
                         alt={item.show.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                        <Play className="w-5 h-5 text-white fill-current" />
-                      </div>
+
+                      {/* Playing Equalizer Overlay */}
+                      {isCurrent && isPlaying ? (
+                        <div className="absolute inset-0 bg-emerald-950/60 flex items-center justify-center gap-0.5">
+                          <span className="w-1 h-3 bg-white rounded-full animate-pulse" />
+                          <span className="w-1 h-5 bg-white rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-4 bg-white rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                          <span className="w-1 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '450ms' }} />
+                        </div>
+                      ) : (
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Play className="w-5 h-5 text-white fill-current" />
+                        </div>
+                      )}
+
+                      {/* Active Indicator Beacon */}
+                      {isCurrent && (
+                        <span className="absolute top-1 left-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-black animate-ping" />
+                      )}
                     </div>
 
                     {/* Info */}
                     <div className="overflow-hidden flex-1 space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold text-[9px] truncate max-w-[140px]">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] truncate max-w-[140px] ${
+                          isCurrent
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                        }`}>
                           🎙️ {item.show.title}
                         </span>
+                        {isCurrent && (
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 font-extrabold text-[8px] uppercase tracking-wider">
+                            {isPlaying ? 'Tocando' : 'Pausado'}
+                          </span>
+                        )}
                       </div>
 
-                      <h4 className="text-xs font-bold text-gray-900 dark:text-gray-100 line-clamp-2 leading-tight group-hover:text-amber-500 transition-colors" title={item.track.title}>
+                      <h4 className={`text-xs font-bold line-clamp-2 leading-tight transition-colors ${
+                        isCurrent 
+                          ? 'text-emerald-900 dark:text-emerald-200' 
+                          : 'text-gray-900 dark:text-gray-100 group-hover:text-amber-500'
+                      }`} title={item.track.title}>
                         {item.track.title}
                       </h4>
 
@@ -628,8 +879,16 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
                       <span className="text-gray-400 font-mono text-[10px]">
                         {item.track.duration || '45:00'}
                       </span>
-                      <div className="w-6 h-6 rounded-full bg-emerald-600 group-hover:bg-amber-500 text-white flex items-center justify-center transition-colors shadow-xs">
-                        <Play className="w-3 h-3 fill-current ml-0.5" />
+                      <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center transition-colors shadow-xs ${
+                        isCurrent
+                          ? 'bg-emerald-500 shadow-emerald-500/40 shadow-md'
+                          : 'bg-emerald-600 group-hover:bg-amber-500'
+                      }`}>
+                        {isCurrent && isPlaying ? (
+                          <Pause className="w-3 h-3 fill-current" />
+                        ) : (
+                          <Play className="w-3 h-3 fill-current ml-0.5" />
+                        )}
                       </div>
                     </div>
                   </div>

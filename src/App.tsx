@@ -803,6 +803,8 @@ export function App() {
               categories={comics.categories}
               onSelectComic={(c) => {
                 comics.setActiveComic(c);
+                const targetIssue = c.issues?.find(i => !i.isCompleted) || c.issues?.[0] || null;
+                comics.setActiveIssue(targetIssue);
                 setSelectedComicForView(c);
               }}
               onNewComic={() => setIsComicModalOpen(true)}
@@ -883,6 +885,13 @@ export function App() {
               audioShows={audioShows.audioShows}
               categories={audioShows.categories}
               folders={fs.allFolders}
+              activeShow={audioShows.activeAudioShow}
+              activeTrack={audioShows.activeTrack}
+              activeTrackIndex={audioShows.activeTrackIndex}
+              isPlaying={audioShows.isPlaying}
+              onTogglePlay={audioShows.togglePlay}
+              onPlayNextTrack={audioShows.playNextTrack}
+              onPlayPreviousTrack={audioShows.playPreviousTrack}
               onSelectShow={(a, trackIndex) => {
                 audioShows.playShowAndTrack(a, trackIndex !== undefined ? trackIndex : 0, true);
                 setSelectedAudioForView(a);

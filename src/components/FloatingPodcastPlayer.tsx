@@ -21,6 +21,8 @@ import {
   Download
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem } from '../types/index.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface FloatingPodcastPlayerProps {
   show: AudioShow;
@@ -158,7 +160,7 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
   const isPlayingFromTelegram = !isOnlineSourceAvailable && Boolean(streamFileId);
   const audioSource = isOnlineSourceAvailable
     ? activeTrack!.audioUrl
-    : (streamFileId ? `/api/stream/${streamFileId}` : activeTrack?.audioUrl);
+    : (streamFileId ? resolveApiUrl(`/api/stream/${streamFileId}`) : activeTrack?.audioUrl);
 
   const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
     if (isOnlineSourceAvailable && streamFileId) {
@@ -237,6 +239,11 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
     }
   };
 
+  const currentCover = activeTrack?.coverImage || show.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60';
+  const currentShowTitle = activeTrack?.showTitle || show.title;
+  const currentArtist = activeTrack?.artist || show.artist || show.host;
+  const currentTrackTitle = activeTrack?.title || 'Episódio em reprodução';
+
   return (
     <>
       {/* Persistent Global Audio Element */}
@@ -283,16 +290,19 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
               >
                 {/* Title snippet */}
                 <div 
+                  key={`snippet-${activeTrack?.id || show.id}`}
                   onClick={() => onOpenFullStudio(show, activeTrackIndex)}
-                  className="px-2 py-0.5 max-w-[110px] sm:max-w-[150px] overflow-hidden cursor-pointer group/info"
+                  className="px-2 py-0.5 max-w-[110px] sm:max-w-[150px] overflow-hidden cursor-pointer group/info animate-in fade-in duration-300"
                   title="Abrir no estúdio completo"
                 >
                   <p className="text-[10px] font-bold text-white group-hover/info:text-emerald-300 truncate leading-tight transition-colors">
-                    {show.title}
+                    {currentShowTitle}
                   </p>
-                  <p className="text-[9px] text-emerald-400 truncate">
-                    {activeTrack?.title || 'Episódio em reprodução'}
-                  </p>
+                  <MarqueeTitle
+                    text={currentTrackTitle}
+                    as="p"
+                    className="text-[9px] text-emerald-400"
+                  />
                 </div>
 
                 <div className="h-4 w-px bg-emerald-900/60 shrink-0" />
@@ -381,9 +391,10 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
                   >
                     {/* Podcast Cover Image */}
                     <img
-                      src={show.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
-                      alt={show.title}
-                      className="w-full h-full object-cover scale-110"
+                      key={`vinyl-cover-${activeTrack?.id || show.id}`}
+                      src={currentCover}
+                      alt={currentShowTitle}
+                      className="w-full h-full object-cover scale-110 transition-all duration-700 animate-in fade-in"
                     />
 
                     {/* Concentric Vinyl Grooves Overlay */}
@@ -442,9 +453,10 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
                     {/* Podcast Cover with Sound wave effect */}
                     <div className="relative w-12 h-12 rounded-2xl overflow-hidden shadow-lg border border-emerald-500/40 shrink-0 bg-emerald-950/60">
                       <img
-                        src={show.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
-                        alt={show.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        key={`full-cover-${activeTrack?.id || show.id}`}
+                        src={currentCover}
+                        alt={currentShowTitle}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 animate-in fade-in"
                       />
                       {isPlaying && (
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-0.5">
@@ -479,11 +491,14 @@ export const FloatingPodcastPlayer: React.FC<FloatingPodcastPlayerProps> = ({
                           </span>
                         )}
                       </div>
-                      <h4 className="text-xs sm:text-sm font-bold text-white group-hover:text-emerald-300 truncate leading-tight mt-0.5 transition-colors">
-                        {activeTrack?.title || show.title}
-                      </h4>
+                      <MarqueeTitle 
+                        key={`full-title-${activeTrack?.id || show.id}`}
+                        text={currentTrackTitle}
+                        as="h4"
+                        className="text-xs sm:text-sm font-bold text-white group-hover:text-emerald-300 leading-tight mt-0.5 transition-colors"
+                      />
                       <p className="text-[10px] text-gray-400 truncate">
-                        {show.title} {show.artist || show.host ? `• ${show.artist || show.host}` : ''}
+                        {currentShowTitle} {currentArtist ? `• ${currentArtist}` : ''}
                       </p>
                     </div>
                   </div>

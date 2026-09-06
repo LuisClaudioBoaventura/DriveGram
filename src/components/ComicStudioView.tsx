@@ -53,10 +53,20 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
   const completedIssues = comic.issues?.filter(i => i.isCompleted).length || 0;
   const progressPercent = totalIssues > 0 ? Math.round((completedIssues / totalIssues) * 100) : 0;
 
-  // Find file for the currently reading issue
-  const activeFile = readingIssue?.fileId 
-    ? allFiles.find(f => f.id === readingIssue.fileId) 
-    : (activeIssue?.fileId ? allFiles.find(f => f.id === activeIssue.fileId) : null);
+  // Resolve target issue strictly belonging to this comic:
+  // 1. If user is currently reading an issue belonging to this comic, use it.
+  // 2. Otherwise if activeIssue prop belongs to this comic, use it.
+  // 3. Otherwise fall back to first unread issue or first issue of this comic.
+  const targetIssue = (readingIssue && comic.issues?.some(i => i.id === readingIssue.id))
+    ? readingIssue
+    : ((activeIssue && comic.issues?.some(i => i.id === activeIssue.id))
+      ? activeIssue
+      : (comic.issues?.find(i => !i.isCompleted) || comic.issues?.[0] || null));
+
+  // Find file for the target issue belonging to this comic
+  const activeFile = targetIssue?.fileId 
+    ? allFiles.find(f => f.id === targetIssue.fileId) 
+    : null;
 
   const handleStartReadingNext = () => {
     const nextUnread = comic.issues?.find(i => !i.isCompleted) || comic.issues?.[0];
@@ -260,7 +270,7 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
                 <button
                   onClick={() => setDownloadTargetFile(activeFile)}
                   className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-black/40 hover:bg-pink-600 text-gray-200 hover:text-white border border-white/20 hover:border-pink-500 text-xs font-bold transition-all shadow-md active:scale-95"
-                  title="Baixar edição atual para cache local"
+                  title={targetIssue ? `Baixar "${targetIssue.title}" para cache local` : "Baixar edição para cache local"}
                 >
                   <Download className="w-4 h-4" />
                   <span>Baixar Edição</span>
@@ -283,12 +293,13 @@ export const ComicStudioView: React.FC<ComicStudioViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {comic.issues.map((issue, idx) => {
                 const issueFile = issue.fileId ? allFiles.find(f => f.id === issue.fileId) : null;
-                const isSelected = activeIssue?.id === issue.id;
+                const isSelected = targetIssue?.id === issue.id;
 
                 return (
                   <div
                     key={issue.id}
-                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                    onClick={() => onSelectIssue(issue)}
+                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer ${
                       isSelected 
                         ? 'bg-pink-500/10 border-pink-500/60 shadow-md ring-2 ring-pink-500/20' 
                         : 'bg-white dark:bg-drive-darkSurface border-gray-200 dark:border-drive-darkBorder hover:border-pink-500/40'

@@ -133,6 +133,33 @@ body {
   animation: pulseGlow 2s infinite ease-in-out;
 }
 
+/* Continuous Marquee Animation for Mobile Overflowing Titles */
+@keyframes marqueeContinuous {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-continuous {
+  display: flex;
+  width: max-content;
+  animation: marqueeContinuous 12s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-continuous:hover,
+.animate-marquee-continuous:active {
+  animation-play-state: paused;
+}
+
+.marquee-mask {
+  mask-image: linear-gradient(to right, transparent 0%, black 8px, black calc(100% - 8px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8px, black calc(100% - 8px), transparent 100%);
+}
+
 /* Card hover lift effect */
 .drive-card {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);

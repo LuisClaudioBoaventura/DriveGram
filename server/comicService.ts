@@ -223,7 +223,20 @@ export const comicService = {
         pageBuffer = fileBuffer;
       } else {
         const zip = await JSZip.loadAsync(fileBuffer);
-        const zipEntry = zip.file(pagePath);
+        const normTarget = pagePath.replace(/\\/g, '/').toLowerCase();
+        const baseTarget = path.basename(pagePath).toLowerCase();
+
+        let zipEntry = zip.file(pagePath) || zip.file(pagePath.replace(/\\/g, '/'));
+        if (!zipEntry) {
+          zip.forEach((relPath, entry) => {
+            if (!zipEntry && !entry.dir) {
+              const normRel = relPath.replace(/\\/g, '/').toLowerCase();
+              if (normRel === normTarget || path.basename(normRel) === baseTarget) {
+                zipEntry = entry;
+              }
+            }
+          });
+        }
         if (!zipEntry) throw new Error(`Página ${pagePath} não encontrada no arquivo ZIP`);
         pageBuffer = await zipEntry.async('nodebuffer');
       }
@@ -241,23 +254,45 @@ export const comicService = {
         extractor = await createExtractorFromFile({ filepath: filePath, targetPath: tempDir, wasmBinary } as any);
       }
 
-      const matchVariants = [
-        pagePath,
-        pagePath.replace(/\//g, '\\'),
-        pagePath.replace(/\\/g, '/'),
-        path.basename(pagePath)
-      ];
+      const targetNorm = pagePath.replace(/\\/g, '/').toLowerCase();
+      const targetBase = path.basename(pagePath).toLowerCase();
 
-      const extracted = extractor.extract({ files: matchVariants });
-      const filesList: any[] = extracted?.files 
-        ? Array.from(extracted.files as any)
-        : (Array.isArray(extracted) && (extracted as any)[1] ? Array.from((extracted as any)[1]) : []);
+      // Pass function filter to node-unrar-js Extractor so it doesn't fail on slash differences
+      const extracted = extractor.extract({
+        files: (fileHeader: any) => {
+          const fn = (fileHeader?.name || '').replace(/\\/g, '/').toLowerCase();
+          return fn === targetNorm || path.basename(fn) === targetBase;
+        }
+      });
 
-      const normTarget = pagePath.replace(/\\/g, '/').toLowerCase();
+      const filesList: any[] = [];
+      if (extracted?.files) {
+        for (const f of extracted.files) {
+          if (!f.fileHeader?.flags?.directory) {
+            filesList.push(f);
+          }
+        }
+      }
+
+      // If targeted filter yielded 0, extract all files as fallback
+      if (filesList.length === 0) {
+        console.warn(`[DriveGram Comic] Targeted extraction yielded 0 for "${pagePath}", trying full extraction fallback...`);
+        try {
+          const fullExtracted = extractor.extract();
+          if (fullExtracted?.files) {
+            for (const f of fullExtracted.files) {
+              if (!f.fileHeader?.flags?.directory) {
+                filesList.push(f);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       const fileData = filesList.find((f: any) => {
         const name = (f?.fileHeader?.name || '').replace(/\\/g, '/').toLowerCase();
-        return name === normTarget || path.basename(name) === path.basename(normTarget);
-      }) || filesList[0];
+        return name === targetNorm || path.basename(name) === targetBase;
+      }) || filesList[pageIndex] || filesList[0];
 
       if (fileData?.extraction) {
         pageBuffer = Buffer.from(fileData.extraction);

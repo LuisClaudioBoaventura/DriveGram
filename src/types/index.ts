@@ -402,6 +402,9 @@ export interface AudioTrack {
   timestamps?: VideoTimestamp[];
   notes?: string;
   releaseDate?: string; // Data de publicação do episódio (ex: "2026-08-20T10:00:00Z")
+  coverImage?: string; // Capa individual da faixa / episódio (ex: parte de coletânea/playlist)
+  showTitle?: string; // Nome do podcast / álbum de origem
+  showId?: string; // ID do podcast / álbum de origem
 }
 
 export interface AudioShow {

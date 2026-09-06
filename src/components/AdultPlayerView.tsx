@@ -31,6 +31,8 @@ import {
 import { AdultVideo, AdultPerformer, DriveItem } from '../types/index.js';
 import { PerformerDetailModal } from './PerformerDetailModal.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface AdultPlayerViewProps {
   video: AdultVideo;
@@ -201,14 +203,18 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
         </button>
 
         {/* Video Title & Category Badge */}
-        <div className="flex items-center gap-2 overflow-hidden px-2 max-w-[45vw] sm:max-w-md md:max-w-lg">
+        <div className="flex items-center gap-2 overflow-hidden px-2 flex-1 min-w-0 max-w-[50vw] sm:max-w-md md:max-w-lg">
           <span className="px-2 py-0.5 rounded-lg bg-rose-600/90 text-white text-[10px] font-black uppercase shrink-0 flex items-center gap-1 shadow-sm">
             <LockKeyhole className="w-3 h-3" />
             <span>{video.category || 'Red Locker'}</span>
           </span>
-          <h2 className="text-xs sm:text-sm font-bold text-white truncate">
-            {video.title}
-          </h2>
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <MarqueeTitle
+              text={video.title}
+              as="h2"
+              className="text-xs sm:text-sm font-bold text-white"
+            />
+          </div>
         </div>
 
         {/* Action Controls (Icons Only) */}
@@ -312,7 +318,7 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
               <video
                 ref={videoRef}
                 key={videoFile?.id || video.fileId}
-                src={`/api/stream/${videoFile?.id || video.fileId}`}
+                src={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
                 controls
                 autoPlay
                 playsInline

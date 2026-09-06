@@ -1,4 +1,10 @@
 // Service Worker for DriveGram Mobile
+if (typeof self !== 'undefined' && self.location && (self.location.hostname === 'tauri.localhost' || self.location.protocol === 'tauri:')) {
+  if (self.registration && typeof self.registration.unregister === 'function') {
+    self.registration.unregister().catch(() => {});
+  }
+}
+
 const CACHE_NAME = 'drivegram-app-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -33,8 +39,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
 
-  // Do not cache API endpoints, range streaming requests or Vite dev assets
+  // If running in Tauri desktop, Capacitor, or local dev, NEVER intercept
   if (
+    requestUrl.hostname === 'tauri.localhost' ||
+    requestUrl.protocol === 'tauri:' ||
+    self.location.hostname === 'tauri.localhost' ||
+    self.location.protocol === 'tauri:' ||
+    requestUrl.hostname === 'localhost' ||
+    requestUrl.hostname === '127.0.0.1' ||
     requestUrl.pathname.startsWith('/api') || 
     requestUrl.pathname.startsWith('/@') || 
     requestUrl.pathname.startsWith('/src') || 

@@ -41,6 +41,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Book, BookChapter, DriveItem, VideoTimestamp } from '../types/index.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
 import { PdfReader } from './PdfReader.js';
@@ -540,7 +541,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
       {!onTogglePlayProp && (
         <audio
           ref={audioRef}
-          src={(activeAudioFile?.id || activeChapter?.fileId) ? `/api/stream/${activeAudioFile?.id || activeChapter?.fileId}` : undefined}
+          src={(activeAudioFile?.id || activeChapter?.fileId) ? resolveApiUrl(`/api/stream/${activeAudioFile?.id || activeChapter?.fileId}`) : undefined}
           onTimeUpdate={(e) => setLocalCurrentTime((e.target as HTMLAudioElement).currentTime)}
           onLoadedMetadata={(e) => setLocalDuration((e.target as HTMLAudioElement).duration)}
           onEnded={handleAudioEnded}

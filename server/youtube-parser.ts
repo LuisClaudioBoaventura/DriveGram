@@ -205,9 +205,16 @@ function extractVideosFromPayload(
     if (!vid || seenIds.has(vid)) continue;
     if (l.contentType && l.contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO' && l.contentType !== 'LOCKUP_CONTENT_TYPE_SHORTS') continue;
 
-    const title = l.metadata?.lockupMetadataViewModel?.title?.content ||
-                  l.accessibilityContext?.label ||
-                  'Vídeo';
+    const rawTitle = l.metadata?.lockupMetadataViewModel?.title?.content ||
+                     l.accessibilityContext?.label;
+    if (!rawTitle || !rawTitle.trim()) {
+      // Skip private, deleted, or unavailable videos that have no title/content on YouTube
+      continue;
+    }
+    const title = cleanHtmlText(rawTitle);
+    if (title.toLowerCase() === '[vídeo privado]' || title.toLowerCase() === '[vídeo excluído]' || title.toLowerCase() === '[private video]' || title.toLowerCase() === '[deleted video]') {
+      continue;
+    }
 
     const thumbSources = l.contentImage?.thumbnailViewModel?.image?.sources;
     const thumb = thumbSources && thumbSources.length > 0 
@@ -224,7 +231,7 @@ function extractVideosFromPayload(
     newVideos.push({
       id: `yt-${vid}`,
       videoId: vid,
-      title: cleanHtmlText(title),
+      title,
       duration: durationStr,
       durationSeconds: parseDurationStringToSeconds(durationStr),
       thumbnail: thumb,
@@ -341,6 +348,56 @@ function extractVideosFromPayload(
 }
 
 /**
+ * Recursively extracts a valid YouTube continuation token from any payload or action
+ */
+export function extractContinuationToken(payload: any): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+
+  // 1. Direct continuationCommand or continuationItemViewModel
+  const commands = findObjectsWithKey(payload, 'continuationCommand');
+  for (const cmd of commands) {
+    if (typeof cmd?.token === 'string' && cmd.token.length > 20) {
+      return cmd.token;
+    }
+    if (typeof cmd?.continuationCommand?.token === 'string' && cmd.continuationCommand.token.length > 20) {
+      return cmd.continuationCommand.token;
+    }
+  }
+
+  // 2. Older continuationEndpoint
+  const endpoints = findObjectsWithKey(payload, 'continuationEndpoint');
+  for (const ep of endpoints) {
+    if (typeof ep?.continuationCommand?.token === 'string' && ep.continuationCommand.token.length > 20) {
+      return ep.continuationCommand.token;
+    }
+  }
+
+  // 3. Check appendContinuationItemsAction / reloadContinuationItemsCommand
+  const actionItems = findObjectsWithKey(payload, 'continuationItems');
+  for (const items of actionItems) {
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        const cmd = item?.continuationItemRenderer || item?.continuationItemViewModel;
+        if (cmd) {
+          const t = extractContinuationToken(cmd);
+          if (t) return t;
+        }
+      }
+    }
+  }
+
+  // 4. Fallback search for any string property named 'token' matching continuation pattern
+  const tokenProps = findObjectsWithKey(payload, 'token');
+  for (const t of tokenProps) {
+    if (typeof t === 'string' && t.length > 20 && (t.startsWith('4qm') || t.includes('%3D') || t.includes('='))) {
+      return t;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Paginates through YouTube continuation tokens via public Innertube browse API
  */
 async function paginateYouTubeContinuations(
@@ -349,14 +406,13 @@ async function paginateYouTubeContinuations(
   clientVersion: string,
   fetchHeaders: any,
   seenIds: Set<string>,
-  maxPages = 60,
-  maxVideos = 2500,
+  maxPages = 80,
+  maxVideos = 5000,
   defaultAuthor?: string,
   listId?: string
 ): Promise<YouTubeVideoItem[]> {
   const allVideos: YouTubeVideoItem[] = [];
-  const continuations = findObjectsWithKey(initialPayload, 'continuationCommand');
-  let token = continuations.length > 0 ? continuations[0].token : null;
+  let token = extractContinuationToken(initialPayload);
   let page = 1;
 
   while (token && page < maxPages && seenIds.size < maxVideos) {
@@ -395,8 +451,7 @@ async function paginateYouTubeContinuations(
 
       allVideos.push(...pageVideos);
 
-      const nextContinuations = findObjectsWithKey(bData, 'continuationCommand');
-      token = nextContinuations.length > 0 ? nextContinuations[0].token : null;
+      token = extractContinuationToken(bData);
     } catch (err) {
       console.warn(`Pagination error on page ${page}:`, err);
       break;
@@ -467,22 +522,79 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
           playlistCover = microformat.thumbnail.thumbnails.slice(-1)[0].url;
         }
 
-        const initialVideos = extractVideosFromPayload(ytData, seenIds, playlistAuthor, playlistId);
-        videos.push(...initialVideos);
+        // Check if playlist contains hidden/unavailable videos endpoint with params (e.g. wgYCCAA=)
+        // When unavailable videos are hidden, YouTube default continuation token dies early (~170 items).
+        // Fetching with the unhidden browse endpoint unveils the full 500+ playlist!
+        let showUnavailableParams: string | null = null;
+        const browseEndpoints = findObjectsWithKey(ytData, 'browseEndpoint');
+        for (const ep of browseEndpoints) {
+          if (ep.browseId === `VL${playlistId}` && ep.params) {
+            showUnavailableParams = ep.params;
+            break;
+          }
+        }
 
-        // Paginate all remaining pages in the playlist
-        const paginatedVideos = await paginateYouTubeContinuations(
-          ytData,
-          apiKey,
-          clientVersion,
-          fetchHeaders,
-          seenIds,
-          60,
-          2500,
-          playlistAuthor,
-          playlistId
-        );
-        videos.push(...paginatedVideos);
+        if (showUnavailableParams && apiKey) {
+          try {
+            const unavailBrowseUrl = `https://www.youtube.com/youtubei/v1/browse?key=${apiKey}`;
+            const unavailRes = await fetch(unavailBrowseUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': fetchHeaders['User-Agent'],
+                'X-YouTube-Client-Name': '1',
+                'X-YouTube-Client-Version': clientVersion
+              },
+              body: JSON.stringify({
+                context: { client: { clientName: 'WEB', clientVersion, hl: 'pt-BR', gl: 'BR' } },
+                browseId: `VL${playlistId}`,
+                params: showUnavailableParams
+              })
+            });
+
+            if (unavailRes.ok) {
+              const unavailData = await unavailRes.json();
+              const unavailVideos = extractVideosFromPayload(unavailData, seenIds, playlistAuthor, playlistId);
+              if (unavailVideos.length > 0) {
+                videos.push(...unavailVideos);
+                const paginated = await paginateYouTubeContinuations(
+                  unavailData,
+                  apiKey,
+                  clientVersion,
+                  fetchHeaders,
+                  seenIds,
+                  80,
+                  5000,
+                  playlistAuthor,
+                  playlistId
+                );
+                videos.push(...paginated);
+              }
+            }
+          } catch (err) {
+            console.warn('Unhidden playlist browse failed, falling back to standard initial data:', err);
+          }
+        }
+
+        // If no videos were extracted yet (e.g. no unavailable params or request failed), extract from initial html
+        if (videos.length === 0) {
+          const initialVideos = extractVideosFromPayload(ytData, seenIds, playlistAuthor, playlistId);
+          videos.push(...initialVideos);
+
+          // Paginate all remaining pages in the playlist
+          const paginatedVideos = await paginateYouTubeContinuations(
+            ytData,
+            apiKey,
+            clientVersion,
+            fetchHeaders,
+            seenIds,
+            80,
+            5000,
+            playlistAuthor,
+            playlistId
+          );
+          videos.push(...paginatedVideos);
+        }
       }
 
       // If scraping ytInitialData yielded 0 items, try playlist RSS fallback

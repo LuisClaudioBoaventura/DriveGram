@@ -47,6 +47,7 @@ import {
 import { Course, Lesson, CourseModule, DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { GenerateMarkersModal } from './GenerateMarkersModal.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface CourseViewProps {
   course: Course;
@@ -946,7 +947,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
                     className="w-full h-full object-contain"
                     controls
                     playsInline
-                    src={streamFileId ? `/api/stream/${streamFileId}` : (activeLesson.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4')}
+                    src={streamFileId ? resolveApiUrl(`/api/stream/${streamFileId}`) : (activeLesson.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4')}
                     onLoadedMetadata={() => {
                       if (videoRef.current && (activeLesson.lastPositionSeconds || 0) > 0) {
                         videoRef.current.currentTime = activeLesson.lastPositionSeconds || 0;

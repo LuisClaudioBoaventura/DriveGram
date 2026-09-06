@@ -51,10 +51,12 @@ Thumbs.db
 .turbo/
 _tmp_server_bundle.*
 
-# Android build outputs & binaries
+# Android & Desktop build outputs & binaries
 *.apk
 *.aab
 *.lnk
+*.msi
+*.exe
 www/
 android/app/build/
 android/build/

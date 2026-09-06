@@ -123,8 +123,32 @@ fn start_backend_server(app: &AppHandle) -> Option<Child> {
     None
 }
 
+#[cfg(target_os = "windows")]
+fn purge_stale_webview_cache() {
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let eb_default = Path::new(&local_app_data)
+            .join("com.drivegram.desktop")
+            .join("EBWebView")
+            .join("Default");
+        let targets = [
+            eb_default.join("Service Worker"),
+            eb_default.join("CacheStorage"),
+            eb_default.join("ScriptCache"),
+            eb_default.join("Cache"),
+        ];
+        for target in targets {
+            if target.exists() {
+                let _ = fs::remove_dir_all(&target);
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    purge_stale_webview_cache();
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::default()
@@ -137,11 +161,28 @@ pub fn run() {
             app.manage(AppState {
                 server_child: Mutex::new(child),
             });
+
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                for _ in 0..60 {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    if std::net::TcpStream::connect("127.0.0.1:5000").is_ok() {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            if let Ok(url) = tauri::Url::parse("http://127.0.0.1:5000") {
+                                let _ = window.navigate(url);
+                            }
+                        }
+                        break;
+                    }
+                }
+            });
+
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app_handle, event| {
+            log::info!("Tauri RunEvent: {:?}", event);
             if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
                 if let Some(state) = app_handle.try_state::<AppState>() {
                     if let Ok(mut lock) = state.server_child.lock() {

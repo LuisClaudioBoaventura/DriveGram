@@ -17,6 +17,8 @@ import {
   BookOpen
 } from 'lucide-react';
 import { Book, BookChapter, DriveItem } from '../types/index.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface FloatingAudiobookPlayerProps {
   book: Book;
@@ -110,7 +112,7 @@ export const FloatingAudiobookPlayer: React.FC<FloatingAudiobookPlayerProps> = (
       {/* Persistent Global Audio Element */}
       <audio
         ref={audioRef}
-        src={streamFileId ? `/api/stream/${streamFileId}` : undefined}
+        src={streamFileId ? resolveApiUrl(`/api/stream/${streamFileId}`) : undefined}
         onTimeUpdate={(e) => {
           onTimeUpdate((e.target as HTMLAudioElement).currentTime);
         }}
@@ -153,12 +155,16 @@ export const FloatingAudiobookPlayer: React.FC<FloatingAudiobookPlayerProps> = (
                   className="px-2 py-0.5 max-w-[140px] overflow-hidden cursor-pointer group/info"
                   title="Abrir no leitor completo"
                 >
-                  <p className="text-[10px] font-bold text-white group-hover/info:text-purple-300 truncate leading-tight transition-colors">
-                    {book.title}
-                  </p>
-                  <p className="text-[9px] text-purple-300 truncate">
-                    {activeChapter?.title || 'Capítulo em reprodução'}
-                  </p>
+                  <MarqueeTitle
+                    text={book.title}
+                    as="p"
+                    className="text-[10px] font-bold text-white group-hover/info:text-purple-300 leading-tight transition-colors"
+                  />
+                  <MarqueeTitle
+                    text={activeChapter?.title || 'Capítulo em reprodução'}
+                    as="p"
+                    className="text-[9px] text-purple-300"
+                  />
                 </div>
 
                 <div className="h-4 w-px bg-purple-900/60 shrink-0" />
@@ -321,17 +327,25 @@ export const FloatingAudiobookPlayer: React.FC<FloatingAudiobookPlayerProps> = (
                   </div>
 
                   <div className="overflow-hidden flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 text-[9px] font-black uppercase tracking-wider border border-purple-500/30">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 text-[9px] font-black uppercase tracking-wider border border-purple-500/30 shrink-0">
                         Audiolivro
                       </span>
-                      <h4 className="text-xs font-bold text-white truncate group-hover:text-purple-300 transition-colors">
-                        {book.title}
-                      </h4>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <MarqueeTitle
+                          text={book.title}
+                          as="h4"
+                          className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors"
+                        />
+                      </div>
                     </div>
-                    <p className="text-[11px] font-semibold text-gray-200 truncate mt-0.5">
-                      {activeChapter?.title || 'Capítulo Selecionado'}
-                    </p>
+                    <div className="min-w-0 overflow-hidden mt-0.5">
+                      <MarqueeTitle
+                        text={activeChapter?.title || 'Capítulo Selecionado'}
+                        as="p"
+                        className="text-[11px] font-semibold text-gray-200"
+                      />
+                    </div>
                     {book.author && (
                       <span className="text-[10px] text-gray-400 truncate block">
                         {book.author} {book.narrator ? `• Voz: ${book.narrator}` : ''}

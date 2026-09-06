@@ -16,6 +16,59 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
+      (function() {
+        var isTauri = typeof window !== 'undefined' && (
+          typeof window.__TAURI__ !== 'undefined' ||
+          typeof window.__TAURI_INTERNALS__ !== 'undefined' ||
+          location.hostname === 'tauri.localhost' ||
+          location.protocol === 'tauri:' ||
+          location.origin.indexOf('tauri.localhost') !== -1
+        );
+        var isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        var isCapacitor = window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform();
+
+        if ('serviceWorker' in navigator) {
+          if (isTauri || isLocal || isCapacitor) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for (var i = 0; i < registrations.length; i++) {
+                registrations[i].unregister();
+              }
+            }).catch(function() {});
+            if ('caches' in window) {
+              caches.keys().then(function(names) {
+                for (var j = 0; j < names.length; j++) {
+                  if (names[j].indexOf('drivegram-') === 0) {
+                    caches.delete(names[j]);
+                  }
+                }
+              }).catch(function() {});
+            }
+          } else if (location.protocol === 'https:' || location.protocol === 'http:') {
+            window.addEventListener('load', function() {
+              navigator.serviceWorker.register('/sw.js').catch(function() {});
+            });
+          }
+        }
+
+        // Se estiver executando no Desktop (Tauri) na URL tauri.localhost, transiciona suavemente para o servidor local 127.0.0.1:5000
+        if (isTauri && location.hostname === 'tauri.localhost') {
+          var pollServer = function() {
+            fetch('http://127.0.0.1:5000/api/health')
+              .then(function(res) { return res.json(); })
+              .then(function(data) {
+                if (data && data.status === 'ok') {
+                  window.location.replace('http://127.0.0.1:5000');
+                }
+              })
+              .catch(function() {
+                setTimeout(pollServer, 150);
+              });
+          };
+          pollServer();
+        }
+      })();
+    </script>
+    <script>
       // Garante compatibilidade com o ciclo de vida do Capacitor (pause/resume) ao rodar no host local
       window.Capacitor = window.Capacitor || {};
       if (typeof window.Capacitor.triggerEvent !== 'function') {
@@ -30,32 +83,16 @@
     </script>
   </head>
   <body class="bg-drive-lightBg dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 font-sans antialiased select-none overscroll-none">
-    <div id="root" class="h-full w-full"></div>
+    <div id="root" class="h-full w-full">
+      <div id="initial-loader" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#f8fafc;font-family:sans-serif;z-index:99999;">
+        <div style="width:44px;height:44px;border:3px solid #334155;border-top-color:#3b82f6;border-radius:50%;animation:dg-spin 0.8s linear infinite;"></div>
+        <div style="margin-top:16px;font-size:16px;font-weight:700;letter-spacing:-0.01em;color:#f8fafc;">DriveGram</div>
+        <div style="margin-top:6px;font-size:12px;color:#94a3b8;">Iniciando sistema...</div>
+      </div>
+      <style>
+        @keyframes dg-spin { to { transform: rotate(360deg); } }
+      </style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        // Em ambiente de desenvolvimento local, desregistra o Service Worker e limpa cache para não conflitar com o Vite
-        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-          navigator.serviceWorker.getRegistrations().then((registrations) => {
-            for (const registration of registrations) {
-              registration.unregister();
-            }
-          });
-          if ('caches' in window) {
-            caches.keys().then((names) => {
-              for (const name of names) {
-                if (name.startsWith('drivegram-')) {
-                  caches.delete(name);
-                }
-              }
-            });
-          }
-        } else {
-          window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js').catch(() => {});
-          });
-        }
-      }
-    </script>
   </body>
 </html>

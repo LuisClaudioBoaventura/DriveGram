@@ -36,6 +36,8 @@ import {
 } from 'lucide-react';
 import { SeriesShow, SeriesEpisode, DriveItem } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface SeriesStudioViewProps {
   series: SeriesShow;
@@ -394,10 +396,12 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-xs sm:text-sm font-black text-white truncate max-w-[120px] sm:max-w-xs md:max-w-md">
-                {series.title}
-              </h1>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <MarqueeTitle
+                text={series.title}
+                as="h1"
+                className="text-xs sm:text-sm font-black text-white max-w-[140px] sm:max-w-xs md:max-w-md"
+              />
               <div className="flex items-center gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] text-gray-400 truncate">
                 <span className="text-purple-400 font-bold shrink-0">{series.category || 'Série / Canal'}</span>
                 <span>•</span>
@@ -525,7 +529,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                 <video
                   ref={videoRef}
                   key={playingFile?.id || playingEpisode.fileId}
-                  src={`/api/stream/${playingFile?.id || playingEpisode.fileId}`}
+                  src={resolveApiUrl(`/api/stream/${playingFile?.id || playingEpisode.fileId}`)}
                   controls
                   autoPlay
                   playsInline
@@ -634,9 +638,13 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                       </span>
                     )}
                   </div>
-                  <h2 className="text-base sm:text-lg font-bold text-white leading-tight">
-                    {playingEpisode.title}
-                  </h2>
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <MarqueeTitle
+                      text={playingEpisode.title}
+                      as="h2"
+                      className="text-base sm:text-lg font-bold text-white leading-tight"
+                    />
+                  </div>
                 </div>
 
                 {/* Main Player Action Buttons */}

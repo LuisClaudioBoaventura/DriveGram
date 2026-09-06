@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { DriveItem } from '../types/index.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface ComicManifest {
   id: string;
@@ -589,7 +590,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
             {manifest.pages.map((_page, idx) => (
               <div key={idx} className="w-full flex flex-col items-center relative">
                 <img
-                  src={`/api/comic/${file.id}/page/${idx}`}
+                  src={resolveApiUrl(`/api/comic/${file.id}/page/${idx}`)}
                   alt={`Página ${idx + 1}`}
                   loading="lazy"
                   draggable={false}
@@ -621,7 +622,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
             style={{ transform: `scale(${zoom})` }}
           >
             <img
-              src={`/api/comic/${file.id}/page/${currentPage}`}
+              src={resolveApiUrl(`/api/comic/${file.id}/page/${currentPage}`)}
               alt={`Página ${currentPage + 1}`}
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
@@ -647,7 +648,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
             style={{ transform: `scale(${zoom})` }}
           >
             <img
-              src={`/api/comic/${file.id}/page/${currentPage}`}
+              src={resolveApiUrl(`/api/comic/${file.id}/page/${currentPage}`)}
               alt={`Página ${currentPage + 1}`}
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
@@ -665,7 +666,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
             />
             {currentPage + 1 < totalPages && (
               <img
-                src={`/api/comic/${file.id}/page/${currentPage + 1}`}
+                src={resolveApiUrl(`/api/comic/${file.id}/page/${currentPage + 1}`)}
                 alt={`Página ${currentPage + 2}`}
                 draggable={false}
                 onDragStart={(e) => e.preventDefault()}
@@ -760,7 +761,7 @@ export const ComicReader: React.FC<ComicReaderProps> = ({
                   }`}
                 >
                   <img
-                    src={`/api/comic/${file.id}/page/${idx}`}
+                    src={resolveApiUrl(`/api/comic/${file.id}/page/${idx}`)}
                     alt={`Pág ${idx + 1}`}
                     loading="lazy"
                     draggable={false}

@@ -3,6 +3,8 @@ import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCir
 import { MovieVideo, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { GenerateMarkersModal } from './GenerateMarkersModal.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface VideoPlayerViewProps {
   video: MovieVideo;
@@ -290,9 +292,13 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             <span className="px-2 py-0.5 rounded-lg bg-red-600/90 text-white text-[10px] font-black uppercase shadow-sm shrink-0">
               {video.category || 'Filme'}
             </span>
-            <h2 className="text-xs sm:text-sm font-bold text-white truncate">
-              {video.titlePt || video.title}
-            </h2>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <MarqueeTitle
+                text={video.titlePt || video.title}
+                as="h2"
+                className="text-xs sm:text-sm font-bold text-white"
+              />
+            </div>
           </div>
 
           {/* Action Controls (Icons Only) */}
@@ -346,7 +352,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           <div className={isPiPHidden ? 'w-px h-px' : 'relative w-full max-h-[72vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center group'}>
             <video
               ref={videoRef}
-              src={`/api/stream/${videoFile?.id || video.fileId}`}
+              src={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
               controls={!isPiPHidden}
               autoPlay
               playsInline

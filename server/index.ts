@@ -965,6 +965,33 @@ app.get('/api/stream/:id', async (req, res) => {
         }
         return;
       }
+
+      // Fallback: If direct streaming failed before sending headers, cache file to disk and stream immediately
+      if (!res.headersSent) {
+        try {
+          console.log(`[DriveGram Stream] Direct stream failed, caching "${file.name}" to disk for seamless playback...`);
+          await telegramService.downloadMediaByMessageId(file.telegramMeta.messageId, filePath, undefined, fileSize);
+          if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+            db.touchFileCachedAt(file.id);
+            const finalSize = fs.statSync(filePath).size;
+            const finalEnd = Math.min(end, finalSize - 1);
+            const chunksize = (finalEnd - start) + 1;
+            res.writeHead(206, {
+              'Content-Range': `bytes ${start}-${finalEnd}/${finalSize}`,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': chunksize,
+              'Content-Type': mimeType,
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+              'Access-Control-Allow-Headers': '*',
+              'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges, Content-Type',
+            });
+            return fs.createReadStream(filePath, { start, end: finalEnd }).pipe(res);
+          }
+        } catch (cacheErr: any) {
+          console.error(`[DriveGram Stream] Cache-and-stream fallback failed:`, cacheErr?.message);
+        }
+      }
     }
 
     // 3. Fallback final: se não foi possível transmitir
@@ -1935,7 +1962,9 @@ export async function refreshSingleSeriesInternal(series: any): Promise<{ series
     if (e.videoId) existingKeys.add(e.videoId.toLowerCase().trim());
     if (e.videoUrl) existingKeys.add(e.videoUrl.toLowerCase().trim());
     if (e.id) existingKeys.add(e.id.toLowerCase().trim());
-    if (e.title) existingKeys.add(e.title.toLowerCase().trim());
+    if (e.title && e.title.toLowerCase().trim() !== 'vídeo' && e.title.toLowerCase().trim() !== 'video') {
+      existingKeys.add(e.title.toLowerCase().trim());
+    }
   });
 
   const deletedKeys = new Set<string>(
@@ -1952,11 +1981,12 @@ export async function refreshSingleSeriesInternal(series: any): Promise<{ series
     const vId = (v.id || '').toLowerCase().trim();
 
     // Skip if already in existing episodes or in user-deleted episodes blacklist
+    const isGenericTitle = vTitle === 'vídeo' || vTitle === 'video';
     if (
       (vid && (existingKeys.has(vid.toLowerCase()) || deletedKeys.has(vid.toLowerCase()))) ||
       (vUrl && (existingKeys.has(vUrl) || deletedKeys.has(vUrl))) ||
       (vId && (existingKeys.has(vId) || deletedKeys.has(vId))) ||
-      (vTitle && (existingKeys.has(vTitle) || deletedKeys.has(vTitle)))
+      (!isGenericTitle && vTitle && (existingKeys.has(vTitle) || deletedKeys.has(vTitle)))
     ) {
       continue;
     }

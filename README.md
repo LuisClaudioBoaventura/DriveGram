@@ -38,9 +38,9 @@ Baixe os instaladores oficiais da versão mais recente diretamente na [**Página
 
 | Plataforma | Pacote / Instalador | Tamanho | Descrição | Link Direto |
 | :--- | :--- | :--- | :--- | :--- |
-| 💻 **Windows Desktop** | **`DriveGram_1.0.0_x64-setup.exe`** | **`3,95 MB`** | **Recomendado**. Instalador executável nativo ultraleve (Tauri v2) com assistente de instalação e atalho na Área de Trabalho. | [⬇️ **Download .EXE**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram_1.0.0_x64-setup.exe) |
-| 🏢 **Windows Corporativo** | **`DriveGram_1.0.0_x64_en-US.msi`** | **`10,69 MB`** | Pacote de instalação corporativa Windows Installer (.msi nativo). | [⬇️ **Download .MSI**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram_1.0.0_x64_en-US.msi) |
-| 📱 **Android** | **`DriveGram.apk`** | **`72 MB`** | Aplicativo Android oficial com servidor Node.js embutido de inicialização autônoma. | [⬇️ **Download .APK**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram.apk) |
+| 💻 **Windows Desktop** | **`DriveGram-Setup.exe`** | **`4,33 MB`** | **Recomendado**. Instalador executável nativo ultraleve (Tauri v2) com assistente de instalação e atalho na Área de Trabalho. | [⬇️ **Download .EXE**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram-Setup.exe) |
+| 🏢 **Windows Corporativo** | **`DriveGram.msi`** | **`13,24 MB`** | Pacote de instalação corporativa Windows Installer (.msi nativo). | [⬇️ **Download .MSI**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram.msi) |
+| 📱 **Android** | **`DriveGram.apk`** | **`82,8 MB`** | Aplicativo Android oficial com servidor Node.js embutido de inicialização autônoma. | [⬇️ **Download .APK**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram.apk) |
 
 > 🏷️ *Todos os instaladores, notas de atualização e código fonte também estão disponíveis na [Aba de Releases](https://github.com/LuisClaudioBoaventura/DriveGram/releases).*
 

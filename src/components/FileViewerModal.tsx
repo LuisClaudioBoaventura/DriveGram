@@ -28,11 +28,13 @@ import {
   Sparkles
 } from 'lucide-react';
 import { DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
 import { PdfReader } from './PdfReader.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { GenerateMarkersModal } from './GenerateMarkersModal.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
 
 interface SubtitleCue {
   start: number;
@@ -312,9 +314,13 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   <span>Salvar no Telegram</span>
                 </button>
               )}
-              <h2 className="text-sm font-bold text-white truncate max-w-md" title={file.name}>
-                {file.name}
-              </h2>
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <MarqueeTitle
+                  text={file.name}
+                  as="h2"
+                  className="text-sm font-bold text-white max-w-[180px] sm:max-w-md"
+                />
+              </div>
             </div>
           </div>
 
@@ -395,7 +401,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   playsInline
                   onEnded={handleMediaEnded}
                   onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
-                  src={`/api/stream/${file.id}`}
+                  src={resolveApiUrl(`/api/stream/${file.id}`)}
                   className="max-h-full max-w-full rounded-xl shadow-2xl object-contain"
                 >
                   {subtitles.map((sub) => (
@@ -425,7 +431,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   controls
                   autoPlay
                   onEnded={handleMediaEnded}
-                  src={`/api/stream/${file.id}`}
+                  src={resolveApiUrl(`/api/stream/${file.id}`)}
                   className="w-full"
                 />
               </div>
@@ -434,7 +440,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
             {/* Image Lightbox */}
             {file.type === 'image' && (
               <img
-                src={`/api/stream/${file.id}`}
+                src={resolveApiUrl(`/api/stream/${file.id}`)}
                 alt={file.name}
                 draggable={false}
                 onDragStart={(e) => e.preventDefault()}

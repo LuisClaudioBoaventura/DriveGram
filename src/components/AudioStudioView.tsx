@@ -43,6 +43,8 @@ import {
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface AudioStudioViewProps {
   audioShow: AudioShow;
@@ -158,10 +160,24 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const [coverUrlInput, setCoverUrlInput] = useState(audioShow.coverImage || '');
   const coverInputRef = useRef<HTMLInputElement>(null);
 
+  // Modo Disco de Vinil integrado no estúdio
+  const [isStudioVinylMode, setIsStudioVinylMode] = useState(false);
+  const trackRowRefs = useRef<(HTMLDivElement | null)[]>([]);
+
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const tracks = audioShow.tracks || [];
   const activeTrack: AudioTrack | undefined = tracks[currentTrackIndex];
+
+  // Rolagem suave automática para a faixa ativa quando mudar
+  useEffect(() => {
+    if (trackRowRefs.current[currentTrackIndex]) {
+      trackRowRefs.current[currentTrackIndex]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, [currentTrackIndex]);
   
   // Priority 1: Direct fileId match in allFiles
   // Priority 2: Match by show folder and track title in allFiles
@@ -202,7 +218,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const isPlayingFromTelegram = !isOnlineSourceAvailable && Boolean(streamFileId);
   const studioAudioSource = isOnlineSourceAvailable
     ? activeTrack!.audioUrl
-    : (streamFileId ? `/api/stream/${streamFileId}` : activeTrack?.audioUrl);
+    : (streamFileId ? resolveApiUrl(`/api/stream/${streamFileId}`) : activeTrack?.audioUrl);
 
   const handleStudioAudioError = () => {
     if (isOnlineSourceAvailable && streamFileId) {
@@ -737,9 +753,11 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
             </div>
           ) : (
             <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-              <h1 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 truncate max-w-[120px] sm:max-w-xs md:max-w-md">
-                {audioShow.title}
-              </h1>
+              <MarqueeTitle
+                text={audioShow.title}
+                as="h1"
+                className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 max-w-[130px] sm:max-w-xs md:max-w-md"
+              />
               {(audioShow.artist || audioShow.host) && (
                 <span className="text-xs text-gray-400 hidden md:inline truncate max-w-[120px]">
                   • {audioShow.artist || audioShow.host}
@@ -861,38 +879,104 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
             }`}>
               {/* Left / Cover Section */}
               <div className={`flex flex-col items-center justify-center ${!isTracksSidebarOpen ? 'lg:col-span-5' : ''}`}>
-                {/* Cover Art */}
-                <div 
-                  onClick={() => {
-                    setCoverUrlInput(audioShow.coverImage || '');
-                    setIsChangingCover(true);
-                  }}
-                  className="relative mb-5 group cursor-pointer"
-                  title="Clique para trocar a capa"
-                >
-                  <div className={`rounded-3xl overflow-hidden shadow-2xl border-2 border-emerald-500/40 transition-all duration-700 ${
-                    !isTracksSidebarOpen ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-52 h-52'
-                  } ${isPlaying ? 'ring-8 ring-emerald-500/20 scale-105 shadow-emerald-500/20 shadow-2xl' : 'grayscale-[15%]'}`}>
-                    <img
-                      src={audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
-                      alt={audioShow.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-xs font-bold gap-1 transition-opacity">
-                      <ImageIcon className="w-6 h-6 text-emerald-400" />
-                      <span>Trocar Capa</span>
+                {/* Vinyl Record Mode View vs Standard Cover Art */}
+                {isStudioVinylMode ? (
+                  <div 
+                    key={`studio-vinyl-${activeTrack?.id || audioShow.id}`}
+                    className="relative mb-4 group cursor-pointer transition-all duration-700 animate-in fade-in"
+                  >
+                    <div className={`relative rounded-full bg-gray-950 border-4 border-emerald-500/60 p-2 flex items-center justify-center shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_30px_rgba(16,185,129,0.3)] transition-all duration-700 ${
+                      !isTracksSidebarOpen ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-52 h-52'
+                    }`}>
+                      {/* Ambient Glow */}
+                      {isPlaying && (
+                        <div className="absolute -inset-1.5 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-500 to-sky-600 opacity-70 blur-xs animate-pulse" />
+                      )}
+
+                      {/* Spinning Artwork & Grooves */}
+                      <div 
+                        className="relative w-full h-full rounded-full overflow-hidden flex items-center justify-center"
+                        style={{
+                          animation: 'spin 12s linear infinite',
+                          animationPlayState: isPlaying ? 'running' : 'paused'
+                        }}
+                      >
+                        <img
+                          src={activeTrack?.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                          alt={activeTrack?.showTitle || audioShow.title}
+                          className="w-full h-full object-cover scale-110 transition-transform duration-500"
+                        />
+                        {/* Grooves */}
+                        <div className="absolute inset-0 rounded-full border-[4px] border-black/40 pointer-events-none" />
+                        <div className="absolute inset-2 rounded-full border border-white/10 pointer-events-none" />
+                        <div className="absolute inset-5 rounded-full border border-black/40 pointer-events-none" />
+                        <div className="absolute inset-8 rounded-full border border-white/5 pointer-events-none" />
+                        {/* Sheen */}
+                        <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/15 to-transparent pointer-events-none" />
+                      </div>
+
+                      {/* Center Spindle */}
+                      <div className="absolute w-8 h-8 rounded-full bg-gray-950 border-2 border-emerald-400 shadow-inner flex items-center justify-center pointer-events-none z-10">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                      </div>
                     </div>
                   </div>
+                ) : (
+                  /* Standard Cover Art */
+                  <div 
+                    key={`studio-cover-${activeTrack?.id || audioShow.id}`}
+                    onClick={() => {
+                      setCoverUrlInput(activeTrack?.coverImage || audioShow.coverImage || '');
+                      setIsChangingCover(true);
+                    }}
+                    className="relative mb-4 group cursor-pointer animate-in fade-in transition-all duration-500"
+                    title="Clique para trocar a capa"
+                  >
+                    <div className={`rounded-3xl overflow-hidden shadow-2xl border-2 border-emerald-500/40 transition-all duration-700 ${
+                      !isTracksSidebarOpen ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-52 h-52'
+                    } ${isPlaying ? 'ring-8 ring-emerald-500/20 scale-105 shadow-emerald-500/20 shadow-2xl' : 'grayscale-[15%]'}`}>
+                      <img
+                        src={activeTrack?.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                        alt={activeTrack?.showTitle || audioShow.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-xs font-bold gap-1 transition-opacity">
+                        <ImageIcon className="w-6 h-6 text-emerald-400" />
+                        <span>Trocar Capa</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Vinyl Mode & Cover Art Switcher Pill */}
+                <div className="flex items-center gap-2 mb-3">
+                  <button
+                    onClick={() => setIsStudioVinylMode(!isStudioVinylMode)}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold transition-all border ${
+                      isStudioVinylMode
+                        ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm shadow-emerald-500/40'
+                        : 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-200 border-emerald-700/40'
+                    }`}
+                    title={isStudioVinylMode ? 'Alternar para Capa Padrão' : 'Alternar para Modo Disco de Vinil'}
+                  >
+                    <Disc className={`w-3.5 h-3.5 ${isStudioVinylMode ? 'animate-spin' : ''}`} style={{ animationDuration: '6s' }} />
+                    <span>{isStudioVinylMode ? 'Modo Vinil Ativo' : 'Modo Vinil'}</span>
+                  </button>
                 </div>
 
                 {/* Title & Artist Info */}
-                <div className="text-center max-w-sm w-full mb-3">
-                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">
-                    {audioShow.title}
+                <div 
+                  key={`track-info-${activeTrack?.id || audioShow.id}`}
+                  className="text-center max-w-sm w-full mb-3 animate-in fade-in slide-in-from-right-2 duration-300"
+                >
+                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest block mb-1 truncate">
+                    {activeTrack?.showTitle || audioShow.title}
                   </span>
-                  <h2 className="text-base sm:text-lg font-bold text-white truncate">
-                    {activeTrack?.title || 'Selecione uma faixa'}
-                  </h2>
+                  <MarqueeTitle
+                    text={activeTrack?.title || 'Selecione uma faixa'}
+                    as="h2"
+                    className="text-base sm:text-lg font-bold text-white"
+                  />
                   {(activeTrack?.artist || audioShow.artist || audioShow.host) && (
                     <p className="text-xs text-gray-400 mt-0.5 truncate">
                       {activeTrack?.artist || audioShow.artist || audioShow.host}
@@ -1330,6 +1414,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                 return (
                   <div
                     key={track.id || `track-row-${idx}`}
+                    ref={(el) => { trackRowRefs.current[idx] = el; }}
                     onClick={() => playTrackByIndex(idx)}
                     className={`group flex items-center justify-between p-2.5 rounded-2xl cursor-pointer transition-all ${
                       isCurrent

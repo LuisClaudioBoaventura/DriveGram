@@ -297,24 +297,24 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   const currentMode = telegramState.streamingMode || 'cloud_direct';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl p-6 text-gray-800 dark:text-gray-100 flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-150">
+      <div className="relative w-full max-w-2xl max-h-[94vh] sm:max-h-[92vh] overflow-y-auto overflow-x-hidden rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl p-4 sm:p-6 text-gray-800 dark:text-gray-100 flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-drive-darkBorder mb-5 sticky top-0 bg-white/95 dark:bg-drive-darkSurface/95 backdrop-blur-md z-10">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
-              <Cloud className="w-6 h-6" />
+        <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-gray-100 dark:border-drive-darkBorder mb-4 sm:mb-5 sticky top-0 bg-white/95 dark:bg-drive-darkSurface/95 backdrop-blur-md z-10">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
+            <div className="p-2 sm:p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0">
+              <Cloud className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <h3 className="font-bold text-base">
+            <div className="min-w-0">
+              <h3 className="font-bold text-sm sm:text-base leading-tight truncate sm:whitespace-normal">
                 Gerenciamento de Nuvem, Streaming & Cache
               </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 line-clamp-1 sm:line-clamp-none">
                 Configure como suas mídias são reproduzidas, armazenadas e sincronizadas com o Telegram
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors">
+          <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -332,10 +332,10 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 
         <div className="space-y-4">
           {/* 1. Modo de Reprodução & Streaming com 3 Opções */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/50 via-purple-50/30 to-blue-50/40 dark:from-drive-darkBg dark:to-drive-darkBg border border-indigo-100 dark:border-drive-darkBorder space-y-3">
-            <div className="flex items-center justify-between">
+          <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-br from-indigo-50/50 via-purple-50/30 to-blue-50/40 dark:from-drive-darkBg dark:to-drive-darkBg border border-indigo-100 dark:border-drive-darkBorder space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="flex items-center gap-2 font-bold text-xs text-indigo-700 dark:text-indigo-400">
-                <Zap className="w-4 h-4 text-amber-500" />
+                <Zap className="w-4 h-4 text-amber-500 shrink-0" />
                 <span>Modo de Reprodução & Cache (Vídeos e Áudios)</span>
               </div>
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
@@ -445,17 +445,17 @@ export const SyncModal: React.FC<SyncModalProps> = ({
             </div>
 
             {/* Custom Time Picker for Cache (Shown when temp_cache is active or to customize) */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-3 sm:p-4 rounded-2xl border transition-all ${
               currentMode === 'temp_cache'
                 ? 'bg-white dark:bg-drive-darkSurface border-purple-200 dark:border-purple-900/60 shadow-sm'
                 : 'bg-gray-50/70 dark:bg-drive-darkBg/50 border-gray-200 dark:border-drive-darkBorder opacity-90'
             }`}>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2.5">
                 <span className="font-bold text-xs text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <Sliders className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
                   <span>Configurar Tempo de Retenção do Cache Temporário</span>
                 </span>
-                <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 self-start sm:self-auto">
                   Atual: {currentDuration.value} {currentDuration.unit === 'minutes' ? 'minuto(s)' : currentDuration.unit === 'hours' ? 'hora(s)' : 'dia(s)'}
                 </span>
               </div>
@@ -482,37 +482,39 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               </div>
 
               {/* Custom Number & Unit Selector */}
-              <div className="flex flex-col sm:flex-row items-center gap-2 pt-2 border-t border-gray-100 dark:border-drive-darkBorder">
-                <span className="text-xs text-gray-500 dark:text-gray-400 self-start sm:self-center">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2.5 border-t border-gray-100 dark:border-drive-darkBorder">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
                   Personalizar tempo exato:
                 </span>
                 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <input
-                    type="number"
-                    min="1"
-                    max="999"
-                    value={customValue}
-                    onChange={(e) => setCustomValue(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    className="w-20 px-3 py-1.5 text-xs rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder text-gray-800 dark:text-gray-100 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
+                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+                  <div className="flex items-center gap-2 flex-1 sm:flex-initial min-w-0">
+                    <input
+                      type="number"
+                      min="1"
+                      max="999"
+                      value={customValue}
+                      onChange={(e) => setCustomValue(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      className="w-16 sm:w-20 px-2.5 py-1.5 text-xs rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder text-gray-800 dark:text-gray-100 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
 
-                  {/* Strictly Black background for selector as requested */}
-                  <select
-                    value={customUnit}
-                    onChange={(e) => setCustomUnit(e.target.value as any)}
-                    className="px-3 py-1.5 text-xs rounded-xl bg-black text-white border border-gray-800 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
-                  >
-                    <option value="minutes" className="bg-black text-white">Minutos</option>
-                    <option value="hours" className="bg-black text-white">Horas</option>
-                    <option value="days" className="bg-black text-white">Dias</option>
-                  </select>
+                    {/* Strictly Black background for selector as requested */}
+                    <select
+                      value={customUnit}
+                      onChange={(e) => setCustomUnit(e.target.value as any)}
+                      className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 text-xs rounded-xl bg-black text-white border border-gray-800 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                    >
+                      <option value="minutes" className="bg-black text-white">Minutos</option>
+                      <option value="hours" className="bg-black text-white">Horas</option>
+                      <option value="days" className="bg-black text-white">Dias</option>
+                    </select>
+                  </div>
 
                   <button
                     type="button"
                     onClick={() => handleSaveDuration()}
                     disabled={savingDuration}
-                    className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 flex items-center gap-1 shrink-0"
+                    className="w-full sm:w-auto px-4 py-2 sm:py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0"
                   >
                     <Check className="w-3.5 h-3.5" />
                     <span>{savingDuration ? 'Salvando...' : 'Aplicar Tempo'}</span>
@@ -522,16 +524,16 @@ export const SyncModal: React.FC<SyncModalProps> = ({
             </div>
 
             {/* Cache Storage Meter & Instant Clear Button */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-2xl bg-white/80 dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-2xl bg-white/80 dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 shrink-0">
                   <HardDrive className="w-4 h-4" />
                 </div>
-                <div>
-                  <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block truncate">
                     Espaço em Cache Local (Disco): {formatBytes(telegramState.localCacheSizeBytes || 0)}
                   </span>
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400 block">
                     Arquivos salvos na pasta <code>uploads/</code>
                   </span>
                 </div>
@@ -541,7 +543,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                 type="button"
                 onClick={handleClearCache}
                 disabled={clearingCache || (telegramState.localCacheSizeBytes || 0) === 0}
-                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-bold text-xs transition-colors disabled:opacity-40"
+                className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-bold text-xs transition-colors disabled:opacity-40"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>{clearingCache ? 'Limpando...' : 'Limpar Todo o Cache Agora'}</span>
@@ -659,7 +661,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                   <span>Política de Retenção (Mensagens Salvas Limpas):</span>
                 </span>
                 
-                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
                   {[
                     { label: '1 (Apenas Mais Recente)', count: 1 },
                     { label: '3 (Segurança)', count: 3 },
@@ -681,7 +683,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 bg-blue-100/50 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-200/70 dark:border-blue-900/60">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-blue-100/50 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-200/70 dark:border-blue-900/60">
                 <span className="text-[11px] text-gray-600 dark:text-gray-300 leading-tight">
                   Auto-limpeza ativa: ao salvar cada alteração, backups excedentes são apagados automaticamente do Telegram.
                 </span>
@@ -689,7 +691,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                   type="button"
                   onClick={handlePruneOldMetadata}
                   disabled={pruningOld || !telegramState.isConnected}
-                  className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-rose-300 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all disabled:opacity-40 shadow-sm"
+                  className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-rose-300 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all disabled:opacity-40 shadow-sm"
                 >
                   <Trash2 className={`w-3.5 h-3.5 text-rose-500 ${pruningOld ? 'animate-bounce' : ''}`} />
                   <span>{pruningOld ? 'Limpando Mensagens...' : '🧹 Limpar Backups Duplicados Antigos Agora'}</span>
@@ -707,11 +709,11 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               Guarde uma cópia física do arquivo de índice e metadados no seu computador.
             </p>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <a
                 href="/api/manifest/export"
                 download="drivegram_backup.json"
-                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:bg-gray-100 text-gray-700 dark:text-gray-200 font-semibold text-xs transition-colors text-center"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-2 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:bg-gray-100 text-gray-700 dark:text-gray-200 font-semibold text-xs transition-colors text-center"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Baixar Backup JSON</span>
@@ -719,7 +721,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface hover:bg-gray-100 text-gray-700 dark:text-gray-200 font-semibold text-xs transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-2 rounded-xl border border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface hover:bg-gray-100 text-gray-700 dark:text-gray-200 font-semibold text-xs transition-colors"
               >
                 <Upload className="w-3.5 h-3.5" />
                 <span>Importar Backup JSON</span>

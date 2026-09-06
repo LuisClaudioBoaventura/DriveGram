@@ -5,8 +5,12 @@ import { App as CapApp } from '@capacitor/app';
 const SERVER_URL_KEY = 'drivegram_custom_server_url';
 
 export function isTauriPlatform(): boolean {
+  if (typeof window === 'undefined') return false;
   return typeof (window as any).__TAURI_INTERNALS__ !== 'undefined' ||
-         typeof (window as any).__TAURI__ !== 'undefined';
+         typeof (window as any).__TAURI__ !== 'undefined' ||
+         window.location.hostname === 'tauri.localhost' ||
+         window.location.protocol === 'tauri:' ||
+         window.location.origin.includes('tauri.localhost');
 }
 
 export function getCustomServerUrl(): string {
@@ -31,6 +35,19 @@ export function setCustomServerUrl(url: string): void {
   } else {
     localStorage.setItem(SERVER_URL_KEY, url.trim().replace(/\/+$/, ''));
   }
+}
+
+export function resolveApiUrl(url: string | undefined | null): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
+    return url;
+  }
+  const baseUrl = getCustomServerUrl();
+  if (baseUrl) {
+    const cleanPath = url.startsWith('/') ? url : `/${url}`;
+    return `${baseUrl}${cleanPath}`;
+  }
+  return url;
 }
 
 export function initMobileBridge(onHardwareBack?: () => boolean): void {
@@ -87,9 +104,13 @@ export function initMobileBridge(onHardwareBack?: () => boolean): void {
       let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const baseUrl = getCustomServerUrl();
 
-      if (baseUrl && (url.startsWith('/api') || url.startsWith('api/'))) {
-        const cleanPath = url.startsWith('/') ? url : `/${url}`;
-        url = `${baseUrl}${cleanPath}`;
+      if (baseUrl) {
+        if (url.startsWith('/api') || url.startsWith('api/')) {
+          const cleanPath = url.startsWith('/') ? url : `/${url}`;
+          url = `${baseUrl}${cleanPath}`;
+        } else if (url.includes('tauri.localhost/api/')) {
+          url = url.replace(/https?:\/\/tauri\.localhost\/api\//, `${baseUrl}/api/`);
+        }
         if (typeof input === 'string' || input instanceof URL) {
           input = url;
         } else {
@@ -99,6 +120,67 @@ export function initMobileBridge(onHardwareBack?: () => boolean): void {
 
       return originalFetch(input, init);
     };
+
+    // Intercept media (Audio & Video) and Image element src setters so that
+    // tags like <audio src="/api/stream/.."> and <img src="/api/comic/..">
+    // load directly from the local backend server (127.0.0.1:5000)
+    const baseUrl = getCustomServerUrl() || 'http://127.0.0.1:5000';
+
+    try {
+      const mediaProto = HTMLMediaElement.prototype;
+      const originalMediaSrcDesc = Object.getOwnPropertyDescriptor(mediaProto, 'src');
+      if (originalMediaSrcDesc && originalMediaSrcDesc.set) {
+        Object.defineProperty(mediaProto, 'src', {
+          set(value: string) {
+            let nextVal = value;
+            if (typeof nextVal === 'string') {
+              if (nextVal.startsWith('/api') || nextVal.startsWith('api/')) {
+                const clean = nextVal.startsWith('/') ? nextVal : `/${nextVal}`;
+                nextVal = `${baseUrl}${clean}`;
+              } else if (nextVal.includes('tauri.localhost/api/')) {
+                nextVal = nextVal.replace(/https?:\/\/tauri\.localhost\/api\//, `${baseUrl}/api/`);
+              }
+            }
+            return originalMediaSrcDesc.set!.call(this, nextVal);
+          },
+          get() {
+            return originalMediaSrcDesc.get!.call(this);
+          },
+          configurable: true,
+          enumerable: true,
+        });
+      }
+    } catch (e) {
+      console.warn('[DriveGram Bridge] MediaElement src hook notice:', e);
+    }
+
+    try {
+      const imgProto = HTMLImageElement.prototype;
+      const originalImgSrcDesc = Object.getOwnPropertyDescriptor(imgProto, 'src');
+      if (originalImgSrcDesc && originalImgSrcDesc.set) {
+        Object.defineProperty(imgProto, 'src', {
+          set(value: string) {
+            let nextVal = value;
+            if (typeof nextVal === 'string') {
+              if (nextVal.startsWith('/api') || nextVal.startsWith('api/')) {
+                const clean = nextVal.startsWith('/') ? nextVal : `/${nextVal}`;
+                nextVal = `${baseUrl}${clean}`;
+              } else if (nextVal.includes('tauri.localhost/api/')) {
+                nextVal = nextVal.replace(/https?:\/\/tauri\.localhost\/api\//, `${baseUrl}/api/`);
+              }
+            }
+            return originalImgSrcDesc.set!.call(this, nextVal);
+          },
+          get() {
+            return originalImgSrcDesc.get!.call(this);
+          },
+          configurable: true,
+          enumerable: true,
+        });
+      }
+    } catch (e) {
+      console.warn('[DriveGram Bridge] ImageElement src hook notice:', e);
+    }
   }
 
   // Setup F12 shortcut for Desktop DevTools

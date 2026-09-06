@@ -1168,27 +1168,29 @@ class TelegramService {
         return false;
       }
 
-      // MTProto upload.getFile strictly requires offset to be aligned to 4096 (4 KB)
-      const CHUNK_ALIGN = 4096;
-      const alignedStart = Math.floor(start / CHUNK_ALIGN) * CHUNK_ALIGN;
+      // Telegram MTProto upload.getFile strictly requires offset to be divisible by limit (CHUNK_SIZE)
+      // unless precise: true is used, and chunks must be powers of 2.
+      const CHUNK_SIZE = 128 * 1024; // 128 KB chunks (power of 2, 4KB multiple)
+      const alignedStart = Math.floor(start / CHUNK_SIZE) * CHUNK_SIZE;
       const skipPrefix = start - alignedStart;
 
-      if (!res.headersSent) {
-        res.writeHead(206, {
-          'Content-Range': `bytes ${start}-${end}/${fileSize || contentLength}`,
-          'Accept-Ranges': 'bytes',
-          'Content-Length': contentLength,
-          'Content-Type': mimeType || 'application/octet-stream',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-          'Access-Control-Allow-Headers': '*',
-          'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges, Content-Type',
-          'Cache-Control': 'no-cache'
-        });
-      }
+      const sendHeadersIfNeeded = () => {
+        if (!res.headersSent) {
+          res.writeHead(206, {
+            'Content-Range': `bytes ${start}-${end}/${fileSize || contentLength}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': contentLength,
+            'Content-Type': mimeType || 'application/octet-stream',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Allow-Headers': '*',
+            'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges, Content-Type',
+            'Cache-Control': 'no-cache'
+          });
+        }
+      };
 
       try {
-        const CHUNK_SIZE = 128 * 1024; // 128 KB chunks
         let currentOffset = alignedStart;
         let skipped = 0;
         let bytesSent = 0;
@@ -1200,6 +1202,7 @@ class TelegramService {
           let chunk: Buffer;
           try {
             const req = new Api.upload.GetFile({
+              precise: true,
               location: fileLocation,
               offset: toBigInt(currentOffset),
               limit: CHUNK_SIZE,
@@ -1220,6 +1223,46 @@ class TelegramService {
                 continue;
               }
             }
+
+            // If LIMIT_INVALID occurs, fall back to GramJS internal iterDownload
+            if (invokeErr.errorMessage === 'LIMIT_INVALID' || (invokeErr.message && invokeErr.message.includes('LIMIT_INVALID'))) {
+              console.warn(`[DriveGram Direct Stream] LIMIT_INVALID for msg ${messageId}. Falling back to GramJS iterDownload...`);
+              try {
+                const iter = (client as any).iterDownload({
+                  file: fileLocation,
+                  offset: toBigInt(alignedStart + bytesSent),
+                  requestSize: CHUNK_SIZE,
+                  dcId: dcId || sender?.dcId,
+                });
+                for await (const iterChunk of iter) {
+                  if (res.destroyed || (res as any).closed || res.writableEnded) break;
+                  let dataToSend = iterChunk;
+                  if (skipped < skipPrefix) {
+                    const needToSkip = skipPrefix - skipped;
+                    if (dataToSend.length <= needToSkip) {
+                      skipped += dataToSend.length;
+                      continue;
+                    } else {
+                      dataToSend = dataToSend.subarray(needToSkip);
+                      skipped = skipPrefix;
+                    }
+                  }
+                  const remaining = contentLength - bytesSent;
+                  if (remaining <= 0) break;
+                  const toSend = dataToSend.length > remaining ? dataToSend.subarray(0, remaining) : dataToSend;
+                  sendHeadersIfNeeded();
+                  res.write(toSend);
+                  bytesSent += toSend.length;
+                  if (bytesSent >= contentLength) break;
+                }
+                if (!res.writableEnded && !res.destroyed) res.end();
+                return true;
+              } catch (iterErr: any) {
+                console.error(`[DriveGram Direct Stream] iterDownload fallback also failed for msg ${messageId}:`, iterErr?.message);
+                throw invokeErr;
+              }
+            }
+
             throw invokeErr;
           }
 
@@ -1241,6 +1284,7 @@ class TelegramService {
           if (remaining <= 0) break;
           const chunkToSend = dataToSend.length > remaining ? dataToSend.subarray(0, remaining) : dataToSend;
 
+          sendHeadersIfNeeded();
           res.write(chunkToSend);
           bytesSent += chunkToSend.length;
 
@@ -1253,7 +1297,7 @@ class TelegramService {
         return true;
       } catch (streamErr: any) {
         console.warn(`[DriveGram Direct Stream] error for msg ${messageId}:`, streamErr?.message);
-        if (!res.writableEnded && !res.destroyed) try { res.end(); } catch (_) {}
+        if (res.headersSent && !res.writableEnded && !res.destroyed) try { res.end(); } catch (_) {}
         return false;
       }
     } catch (e: any) {
