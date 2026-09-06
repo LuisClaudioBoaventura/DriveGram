@@ -1079,13 +1079,34 @@ class Database {
 
       videoFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
-      // Find a template AdultVideo from the same folder to inherit metadata (category, studio, performers, etc.)
+      const defaultGenericCover = 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60';
+
+      // Find a template AdultVideo from the same folder for folder-level metadata (category, studio)
       const templateVideo = this.data.adultVideos.find(v => 
         v.folderId === folderId || subFolderIds.has(v.folderId || '')
       );
 
-      const defaultCover = templateVideo?.coverImage || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60';
       const defaultCategory = templateVideo?.category || 'Longas-Metragens';
+      const defaultStudio = templateVideo?.studio;
+
+      // Clean up any zombie entries without fileId if videoFiles exist
+      if (videoFiles.length > 0) {
+        const unlinkedEntries = this.data.adultVideos.filter(v => 
+          (v.folderId === folderId || subFolderIds.has(v.folderId || '')) && (!v.fileId || !activeFileIds.has(v.fileId))
+        );
+
+        for (const unlinked of unlinkedEntries) {
+          const unassignedFile = videoFiles.find(vf => !this.data.adultVideos.some(av => av.fileId === vf.id));
+          if (unassignedFile) {
+            unlinked.fileId = unassignedFile.id;
+            unlinked.folderId = unassignedFile.parentId || folderId;
+            unlinked.updatedAt = new Date().toISOString();
+          } else {
+            // Remove orphan duplicate entry
+            this.data.adultVideos = this.data.adultVideos.filter(v => v.id !== unlinked.id);
+          }
+        }
+      }
 
       for (let i = 0; i < videoFiles.length; i++) {
         const file = videoFiles[i];
@@ -1098,21 +1119,21 @@ class Database {
             existingVid.updatedAt = new Date().toISOString();
           }
         } else {
-          // Automatically add newly detected video file to Red Locker!
+          // Automatically add newly detected video file to Red Locker with clean individual title and generic cover
           const cleanFileName = file.name.replace(/\.[^/.]+$/, "").replace(/^[🔞🔥🎬\s]+/, '').trim();
           const newVid: AdultVideo = {
             id: 'adult-vid-' + Date.now() + '-' + i + '-' + Math.random().toString(36).substring(2, 7),
             title: cleanFileName,
-            description: templateVideo?.description || folder.description || '',
-            coverImage: defaultCover,
+            description: folder.description || '',
+            coverImage: defaultGenericCover,
             category: defaultCategory,
-            studio: templateVideo?.studio,
-            performers: templateVideo?.performers,
-            aka: templateVideo?.aka,
-            year: templateVideo?.year,
+            studio: defaultStudio,
+            performers: undefined,
+            aka: undefined,
+            year: templateVideo?.year || new Date().getFullYear(),
             folderId: file.parentId || folderId,
             fileId: file.id,
-            tags: templateVideo?.tags ? [...templateVideo.tags] : [],
+            tags: [],
             isFavorite: false,
             lastPositionSeconds: 0,
             isCompleted: false,
@@ -2443,12 +2464,23 @@ class Database {
       createdOrExistingVideos.push(newVid);
     } else {
       // Create or link an entry for EACH video file in the folder!
+      let unlinkedEntry = this.data.adultVideos.find(v => 
+        (v.folderId === data.folderId || subFolderIds.has(v.folderId || '')) && !v.fileId
+      );
+
       for (let i = 0; i < videoFiles.length; i++) {
         const file = videoFiles[i];
         const cleanFileName = file.name.replace(/\.[^/.]+$/, "").replace(/^[🔞🔥🎬\s]+/, '').trim();
 
         // Check if an AdultVideo already exists with this exact fileId
         let existing = this.data.adultVideos.find(v => v.fileId === file.id);
+
+        if (!existing && unlinkedEntry) {
+          existing = unlinkedEntry;
+          existing.fileId = file.id;
+          existing.folderId = file.parentId || data.folderId;
+          unlinkedEntry = undefined;
+        }
 
         if (existing) {
           // Update metadata if provided

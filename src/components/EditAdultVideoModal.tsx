@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Film, X, Upload, Link as LinkIcon, Image as ImageIcon, Save, Check, Flame, LockKeyhole, Camera, Play, Pause, RotateCcw } from 'lucide-react';
 import { AdultVideo, DriveItem } from '../types/index.js';
 
@@ -30,18 +30,16 @@ export const EditAdultVideoModal: React.FC<EditAdultVideoModalProps> = ({
   onSave,
   onAddCategory
 }) => {
-  if (!isOpen || !video) return null;
-
-  const [title, setTitle] = useState(video.title);
-  const [category, setCategory] = useState(video.category || 'Longas-Metragens');
+  const [title, setTitle] = useState(video?.title || '');
+  const [category, setCategory] = useState(video?.category || 'Longas-Metragens');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isAddingNewCat, setIsAddingNewCat] = useState(false);
-  const [studio, setStudio] = useState(video.studio || '');
-  const [performers, setPerformers] = useState(video.performers || '');
-  const [aka, setAka] = useState(video.aka || '');
-  const [year, setYear] = useState(video.year?.toString() || '');
-  const [description, setDescription] = useState(video.description || '');
-  const [coverImage, setCoverImage] = useState(video.coverImage || PRESET_COVERS[0]);
+  const [studio, setStudio] = useState(video?.studio || '');
+  const [performers, setPerformers] = useState(video?.performers || '');
+  const [aka, setAka] = useState(video?.aka || '');
+  const [year, setYear] = useState(video?.year?.toString() || '');
+  const [description, setDescription] = useState(video?.description || '');
+  const [coverImage, setCoverImage] = useState(video?.coverImage || PRESET_COVERS[0]);
   const [customCoverUrl, setCustomCoverUrl] = useState('');
   const [coverTab, setCoverTab] = useState<'upload' | 'url' | 'folder' | 'gallery' | 'video_frame'>('video_frame');
   const [loading, setLoading] = useState(false);
@@ -50,10 +48,69 @@ export const EditAdultVideoModal: React.FC<EditAdultVideoModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
 
-  const targetVideoFile = allFiles.find(f => 
-    f.id === video.fileId || 
-    (video.folderId && f.parentId === video.folderId && (f.type === 'video' || ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v'].includes(f.extension.toLowerCase())))
-  );
+  // Sync state when video changes
+  useEffect(() => {
+    if (video) {
+      setTitle(video.title || '');
+      setCategory(video.category || 'Longas-Metragens');
+      setStudio(video.studio || '');
+      setPerformers(video.performers || '');
+      setAka(video.aka || '');
+      setYear(video.year?.toString() || '');
+      setDescription(video.description || '');
+      setCoverImage(video.coverImage || PRESET_COVERS[0]);
+      setCustomCoverUrl('');
+      setCoverTab('video_frame');
+      setFrameCapturedSuccess(false);
+      setIsAddingNewCat(false);
+      setNewCategoryName('');
+    }
+  }, [video?.id]);
+
+  // Priority 1: strictly match by fileId
+  // Priority 2: match file in the same folder by file name matching video title
+  // Priority 3: only if folder has exactly 1 video file, fallback to it
+  const targetVideoFile = useMemo(() => {
+    if (!video) return null;
+    if (video.fileId) {
+      const match = allFiles.find(f => f.id === video.fileId && !f.isTrash);
+      if (match) return match;
+    }
+    if (!video.folderId) return null;
+    
+    const folderVideos = allFiles.filter(f => 
+      f.parentId === video.folderId && 
+      !f.isTrash && 
+      (f.type === 'video' || ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv'].includes(f.extension?.toLowerCase() || ''))
+    );
+    
+    if (folderVideos.length === 1) {
+      return folderVideos[0];
+    }
+    
+    // If multiple videos in folder, try to match by name
+    if (video.title) {
+      const normTitle = video.title.toLowerCase().trim();
+      const byName = folderVideos.find(f => {
+        const cleanName = f.name.replace(/\.[^/.]+$/, '').toLowerCase().trim();
+        return cleanName.includes(normTitle) || normTitle.includes(cleanName);
+      });
+      if (byName) return byName;
+    }
+    
+    return null;
+  }, [video, allFiles]);
+
+  const folderImageFiles = useMemo(() => {
+    if (!video?.folderId) return [];
+    return allFiles.filter(f => 
+      f.parentId === video.folderId && 
+      !f.isTrash &&
+      (f.type === 'image' || ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(f.extension?.toLowerCase() || ''))
+    );
+  }, [video?.folderId, allFiles]);
+
+  if (!isOpen || !video) return null;
 
   const handleCaptureVideoFrame = () => {
     if (!previewVideoRef.current) return;
@@ -73,11 +130,6 @@ export const EditAdultVideoModal: React.FC<EditAdultVideoModalProps> = ({
       console.error('Error capturing video frame snapshot:', err);
     }
   };
-
-  const folderImageFiles = allFiles.filter(f => 
-    f.parentId === video.folderId && 
-    (f.type === 'image' || ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(f.extension.toLowerCase()))
-  );
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

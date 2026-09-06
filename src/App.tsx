@@ -1449,21 +1449,24 @@ export function App() {
       />
 
       {/* Adult Video Metadata & Cover Editor Modal */}
-      <EditAdultVideoModal
-        isOpen={editingAdultVideo !== null}
-        onClose={() => setEditingAdultVideo(null)}
-        video={editingAdultVideo}
-        categories={adultVault.categories}
-        allFiles={fs.allFiles}
-        onAddCategory={adultVault.addCategory}
-        onSave={async (updated) => {
-          await adultVault.updateAdultVideo(updated);
-          fs.refresh();
-          if (selectedAdultVideoForView?.id === updated.id) {
-            setSelectedAdultVideoForView(updated);
-          }
-        }}
-      />
+      {editingAdultVideo && (
+        <EditAdultVideoModal
+          key={editingAdultVideo.id}
+          isOpen={true}
+          onClose={() => setEditingAdultVideo(null)}
+          video={editingAdultVideo}
+          categories={adultVault.categories}
+          allFiles={fs.allFiles}
+          onAddCategory={adultVault.addCategory}
+          onSave={async (updated) => {
+            await adultVault.updateAdultVideo(updated);
+            fs.refresh();
+            if (selectedAdultVideoForView?.id === updated.id) {
+              setSelectedAdultVideoForView(updated);
+            }
+          }}
+        />
+      )}
 
       {/* Adult Performer Profile Modal (Create / Edit) */}
       <PerformerModal
