@@ -5,19 +5,26 @@ Write-Host "         DriveGram - Compilação Completa de APK        " -Foregrou
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$rootDir = "c:\Users\luizi\Downloads\Code\Projeto - DriveGram"
+$rootDir = (Resolve-Path "$PSScriptRoot\..").Path
 Set-Location $rootDir
 
 # ---- 1. Verificar Ambientes JDK e Android SDK ----
-$jdkDir = Get-ChildItem "C:\Program Files\Eclipse Adoptium" -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*21*" } | Select-Object -First 1 -ExpandProperty FullName
-if (-not $jdkDir -or -not (Test-Path $jdkDir)) {
-    $jdkDir = Get-ChildItem "C:\Program Files\Eclipse Adoptium" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+$jdkDir = if ($env:JAVA_HOME -and (Test-Path $env:JAVA_HOME)) {
+    $env:JAVA_HOME
+} else {
+    (Get-ChildItem "C:\Program Files\Eclipse Adoptium" -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*21*" } | Select-Object -First 1 -ExpandProperty FullName)
 }
-if (-not $jdkDir) {
-    $jdkDir = "C:\Program Files\Eclipse Adoptium\jdk-21.0.6.7-hotspot"
+if (-not $jdkDir -or -not (Test-Path $jdkDir)) {
+    $jdkDir = (Get-ChildItem "C:\Program Files\Eclipse Adoptium" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName)
 }
 
-$sdkDir = "C:\Users\luizi\AppData\Local\Android\Sdk"
+$sdkDir = if ($env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)) {
+    $env:ANDROID_HOME
+} elseif ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) {
+    $env:ANDROID_SDK_ROOT
+} else {
+    "$env:LOCALAPPDATA\Android\Sdk"
+}
 
 Write-Host "[1/5] Verificando JDK e Android SDK..." -ForegroundColor Cyan
 Write-Host "  JDK: $jdkDir" -ForegroundColor Gray

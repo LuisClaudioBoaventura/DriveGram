@@ -1,6 +1,7 @@
 Add-Type -AssemblyName System.Drawing
 
-$resDir = "c:\Users\luizi\Downloads\Code\Projeto - DriveGram\android\app\src\main\res"
+$rootDir = (Resolve-Path "$PSScriptRoot\..").Path
+$resDir = "$rootDir\android\app\src\main\res"
 
 function Generate-DriveGramBmp([int]$size) {
     $bmp = New-Object System.Drawing.Bitmap($size, $size)

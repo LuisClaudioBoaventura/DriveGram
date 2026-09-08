@@ -75,7 +75,8 @@ $g.Dispose()
 $hIcon = $bmp.GetHicon()
 $icon = [System.Drawing.Icon]::FromHandle($hIcon)
 
-$icoPath = "c:\Users\luizi\Downloads\Code\Projeto - DriveGram\app_icon.ico"
+$rootDir = (Resolve-Path "$PSScriptRoot\..").Path
+$icoPath = "$rootDir\public\icons\app_icon.ico"
 $fileStream = New-Object System.IO.FileStream($icoPath, [System.IO.FileMode]::Create)
 $icon.Save($fileStream)
 $fileStream.Close()

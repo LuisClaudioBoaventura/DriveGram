@@ -18,7 +18,10 @@
     "mobile:build-frontend": "npm run build",
     "mobile:sync": "npm run mobile:build-frontend && npm run package:embedded && npx cap sync android && node scripts/patch-nodejs-mobile.js",
     "mobile:open": "npx cap open android",
-    "mobile:apk": "npm run mobile:sync && cd android && gradlew assembleDebug && cd .. && copy /Y android\\app\\build\\outputs\\apk\\debug\\app-debug.apk DriveGram.apk"
+    "mobile:apk": "npm run mobile:sync && cd android && gradlew assembleDebug && cd .. && copy /Y android\\app\\build\\outputs\\apk\\debug\\app-debug.apk DriveGram.apk",
+    "clean:desktop": "cargo clean --manifest-path src-tauri/Cargo.toml",
+    "clean:android": "cd android && gradlew clean && cd ..",
+    "clean": "npm run clean:desktop && npm run clean:android"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

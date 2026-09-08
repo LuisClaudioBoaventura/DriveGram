@@ -2,6 +2,7 @@
 chcp 65001 > nul
 title DriveGram - Compilar Instalador Desktop
 cls
+cd /d "%~dp0\.."
 
 echo ======================================================
 echo       COMPILANDO INSTALADOR DESKTOP DO DRIVEGRAM

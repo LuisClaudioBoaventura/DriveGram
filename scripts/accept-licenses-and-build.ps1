@@ -1,7 +1,18 @@
 $ErrorActionPreference = 'Stop'
 
-$jdkDir = Get-ChildItem "C:\Program Files\Eclipse Adoptium" -Directory | Select-Object -First 1 -ExpandProperty FullName
-$sdkDir = "C:\Users\luizi\AppData\Local\Android\Sdk"
+$rootDir = (Resolve-Path "$PSScriptRoot\..").Path
+$jdkDir = if ($env:JAVA_HOME -and (Test-Path $env:JAVA_HOME)) {
+    $env:JAVA_HOME
+} else {
+    (Get-ChildItem "C:\Program Files\Eclipse Adoptium" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName)
+}
+$sdkDir = if ($env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)) {
+    $env:ANDROID_HOME
+} elseif ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) {
+    $env:ANDROID_SDK_ROOT
+} else {
+    "$env:LOCALAPPDATA\Android\Sdk"
+}
 $cmdlineToolsDir = "$sdkDir\cmdline-tools\latest"
 
 $env:JAVA_HOME = $jdkDir
@@ -40,7 +51,7 @@ echo "y`ny`ny`ny`ny`ny`ny`ny`ny`n" | & $sdkManager --licenses
 & $sdkManager "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" "platform-tools"
 
 Write-Host "`n=== Compilando APK via Gradle ===" -ForegroundColor Cyan
-Set-Location "c:\Users\luizi\Downloads\Code\Projeto - DriveGram\android"
+Set-Location "$rootDir\android"
 & .\gradlew.bat assembleDebug
 
 if ($LASTEXITCODE -eq 0) {
@@ -49,7 +60,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "========================================================" -ForegroundColor Green
     
     $apkSource = "app\build\outputs\apk\debug\app-debug.apk"
-    $apkDest = "c:\Users\luizi\Downloads\Code\Projeto - DriveGram\DriveGram.apk"
+    $apkDest = "$rootDir\DriveGram.apk"
     
     if (Test-Path $apkSource) {
         Copy-Item -Path $apkSource -Destination $apkDest -Force

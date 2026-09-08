@@ -53,6 +53,7 @@ Thumbs.db
 _tmp_server_bundle.*
 
 # Android & Desktop build outputs & binaries
+installers/
 *.apk
 *.aab
 *.lnk

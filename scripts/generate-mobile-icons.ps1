@@ -1,6 +1,7 @@
 Add-Type -AssemblyName System.Drawing
 
-$publicIcons = "c:\Users\luizi\Downloads\Code\Projeto - DriveGram\public\icons"
+$rootDir = (Resolve-Path "$PSScriptRoot\..").Path
+$publicIcons = "$rootDir\public\icons"
 if (!(Test-Path $publicIcons)) {
     New-Item -ItemType Directory -Path $publicIcons -Force | Out-Null
 }

@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 > nul
 title DriveGram - Gerador de APK Android
+cd /d "%~dp0\.."
 
 echo ========================================================
 echo         DriveGram - Gerador de APK Android
@@ -51,7 +52,7 @@ if %GRADLE_EXIT% equ 0 (
         echo.
         echo ========================================================
         echo  [SUCESSO] APK gerado com sucesso:
-        echo     Arquivo: %~dp0DriveGram.apk
+        echo     Arquivo: %CD%\DriveGram.apk
         echo.
         echo   Transferir 'DriveGram.apk' para o celular e instalar.
         echo   Habilitar "Fontes Desconhecidas" nas config. do Android.

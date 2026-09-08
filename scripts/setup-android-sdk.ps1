@@ -1,6 +1,13 @@
 $ErrorActionPreference = 'Stop'
 
-$sdkDir = "C:\Users\luizi\AppData\Local\Android\Sdk"
+$rootDir = (Resolve-Path "$PSScriptRoot\..").Path
+$sdkDir = if ($env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)) {
+    $env:ANDROID_HOME
+} elseif ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) {
+    $env:ANDROID_SDK_ROOT
+} else {
+    "$env:LOCALAPPDATA\Android\Sdk"
+}
 $cmdlineToolsDir = "$sdkDir\cmdline-tools\latest"
 $zipPath = "$env:TEMP\commandlinetools-win.zip"
 
@@ -26,7 +33,11 @@ if (-not (Test-Path $cmdlineToolsDir)) {
 }
 
 # Set environment
-$jdkDir = Get-ChildItem "C:\Program Files\Eclipse Adoptium" -Directory | Select-Object -First 1 -ExpandProperty FullName
+$jdkDir = if ($env:JAVA_HOME -and (Test-Path $env:JAVA_HOME)) {
+    $env:JAVA_HOME
+} else {
+    (Get-ChildItem "C:\Program Files\Eclipse Adoptium" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName)
+}
 $env:JAVA_HOME = $jdkDir
 $env:ANDROID_HOME = $sdkDir
 $env:ANDROID_SDK_ROOT = $sdkDir
@@ -34,7 +45,7 @@ $env:PATH = "$jdkDir\bin;$cmdlineToolsDir\bin;$sdkDir\platform-tools;" + $env:PA
 
 # Create local.properties in android folder
 $escapedSdk = $sdkDir.Replace("\", "\\")
-"sdk.dir=$escapedSdk" | Out-File -FilePath "c:\Users\luizi\Downloads\Code\Projeto - DriveGram\android\local.properties" -Encoding ascii
+"sdk.dir=$escapedSdk" | Out-File -FilePath "$rootDir\android\local.properties" -Encoding ascii
 
 Write-Host "Aceitando licencas e instalando pacotes necessarios (platforms;android-34, build-tools;34.0.0)..." -ForegroundColor Cyan
 $sdkManager = "$cmdlineToolsDir\bin\sdkmanager.bat"
