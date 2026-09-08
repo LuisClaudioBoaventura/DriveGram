@@ -209,7 +209,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         `}
         style={isMobileOpen ? {
           paddingTop: 'calc(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px), var(--android-status-bar-height, 0px)) + 1rem)',
-          paddingBottom: 'calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 1rem)'
+          paddingBottom: 'calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px), var(--android-navigation-bar-height, 0px)) + 1.25rem)'
         } : undefined}
       >
         {/* Sidebar Header with Expand/Collapse Toggle (or Close button on Mobile) */}
@@ -250,7 +250,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
       {/* Scrollable Navigation Area with Discreet Scrollbar */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden sidebar-scrollbar flex flex-col gap-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden sidebar-scrollbar flex flex-col gap-3 pb-6">
         {/* "NOVO" Action Button with Dropdown */}
         <div className="relative">
           <button
