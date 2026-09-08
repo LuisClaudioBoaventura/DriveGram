@@ -556,7 +556,7 @@ export function App() {
         />
 
         {/* Content Area */}
-        <main ref={mainContentRef} className="flex-1 flex flex-col w-full max-w-full overflow-y-auto overflow-x-hidden relative pb-20 md:pb-0">
+        <main ref={mainContentRef} className="flex-1 flex flex-col w-full max-w-full overflow-y-auto overflow-x-hidden relative pb-content-safe">
           {/* Single Persistent Video Player */}
           {activePlayingMovie && (
             <VideoPlayerView
@@ -1753,7 +1753,7 @@ export function App() {
 
       {/* Modern Floating Toast Notification */}
       {toast && (
-        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl bg-gray-950/95 text-white shadow-2xl backdrop-blur-md border border-gray-700/80 text-xs font-semibold animate-in fade-in slide-in-from-bottom-4 duration-200 pointer-events-auto select-none max-w-md w-[calc(100vw-2rem)] sm:w-auto">
+        <div className="fixed bottom-toast-safe left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl bg-gray-950/95 text-white shadow-2xl backdrop-blur-md border border-gray-700/80 text-xs font-semibold animate-in fade-in slide-in-from-bottom-4 duration-200 pointer-events-auto select-none max-w-md w-[calc(100vw-2rem)] sm:w-auto">
           <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
             toast.type === 'error' ? 'bg-rose-500 shadow-rose-500/50 shadow-md' :
             toast.type === 'info' ? 'bg-sky-400 shadow-sky-400/50 shadow-md' :

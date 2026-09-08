@@ -6,6 +6,7 @@
   --primary-font: 'Plus Jakarta Sans', sans-serif;
   --mono-font: 'JetBrains Mono', monospace;
   --android-status-bar-height: 0px;
+  --android-navigation-bar-height: 0px;
   --safe-area-inset-top: 0px;
   --safe-area-inset-bottom: 0px;
 }
@@ -31,11 +32,12 @@ body {
   max-width: 100vw;
 }
 
-/* Safe area insets for iOS / Android notch and status bars */
+/* Safe area insets for iOS / Android notch, status bar and navigation bars */
 .pb-safe {
   padding-bottom: max(
     env(safe-area-inset-bottom, 0px),
-    var(--safe-area-inset-bottom, 0px)
+    var(--safe-area-inset-bottom, 0px),
+    var(--android-navigation-bar-height, 0px)
   );
 }
 .pt-safe {
@@ -44,6 +46,51 @@ body {
     var(--safe-area-inset-top, 0px),
     var(--android-status-bar-height, 0px)
   );
+}
+
+.pb-content-safe {
+  padding-bottom: calc(
+    max(
+      env(safe-area-inset-bottom, 0px),
+      var(--safe-area-inset-bottom, 0px),
+      var(--android-navigation-bar-height, 0px)
+    ) + 5.5rem
+  );
+}
+@media (min-width: 768px) {
+  .pb-content-safe {
+    padding-bottom: 0px;
+  }
+}
+
+.bottom-toast-safe {
+  bottom: calc(
+    max(
+      env(safe-area-inset-bottom, 0px),
+      var(--safe-area-inset-bottom, 0px),
+      var(--android-navigation-bar-height, 0px)
+    ) + 5.5rem
+  );
+}
+@media (min-width: 768px) {
+  .bottom-toast-safe {
+    bottom: 1.5rem;
+  }
+}
+
+.bottom-floating-safe {
+  bottom: calc(
+    max(
+      env(safe-area-inset-bottom, 0px),
+      var(--safe-area-inset-bottom, 0px),
+      var(--android-navigation-bar-height, 0px)
+    ) + 5.5rem
+  );
+}
+@media (min-width: 768px) {
+  .bottom-floating-safe {
+    bottom: 1rem;
+  }
 }
 
 /* Hide scrollbars on touch horizontally scrollable elements */

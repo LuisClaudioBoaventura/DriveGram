@@ -93,20 +93,43 @@ public class MainActivity extends BridgeActivity {
             // Monitor /api/health and transition to http://localhost:5000 once ready
             waitForServerAndLoad();
 
-            // Listen for window insets (status bar & notch cutout) and dynamically pass height to webview
+            // Style navigation bar and status bar icons
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getWindow().setNavigationBarColor(0xFF0F172A);
+            }
+            try {
+                androidx.core.view.WindowInsetsControllerCompat controller =
+                    new androidx.core.view.WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView());
+                controller.setAppearanceLightStatusBars(false);
+                controller.setAppearanceLightNavigationBars(false);
+            } catch (Throwable ignored) {}
+
+            // Listen for window insets (status bar, notch cutout & navigation bar) and dynamically pass heights to webview
             androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(getWindow().getDecorView(), (v, insets) -> {
                 try {
                     androidx.core.graphics.Insets sb = insets.getInsets(
                         androidx.core.view.WindowInsetsCompat.Type.statusBars() | androidx.core.view.WindowInsetsCompat.Type.displayCutout()
                     );
+                    androidx.core.graphics.Insets nb = insets.getInsets(
+                        androidx.core.view.WindowInsetsCompat.Type.navigationBars()
+                    );
                     float density = getResources().getDisplayMetrics().density;
                     int topDp = (int) Math.ceil(sb.top / density);
-                    if (bridge != null && bridge.getWebView() != null && topDp > 0) {
+                    int bottomDp = (int) Math.ceil(nb.bottom / density);
+
+                    if (bridge != null && bridge.getWebView() != null) {
                         bridge.getWebView().post(() -> {
-                            bridge.getWebView().evaluateJavascript(
-                                "(function(){try{document.documentElement.style.setProperty('--safe-area-inset-top','" + topDp + "px');document.documentElement.style.setProperty('--android-status-bar-height','" + topDp + "px');}catch(e){}})();",
-                                null
-                            );
+                            StringBuilder js = new StringBuilder("(function(){try{");
+                            if (topDp > 0) {
+                                js.append("document.documentElement.style.setProperty('--safe-area-inset-top','").append(topDp).append("px');");
+                                js.append("document.documentElement.style.setProperty('--android-status-bar-height','").append(topDp).append("px');");
+                            }
+                            if (bottomDp > 0) {
+                                js.append("document.documentElement.style.setProperty('--safe-area-inset-bottom','").append(bottomDp).append("px');");
+                                js.append("document.documentElement.style.setProperty('--android-navigation-bar-height','").append(bottomDp).append("px');");
+                            }
+                            js.append("}catch(e){}})();");
+                            bridge.getWebView().evaluateJavascript(js.toString(), null);
                         });
                     }
                 } catch (Throwable ignored) {}
@@ -414,6 +437,30 @@ public class MainActivity extends BridgeActivity {
                 return (int) Math.ceil(result / density);
             } catch (Throwable t) {
                 return 28;
+            }
+        }
+
+        @JavascriptInterface
+        public int getNavigationBarHeightDp() {
+            int result = 0;
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    android.view.WindowMetrics windowMetrics = activity.getWindowManager().getCurrentWindowMetrics();
+                    android.graphics.Insets insets = windowMetrics.getWindowInsets().getInsets(
+                        android.view.WindowInsets.Type.navigationBars()
+                    );
+                    result = insets.bottom;
+                }
+                if (result <= 0) {
+                    int resourceId = activity.getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+                    if (resourceId > 0) {
+                        result = activity.getResources().getDimensionPixelSize(resourceId);
+                    }
+                }
+                float density = activity.getResources().getDisplayMetrics().density;
+                return (int) Math.ceil(result / density);
+            } catch (Throwable t) {
+                return 48;
             }
         }
 

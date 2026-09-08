@@ -64,7 +64,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   return (
     <>
       {/* ================= MOBILE BOTTOM NAVIGATION BAR ================= */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-drive-darkBg/95 backdrop-blur-xl border-t border-gray-200 dark:border-drive-darkBorder pb-safe select-none shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.4)]">
+      <nav 
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-drive-darkBg/95 backdrop-blur-xl border-t border-gray-200 dark:border-drive-darkBorder pb-safe select-none shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.4)]"
+        style={{
+          paddingBottom: 'max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px), var(--android-navigation-bar-height, 0px))'
+        }}
+      >
         <div className="flex items-center justify-around px-2 h-14">
           {/* Tab: Drive */}
           <button
@@ -145,7 +150,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           />
 
           {/* Action Sheet Panel */}
-          <div className="relative z-10 w-full max-h-[85dvh] overflow-y-auto bg-white dark:bg-drive-darkSurface rounded-t-3xl border-t border-gray-200 dark:border-drive-darkBorder p-5 pb-safe animate-in slide-in-from-bottom duration-250 shadow-2xl space-y-4">
+          <div 
+            className="relative z-10 w-full max-h-[85dvh] overflow-y-auto bg-white dark:bg-drive-darkSurface rounded-t-3xl border-t border-gray-200 dark:border-drive-darkBorder p-5 pb-safe animate-in slide-in-from-bottom duration-250 shadow-2xl space-y-4"
+            style={{
+              paddingBottom: 'calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px), var(--android-navigation-bar-height, 0px)) + 1.25rem)'
+            }}
+          >
             {/* Sheet Handle Bar & Header */}
             <div className="flex flex-col items-center">
               <div className="w-12 h-1.5 rounded-full bg-gray-300 dark:bg-gray-700 mb-3" />

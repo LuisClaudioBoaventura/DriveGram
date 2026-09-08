@@ -61,17 +61,27 @@ export function initMobileBridge(onHardwareBack?: () => boolean): void {
       }
     }
 
-    // Sync status bar height from Android bridge if present
+    // Sync status bar & navigation bar heights from Android bridge if present
     try {
       const androidBridge = (window as any).DriveGramAndroidBridge;
-      if (androidBridge && typeof androidBridge.getStatusBarHeightDp === 'function') {
-        const heightDp = Number(androidBridge.getStatusBarHeightDp()) || 0;
-        if (heightDp > 0) {
-          document.documentElement.style.setProperty('--android-status-bar-height', `${heightDp}px`);
+      if (androidBridge) {
+        if (typeof androidBridge.getStatusBarHeightDp === 'function') {
+          const heightDp = Number(androidBridge.getStatusBarHeightDp()) || 0;
+          if (heightDp > 0) {
+            document.documentElement.style.setProperty('--safe-area-inset-top', `${heightDp}px`);
+            document.documentElement.style.setProperty('--android-status-bar-height', `${heightDp}px`);
+          }
+        }
+        if (typeof androidBridge.getNavigationBarHeightDp === 'function') {
+          const navHeightDp = Number(androidBridge.getNavigationBarHeightDp()) || 0;
+          if (navHeightDp > 0) {
+            document.documentElement.style.setProperty('--safe-area-inset-bottom', `${navHeightDp}px`);
+            document.documentElement.style.setProperty('--android-navigation-bar-height', `${navHeightDp}px`);
+          }
         }
       }
     } catch (e) {
-      console.warn('[DriveGram Mobile] Failed to read status bar height from bridge:', e);
+      console.warn('[DriveGram Mobile] Failed to read system bar insets from bridge:', e);
     }
 
     // Start Embedded Local Node.js Mobile Server if available

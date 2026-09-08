@@ -18,11 +18,20 @@
     <script>
       (function() {
         try {
-          if (window.DriveGramAndroidBridge && typeof window.DriveGramAndroidBridge.getStatusBarHeightDp === 'function') {
-            var sb = window.DriveGramAndroidBridge.getStatusBarHeightDp();
-            if (sb > 0) {
-              document.documentElement.style.setProperty('--safe-area-inset-top', sb + 'px');
-              document.documentElement.style.setProperty('--android-status-bar-height', sb + 'px');
+          if (window.DriveGramAndroidBridge) {
+            if (typeof window.DriveGramAndroidBridge.getStatusBarHeightDp === 'function') {
+              var sb = window.DriveGramAndroidBridge.getStatusBarHeightDp();
+              if (sb > 0) {
+                document.documentElement.style.setProperty('--safe-area-inset-top', sb + 'px');
+                document.documentElement.style.setProperty('--android-status-bar-height', sb + 'px');
+              }
+            }
+            if (typeof window.DriveGramAndroidBridge.getNavigationBarHeightDp === 'function') {
+              var nb = window.DriveGramAndroidBridge.getNavigationBarHeightDp();
+              if (nb > 0) {
+                document.documentElement.style.setProperty('--safe-area-inset-bottom', nb + 'px');
+                document.documentElement.style.setProperty('--android-navigation-bar-height', nb + 'px');
+              }
             }
           }
         } catch(e) {}
