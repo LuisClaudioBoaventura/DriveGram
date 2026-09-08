@@ -18,6 +18,8 @@ jobs:
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -66,6 +68,8 @@ jobs:
   build-desktop:
     name: Build Windows Desktop (Tauri)
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -102,16 +106,20 @@ jobs:
     name: Publish Android APK to Release
     needs: [build-android, build-desktop]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Download APK Artifact
         uses: actions/download-artifact@v4
         with:
           name: DriveGram-Android-APK
 
       - name: Upload APK to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: DriveGram.apk
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" DriveGram.apk --clobber
+
