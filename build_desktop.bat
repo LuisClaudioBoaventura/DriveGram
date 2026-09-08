@@ -7,7 +7,15 @@ echo ======================================================
 echo       COMPILANDO INSTALADOR DESKTOP DO DRIVEGRAM
 echo ======================================================
 echo.
-echo [1/3] Compilando Frontend (React/Vite)...
+echo [1/4] Verificando runtime Node.js standalone para instalador autônomo...
+call node scripts/ensure-desktop-node.js
+if %ERRORLEVEL% neq 0 (
+    echo [ERRO] Falha ao verificar/baixar o runtime Node.js embutido.
+    pause
+    exit /b %ERRORLEVEL%
+)
+
+echo [2/4] Compilando Frontend (React/Vite)...
 call npm run build
 if %ERRORLEVEL% neq 0 (
     echo [ERRO] Falha ao compilar o frontend.
@@ -15,7 +23,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b %ERRORLEVEL%
 )
 
-echo [2/3] Compilando Servidor Backend Embarcado...
+echo [3/4] Compilando Servidor Backend Embarcado...
 call npm run package:embedded
 if %ERRORLEVEL% neq 0 (
     echo [ERRO] Falha ao compilar o servidor.
@@ -23,7 +31,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b %ERRORLEVEL%
 )
 
-echo [3/3] Gerando Instalador Nativo com Tauri v2...
+echo [4/4] Gerando Instalador Nativo com Tauri v2 (Node e WebView2 embutidos)...
 call npx tauri build
 if %ERRORLEVEL% neq 0 (
     echo [ERRO] Falha na compilação do pacote Desktop com Tauri.

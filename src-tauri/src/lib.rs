@@ -70,6 +70,60 @@ fn find_server_bundle(app: &AppHandle) -> Option<PathBuf> {
     None
 }
 
+fn find_node_executable(app: &AppHandle) -> PathBuf {
+    // 1. Verificar na pasta de recursos (instalador Tauri/NSIS empacotado)
+    if let Ok(res_dir) = app.path().resource_dir() {
+        let candidates = [
+            res_dir.join("bin").join("node.exe"),
+            res_dir.join("bin").join("node"),
+            res_dir.join("node.exe"),
+            res_dir.join("node"),
+            res_dir.join("_up_").join("bin").join("node.exe"),
+            res_dir.join("resources").join("bin").join("node.exe"),
+        ];
+        for candidate in candidates {
+            if candidate.exists() {
+                log::info!("DriveGram: runtime Node.js embutido localizado em: {:?}", candidate);
+                return candidate;
+            }
+        }
+    }
+
+    // 2. Verificar relativo ao executavel principal (DriveGram.exe)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let candidates = [
+                exe_dir.join("bin").join("node.exe"),
+                exe_dir.join("node.exe"),
+                exe_dir.join("resources").join("bin").join("node.exe"),
+                exe_dir.join("resources").join("node.exe"),
+            ];
+            for candidate in candidates {
+                if candidate.exists() {
+                    log::info!("DriveGram: runtime Node.js embutido localizado na pasta do app: {:?}", candidate);
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    // 3. Verificar pasta local de desenvolvimento (src-tauri/bin/node.exe ou bin/node.exe)
+    let dev_candidates = [
+        PathBuf::from("src-tauri").join("bin").join("node.exe"),
+        PathBuf::from("bin").join("node.exe"),
+    ];
+    for candidate in dev_candidates {
+        if candidate.exists() {
+            log::info!("DriveGram: runtime Node.js local de desenvolvimento localizado em: {:?}", candidate);
+            return candidate;
+        }
+    }
+
+    // 4. Fallback para o comando global do sistema caso não haja runtime embutido
+    log::info!("DriveGram: runtime embutido não localizado, usando 'node' do sistema (PATH)");
+    PathBuf::from("node")
+}
+
 fn start_backend_server(app: &AppHandle) -> Option<Child> {
     let data_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("./drivegram-data"));
     let _ = fs::create_dir_all(&data_dir);
@@ -85,7 +139,8 @@ fn start_backend_server(app: &AppHandle) -> Option<Child> {
         .ok();
 
     if let Some(bundle_path) = find_server_bundle(app) {
-        let mut cmd = Command::new("node");
+        let node_bin = find_node_executable(app);
+        let mut cmd = Command::new(&node_bin);
         cmd.arg(&bundle_path);
         cmd.env("PORT", "5000");
         cmd.env("NODE_ENV", "production");
@@ -109,11 +164,11 @@ fn start_backend_server(app: &AppHandle) -> Option<Child> {
 
         match cmd.spawn() {
             Ok(child) => {
-                log::info!("DriveGram Node.js backend server started (PID: {})", child.id());
+                log::info!("DriveGram Node.js backend server started with {:?} (PID: {})", node_bin, child.id());
                 return Some(child);
             }
             Err(e) => {
-                log::warn!("Could not start internal Node server: {}", e);
+                log::error!("Could not start internal Node server with {:?}: {}", node_bin, e);
             }
         }
     } else {

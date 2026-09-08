@@ -1,6 +1,6 @@
 {
   "name": "drivegram",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,10 +9,11 @@
     "preview": "vite preview",
     "server": "tsx watch server/index.ts",
     "start": "concurrently \"npm run server\" \"npm run dev\"",
+    "ensure:desktop-node": "node scripts/ensure-desktop-node.js",
     "package:embedded": "node scripts/build-embedded-server.js",
     "postinstall": "node scripts/patch-nodejs-mobile.js",
     "desktop:dev": "concurrently \"npm run server\" \"tauri dev\"",
-    "desktop:build": "npm run build && npm run package:embedded && tauri build",
+    "desktop:build": "npm run ensure:desktop-node && npm run build && npm run package:embedded && tauri build",
     "tauri": "tauri",
     "mobile:build-frontend": "npm run build",
     "mobile:sync": "npm run mobile:build-frontend && npm run package:embedded && npx cap sync android && node scripts/patch-nodejs-mobile.js",

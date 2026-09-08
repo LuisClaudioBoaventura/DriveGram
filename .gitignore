@@ -73,4 +73,5 @@ android/app/src/main/assets/www/
 # Tauri build outputs & schemas
 src-tauri/target/
 src-tauri/gen/schemas/
+src-tauri/bin/
 
