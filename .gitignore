@@ -58,6 +58,7 @@ _tmp_server_bundle.*
 *.lnk
 *.msi
 *.exe
+latest.json
 www/
 android/app/build/
 android/build/

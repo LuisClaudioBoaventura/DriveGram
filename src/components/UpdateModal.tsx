@@ -14,7 +14,8 @@ import {
   UpdateInfo, 
   installTauriDesktopUpdate, 
   installAndroidUpdate, 
-  isAndroidNative 
+  isAndroidNative,
+  openExternalUrl
 } from '../utils/updater.js';
 import { isTauriPlatform } from '../utils/mobileBridge.js';
 
@@ -50,14 +51,24 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
 
     try {
       // Flow 1: Tauri on Windows (PC)
-      if (isTauri && updateInfo.tauriUpdateObj) {
-        setDownloadProgress(0);
-        await installTauriDesktopUpdate(updateInfo.tauriUpdateObj, (downloaded, total) => {
-          if (total > 0) {
-            setDownloadProgress(Math.min(100, Math.round((downloaded / total) * 100)));
-          }
-        });
-        setIsReadyToRestart(true);
+      if (isTauri) {
+        if (updateInfo.tauriUpdateObj) {
+          setDownloadProgress(0);
+          await installTauriDesktopUpdate(updateInfo.tauriUpdateObj, (downloaded, total) => {
+            if (total > 0) {
+              setDownloadProgress(Math.min(100, Math.round((downloaded / total) * 100)));
+            }
+          });
+          setIsReadyToRestart(true);
+          return;
+        }
+
+        // Fallback for PC when tauriUpdateObj is not available: open direct installer link
+        const downloadUrl = updateInfo.windowsDownloadUrl || updateInfo.releaseUrl;
+        if (downloadUrl) {
+          await openExternalUrl(downloadUrl);
+        }
+        setIsUpdating(false);
         return;
       }
 
@@ -76,7 +87,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
       // Flow 3: Web or manual browser download
       const targetUrl = updateInfo.windowsDownloadUrl || updateInfo.apkDownloadUrl || updateInfo.releaseUrl;
       if (targetUrl) {
-        window.open(targetUrl, '_blank');
+        await openExternalUrl(targetUrl);
       }
       setIsUpdating(false);
     } catch (err: any) {
@@ -223,15 +234,14 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
 
           <div className="flex items-center gap-2">
             {updateInfo?.releaseUrl && (
-              <a
-                href={updateInfo.releaseUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => updateInfo.releaseUrl && openExternalUrl(updateInfo.releaseUrl)}
                 className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors"
                 title="Abrir no GitHub Releases"
               >
                 <ExternalLink className="w-4 h-4" />
-              </a>
+              </button>
             )}
 
             {updateInfo?.available ? (

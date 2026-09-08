@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { isTauriPlatform } from './mobileBridge.js';
 
-export const CURRENT_APP_VERSION = '1.6.1';
+export const CURRENT_APP_VERSION = '1.6.2';
 export const GITHUB_REPO = 'LuisClaudioBoaventura/DriveGram';
 
 export interface UpdateInfo {
@@ -173,4 +173,25 @@ export function installAndroidUpdate(apkUrl: string, versionName: string): void 
 
   // Fallback: open direct APK link in browser
   window.open(apkUrl, '_system');
+}
+
+/**
+ * Opens a URL in the user's default browser safely across Desktop (Tauri), Mobile (Android), and Web.
+ */
+export async function openExternalUrl(url: string): Promise<void> {
+  if (!url) return;
+
+  if (isTauriPlatform()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_external_url', { url });
+      return;
+    } catch (err) {
+      console.warn('[Updater] Failed to open external URL via Tauri command:', err);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
 }

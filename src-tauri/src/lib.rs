@@ -30,6 +30,29 @@ fn open_logs_folder(app: AppHandle) -> Result<String, String> {
     Ok(data_dir.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let _ = Command::new("cmd")
+            .args(["/c", "start", "", &url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = Command::new("open")
+            .arg(&url)
+            .spawn()
+            .or_else(|_| Command::new("xdg-open").arg(&url).spawn())
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn find_server_bundle(app: &AppHandle) -> Option<PathBuf> {
     // 1. Check relative to resources directory
     if let Ok(res_dir) = app.path().resource_dir() {
@@ -212,7 +235,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![open_devtools, open_logs_folder])
+        .invoke_handler(tauri::generate_handler![open_devtools, open_logs_folder, open_external_url])
         .setup(|app| {
             let child = start_backend_server(app.handle());
             app.manage(AppState {
