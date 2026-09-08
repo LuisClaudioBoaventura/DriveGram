@@ -86,6 +86,9 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      - name: Ensure Desktop Node Runtime
+        run: npm run ensure:desktop-node
+
       - name: Package Embedded Node Server
         run: npm run package:embedded
 
