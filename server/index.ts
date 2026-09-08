@@ -1202,18 +1202,29 @@ app.post('/api/system/open-uploads-folder', (req, res) => {
     const platform = process.platform;
 
     try {
+      if (process.env.DRIVEGRAM_EMBEDDED || (process.platform as string) === 'android') {
+        return res.json({
+          success: true,
+          path: targetPath,
+          message: 'Diretório no dispositivo: ' + targetPath
+        });
+      }
+
       if (platform === 'win32') {
         const normalized = path.normalize(targetPath);
         const args = isFile ? [`/select,${normalized}`] : [normalized];
         const child = spawn('explorer.exe', args, { detached: true, stdio: 'ignore' });
+        child.on('error', () => {});
         child.unref();
       } else if (platform === 'darwin') {
         const args = isFile ? ['-R', targetPath] : [targetPath];
         const child = spawn('open', args, { detached: true, stdio: 'ignore' });
+        child.on('error', () => {});
         child.unref();
       } else {
         const dirToOpen = isFile ? path.dirname(targetPath) : targetPath;
         const child = spawn('xdg-open', [dirToOpen], { detached: true, stdio: 'ignore' });
+        child.on('error', () => {});
         child.unref();
       }
     } catch (spawnErr: any) {

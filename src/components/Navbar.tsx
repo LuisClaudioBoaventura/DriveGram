@@ -81,7 +81,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-30 flex flex-col border-b border-gray-200 dark:border-drive-darkBorder bg-white/95 dark:bg-drive-darkBg/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 transition-colors w-full max-w-full overflow-hidden">
+    <header 
+      className="sticky top-0 z-30 flex flex-col border-b border-gray-200 dark:border-drive-darkBorder bg-white/95 dark:bg-drive-darkBg/95 backdrop-blur-md px-3 sm:px-4 pb-2 sm:pb-2.5 transition-colors w-full max-w-full overflow-hidden"
+      style={{
+        paddingTop: 'calc(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px), var(--android-status-bar-height, 0px)) + 0.5rem)'
+      }}
+    >
       <div className="flex items-center justify-between gap-2 sm:gap-4">
         {/* Mobile Hamburger & Brand Logo */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">

@@ -61,6 +61,19 @@ export function initMobileBridge(onHardwareBack?: () => boolean): void {
       }
     }
 
+    // Sync status bar height from Android bridge if present
+    try {
+      const androidBridge = (window as any).DriveGramAndroidBridge;
+      if (androidBridge && typeof androidBridge.getStatusBarHeightDp === 'function') {
+        const heightDp = Number(androidBridge.getStatusBarHeightDp()) || 0;
+        if (heightDp > 0) {
+          document.documentElement.style.setProperty('--android-status-bar-height', `${heightDp}px`);
+        }
+      }
+    } catch (e) {
+      console.warn('[DriveGram Mobile] Failed to read status bar height from bridge:', e);
+    }
+
     // Start Embedded Local Node.js Mobile Server if available
     try {
       if ((window as any).nodejs && typeof (window as any).nodejs.start === 'function') {

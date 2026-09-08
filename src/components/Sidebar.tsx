@@ -202,11 +202,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         className={`
           flex flex-col h-full border-r border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkBg select-none shrink-0 overflow-x-hidden transition-all duration-300 ease-in-out
           ${isMobileOpen 
-            ? 'fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] p-4 shadow-2xl animate-in slide-in-from-left duration-250 flex' 
+            ? 'fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] px-4 pb-4 shadow-2xl animate-in slide-in-from-left duration-250 flex' 
             : 'hidden md:flex'
           }
           ${isCollapsed ? 'md:w-[72px] md:p-2.5' : 'md:w-64 md:p-3.5'}
         `}
+        style={isMobileOpen ? {
+          paddingTop: 'calc(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px), var(--android-status-bar-height, 0px)) + 1rem)',
+          paddingBottom: 'calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 1rem)'
+        } : undefined}
       >
         {/* Sidebar Header with Expand/Collapse Toggle (or Close button on Mobile) */}
         <div className={`flex items-center mb-3 ${isCollapsed ? 'justify-center' : 'justify-between px-1'}`}>

@@ -92,6 +92,26 @@ public class MainActivity extends BridgeActivity {
 
             // Monitor /api/health and transition to http://localhost:5000 once ready
             waitForServerAndLoad();
+
+            // Listen for window insets (status bar & notch cutout) and dynamically pass height to webview
+            androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(getWindow().getDecorView(), (v, insets) -> {
+                try {
+                    androidx.core.graphics.Insets sb = insets.getInsets(
+                        androidx.core.view.WindowInsetsCompat.Type.statusBars() | androidx.core.view.WindowInsetsCompat.Type.displayCutout()
+                    );
+                    float density = getResources().getDisplayMetrics().density;
+                    int topDp = (int) Math.ceil(sb.top / density);
+                    if (bridge != null && bridge.getWebView() != null && topDp > 0) {
+                        bridge.getWebView().post(() -> {
+                            bridge.getWebView().evaluateJavascript(
+                                "(function(){try{document.documentElement.style.setProperty('--safe-area-inset-top','" + topDp + "px');document.documentElement.style.setProperty('--android-status-bar-height','" + topDp + "px');}catch(e){}})();",
+                                null
+                            );
+                        });
+                    }
+                } catch (Throwable ignored) {}
+                return insets;
+            });
         } catch (Throwable t) {
             Log.e(TAG, "Error in onCreate: " + t.getMessage(), t);
         }
@@ -371,6 +391,30 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean isNativeAndroid() {
             return true;
+        }
+
+        @JavascriptInterface
+        public int getStatusBarHeightDp() {
+            int result = 0;
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    android.view.WindowMetrics windowMetrics = activity.getWindowManager().getCurrentWindowMetrics();
+                    android.graphics.Insets insets = windowMetrics.getWindowInsets().getInsets(
+                        android.view.WindowInsets.Type.statusBars() | android.view.WindowInsets.Type.displayCutout()
+                    );
+                    result = insets.top;
+                }
+                if (result <= 0) {
+                    int resourceId = activity.getResources().getIdentifier("status_bar_height", "dimen", "android");
+                    if (resourceId > 0) {
+                        result = activity.getResources().getDimensionPixelSize(resourceId);
+                    }
+                }
+                float density = activity.getResources().getDisplayMetrics().density;
+                return (int) Math.ceil(result / density);
+            } catch (Throwable t) {
+                return 28;
+            }
         }
 
         @JavascriptInterface

@@ -5,6 +5,9 @@
 :root {
   --primary-font: 'Plus Jakarta Sans', sans-serif;
   --mono-font: 'JetBrains Mono', monospace;
+  --android-status-bar-height: 0px;
+  --safe-area-inset-top: 0px;
+  --safe-area-inset-bottom: 0px;
 }
 
 *, *::before, *::after {
@@ -28,12 +31,19 @@ body {
   max-width: 100vw;
 }
 
-/* Safe area insets for iOS / notch phones */
+/* Safe area insets for iOS / Android notch and status bars */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--safe-area-inset-bottom, 0px)
+  );
 }
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: max(
+    env(safe-area-inset-top, 0px),
+    var(--safe-area-inset-top, 0px),
+    var(--android-status-bar-height, 0px)
+  );
 }
 
 /* Hide scrollbars on touch horizontally scrollable elements */

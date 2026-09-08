@@ -17,6 +17,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
       (function() {
+        try {
+          if (window.DriveGramAndroidBridge && typeof window.DriveGramAndroidBridge.getStatusBarHeightDp === 'function') {
+            var sb = window.DriveGramAndroidBridge.getStatusBarHeightDp();
+            if (sb > 0) {
+              document.documentElement.style.setProperty('--safe-area-inset-top', sb + 'px');
+              document.documentElement.style.setProperty('--android-status-bar-height', sb + 'px');
+            }
+          }
+        } catch(e) {}
+
         var isTauri = typeof window !== 'undefined' && (
           typeof window.__TAURI__ !== 'undefined' ||
           typeof window.__TAURI_INTERNALS__ !== 'undefined' ||
