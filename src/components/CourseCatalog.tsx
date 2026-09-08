@@ -189,8 +189,9 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        const newUrl = prompt('Digite a nova URL da Imagem de Capa:', course.coverImage || '');
-                        if (newUrl) {
+                        const initialVal = course.coverImage?.startsWith('http') ? course.coverImage : '';
+                        const newUrl = prompt('Digite a nova URL da Imagem de Capa:', initialVal);
+                        if (newUrl !== null && newUrl.trim() !== '') {
                           fetch(`/api/courses/${course.id}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },

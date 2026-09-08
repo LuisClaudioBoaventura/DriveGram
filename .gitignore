@@ -15,6 +15,7 @@ dist-ssr/
 *.key
 *.cert
 *.pfx
+.tauri/
 
 # Local Database & User Runtime Storage (Protects local Telegram session and uploaded files)
 data/

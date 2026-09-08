@@ -22,11 +22,13 @@ import {
   ChevronRight,
   ChevronLeft,
   Youtube,
+  FolderOpen,
   X
 } from 'lucide-react';
 import { TelegramAuthState } from '../types/index.js';
 import { YouTubeTargetType } from './YouTubeImportModal.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
+import { CURRENT_APP_VERSION } from '../utils/updater.js';
 
 export type SidebarTab = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
 
@@ -48,11 +50,14 @@ interface SidebarProps {
   telegramState: TelegramAuthState;
   onOpenAuth: () => void;
   onOpenSync: () => void;
+  onOpenUploadsFolder?: () => void;
   onMoveItem?: (id: string, isFolder: boolean, targetParentId: string | null) => Promise<boolean>;
   onDeleteItem?: (id: string, isFolder: boolean, permanent?: boolean, itemName?: string, itemType?: string) => void;
   onToggleFavorite?: (id: string, isFolder: boolean) => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
+  onOpenUpdates?: () => void;
+  hasUpdateAvailable?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -73,11 +78,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   telegramState,
   onOpenAuth,
   onOpenSync,
+  onOpenUploadsFolder,
   onMoveItem,
   onDeleteItem,
   onToggleFavorite,
   isMobileOpen = false,
-  onCloseMobile
+  onCloseMobile,
+  onOpenUpdates,
+  hasUpdateAvailable = false
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -533,6 +541,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 telegramState.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
               }`} />
             </button>
+
+            {onOpenUploadsFolder && (
+              <button
+                onClick={onOpenUploadsFolder}
+                title="Abrir pasta onde os arquivos estão sendo salvos no computador (uploads)"
+                className="p-2.5 rounded-2xl bg-gray-50 dark:bg-drive-darkSurface hover:bg-gray-100 dark:hover:bg-drive-darkHover border border-gray-200 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300 transition-all shadow-sm active:scale-95"
+              >
+                <FolderOpen className="w-4 h-4 text-amber-500" />
+              </button>
+            )}
+
+            {onOpenUpdates && (
+              <button
+                onClick={onOpenUpdates}
+                title={hasUpdateAvailable ? "Nova atualização disponível!" : `DriveGram v${CURRENT_APP_VERSION} - Verificar Atualizações`}
+                className="relative p-2.5 rounded-2xl bg-gray-50 dark:bg-drive-darkSurface hover:bg-gray-100 dark:hover:bg-drive-darkHover border border-gray-200 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300 transition-all shadow-sm active:scale-95"
+              >
+                <Sparkles className={`w-4 h-4 ${hasUpdateAvailable ? 'text-blue-500 animate-bounce' : 'text-gray-500'}`} />
+                {hasUpdateAvailable && (
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-drive-darkBg animate-pulse" />
+                )}
+              </button>
+            )}
           </div>
         ) : (
           /* Expanded Full Storage Card */
@@ -546,8 +577,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                 telegramState.isConnected 
-                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' 
-                  : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' 
+                : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
               }`}>
                 {telegramState.isConnected ? 'Conectado' : 'Desconectado'}
               </span>
@@ -576,6 +607,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Database className="w-3.5 h-3.5" />
                 <span>Gerenciar Nuvem & Backup</span>
               </button>
+
+              {onOpenUploadsFolder && (
+                <button
+                  onClick={onOpenUploadsFolder}
+                  className="w-full flex items-center justify-center gap-2 py-1.5 rounded-xl border border-gray-200 dark:border-drive-darkBorder hover:bg-gray-100 dark:hover:bg-drive-darkHover text-gray-700 dark:text-gray-300 text-xs font-semibold transition-all active:scale-95"
+                  title="Abrir pasta onde os arquivos estão sendo salvos no computador (uploads)"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Abrir Pasta Local</span>
+                </button>
+              )}
+
+              {onOpenUpdates && (
+                <button
+                  onClick={onOpenUpdates}
+                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl border transition-all text-xs font-medium active:scale-95 ${
+                    hasUpdateAvailable
+                      ? 'border-blue-500/40 bg-blue-50/80 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 shadow-sm'
+                      : 'border-gray-200 dark:border-drive-darkBorder hover:bg-gray-100 dark:hover:bg-drive-darkHover text-gray-600 dark:text-gray-300'
+                  }`}
+                  title="Verificar atualizações no GitHub Releases"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className={`w-3.5 h-3.5 ${hasUpdateAvailable ? 'text-blue-500 animate-spin' : 'text-gray-400'}`} />
+                    <span>v{CURRENT_APP_VERSION}</span>
+                  </div>
+                  <span className={`text-[11px] font-semibold ${hasUpdateAvailable ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>
+                    {hasUpdateAvailable ? 'Atualização disponível!' : 'Atualizações'}
+                  </span>
+                </button>
+              )}
 
               {!telegramState.isConnected && (
                 <button

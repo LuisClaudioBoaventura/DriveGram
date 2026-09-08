@@ -48,10 +48,13 @@ import { BookModal } from './components/BookModal.js';
 import { EditBookModal } from './components/EditBookModal.js';
 import { CategoryManagerModal } from './components/CategoryManagerModal.js';
 import { EditItemModal } from './components/EditItemModal.js';
+import { MoveItemModal } from './components/MoveItemModal.js';
 import { DuplicateFilesModal } from './components/DuplicateFilesModal.js';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
 import { MobileServerSettingsModal } from './components/MobileServerSettingsModal.js';
 import { YouTubeImportModal, YouTubeTargetType } from './components/YouTubeImportModal.js';
+import { UpdateModal } from './components/UpdateModal.js';
+import { checkForAppUpdates, UpdateInfo } from './utils/updater.js';
 import { useFileSystem } from './hooks/useFileSystem.js';
 import { useTelegram } from './hooks/useTelegram.js';
 import { useCourses } from './hooks/useCourses.js';
@@ -104,6 +107,23 @@ export function App() {
   const audioShows = useAudioShows();
   const adultVault = useAdultVault();
 
+  // Escuta o evento global de metadados atualizados para sincronizar instantaneamente todas as bibliotecas da interface
+  useEffect(() => {
+    const handleGlobalMetadataUpdated = () => {
+      fs.refresh();
+      courses.refreshCourses();
+      books.refreshBooks();
+      comics.fetchComics();
+      videos.fetchVideos();
+      personalVideos.refresh();
+      series.refreshAllSeries?.();
+      audioShows.refreshAllPodcasts?.();
+    };
+
+    window.addEventListener('drivegram-metadata-updated', handleGlobalMetadataUpdated);
+    return () => window.removeEventListener('drivegram-metadata-updated', handleGlobalMetadataUpdated);
+  }, []);
+
   // Navigation handler with protection for Red Locker folder
   const handleNavigateFolder = (folderId: string | null) => {
     if (folderId && isRedLockerFolder(folderId, fs.allFolders) && !adultVault.isUnlocked) {
@@ -136,6 +156,31 @@ export function App() {
   const [isMobileServerModalOpen, setIsMobileServerModalOpen] = useState(false);
   const [isDuplicatesModalOpen, setIsDuplicatesModalOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
+
+  // Auto-update state
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  const handleCheckUpdates = useCallback(async (showModalImmediately = true) => {
+    setIsCheckingUpdate(true);
+    if (showModalImmediately) setIsUpdateModalOpen(true);
+    try {
+      const info = await checkForAppUpdates();
+      setUpdateInfo(info);
+    } catch (err) {
+      console.warn('[App] Update check error:', err);
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleCheckUpdates(false);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [handleCheckUpdates]);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [editingComic, setEditingComic] = useState<ComicBook | null>(null);
   const [editingVideo, setEditingVideo] = useState<MovieVideo | null>(null);
@@ -144,6 +189,7 @@ export function App() {
   const [editingAudioShow, setEditingAudioShow] = useState<AudioShow | null>(null);
   const [editingAdultVideo, setEditingAdultVideo] = useState<AdultVideo | null>(null);
   const [editingItem, setEditingItem] = useState<{ item: DriveItem | FolderItem; isFolder: boolean } | null>(null);
+  const [movingItem, setMovingItem] = useState<{ item: DriveItem | FolderItem; isFolder: boolean } | null>(null);
   const [activePreviewFile, setActivePreviewFile] = useState<DriveItem | null>(null);
   const [selectedCourseForView, setSelectedCourseForView] = useState<Course | null>(null);
   const [selectedBookForView, setSelectedBookForView] = useState<Book | null>(null);
@@ -326,6 +372,23 @@ export function App() {
     return success;
   };
 
+  const handleOpenUploadsFolder = async () => {
+    try {
+      const res = await fetch('/api/system/open-uploads-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`📁 Pasta de arquivos aberta: ${data.path}`, 'success');
+      } else {
+        showToast(data.message || 'Não foi possível abrir a pasta nativa.', 'error');
+      }
+    } catch (e: any) {
+      showToast('Erro ao abrir pasta local de arquivos.', 'error');
+    }
+  };
+
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -417,6 +480,7 @@ export function App() {
             setIsSyncModalOpen(true);
           }
         }}
+        onOpenUploadsFolder={handleOpenUploadsFolder}
         onOpenApiKeysModal={() => setIsApiKeysModalOpen(true)}
         onOpenYouTubeModal={() => handleOpenYouTubeModal()}
         onOpenMobileServerSettings={() => setIsMobileServerModalOpen(true)}
@@ -470,6 +534,7 @@ export function App() {
           onOpenSync={() => {
             setIsSyncModalOpen(true);
           }}
+          onOpenUploadsFolder={handleOpenUploadsFolder}
           onMoveItem={handleMoveItemWithFeedback}
           onDeleteItem={(id, isFolder, permanent, itemName, itemType) => {
             setDeleteConfirmTarget({
@@ -486,6 +551,8 @@ export function App() {
             await fs.toggleFavorite(id, isFolder);
             showToast(`⭐ "${name}" atualizado nos Favoritos.`, 'info');
           }}
+          onOpenUpdates={() => handleCheckUpdates(true)}
+          hasUpdateAvailable={Boolean(updateInfo?.available)}
         />
 
         {/* Content Area */}
@@ -571,6 +638,7 @@ export function App() {
                 setSelectedCourseForView(activePlayingCourse);
                 setActivePipCourse(null);
               }}
+              onShowToast={showToast}
             />
           )}
 
@@ -983,6 +1051,7 @@ export function App() {
                 searchQuery={fs.searchQuery}
                 onResetFilters={fs.resetFilters}
                 onOpenDuplicates={() => setIsDuplicatesModalOpen(true)}
+                onOpenUploadsFolder={handleOpenUploadsFolder}
                 onMoveItem={handleMoveItemWithFeedback}
                 onUploadToFolder={(files, targetId) => handleSafeUpload(files, targetId)}
               />
@@ -1017,6 +1086,7 @@ export function App() {
                     });
                   }}
                   onEditItem={(item, isFolder) => setEditingItem({ item, isFolder })}
+                  onOpenMoveModal={(item, isFolder) => setMovingItem({ item, isFolder })}
                   onMoveItem={handleMoveItemWithFeedback}
                   onUploadToFolder={(files, targetId) => handleSafeUpload(files, targetId)}
                   onRetryUploadTelegram={(id) => fs.retryUploadToTelegram(id)}
@@ -1052,6 +1122,7 @@ export function App() {
                     });
                   }}
                   onEditItem={(item, isFolder) => setEditingItem({ item, isFolder })}
+                  onOpenMoveModal={(item, isFolder) => setMovingItem({ item, isFolder })}
                   onMoveItem={handleMoveItemWithFeedback}
                   onUploadToFolder={(files, targetId) => handleSafeUpload(files, targetId)}
                   onRetryUploadTelegram={(id) => fs.retryUploadToTelegram(id)}
@@ -1136,11 +1207,18 @@ export function App() {
           fs.refresh();
           courses.refreshCourses();
           books.refreshBooks();
+          comics.fetchComics();
+          videos.fetchVideos();
+          personalVideos.refresh();
+          series.refreshAllSeries?.();
+          audioShows.refreshAllPodcasts?.();
         }}
         syncing={tg.syncing}
         onUpdateStreamingMode={tg.updateStreamingMode}
         onUpdateCacheDuration={tg.updateCacheDuration}
         onClearCache={tg.clearLocalCache}
+        onAuditSaved={tg.auditSavedMessages}
+        onReconcileSaved={tg.reconcileMissingFiles}
       />
 
       {/* Folder Creation Modal */}
@@ -1554,6 +1632,18 @@ export function App() {
         }}
       />
 
+      {/* Move File & Folder Modal */}
+      <MoveItemModal
+        isOpen={movingItem !== null}
+        item={movingItem?.item || null}
+        isFolder={movingItem?.isFolder || false}
+        allFolders={fs.allFolders}
+        onClose={() => setMovingItem(null)}
+        onMove={async (id, isFolder, targetParentId) => {
+          return await handleMoveItemWithFeedback(id, isFolder, targetParentId);
+        }}
+      />
+
       {/* Delete Confirmation Popup Modal */}
       <DeleteConfirmModal
         isOpen={deleteConfirmTarget !== null}
@@ -1578,6 +1668,15 @@ export function App() {
       <MobileServerSettingsModal
         isOpen={isMobileServerModalOpen}
         onClose={() => setIsMobileServerModalOpen(false)}
+      />
+
+      {/* DriveGram Auto-Update Modal */}
+      <UpdateModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+        updateInfo={updateInfo}
+        onCheckAgain={() => handleCheckUpdates(true)}
+        isChecking={isCheckingUpdate}
       />
 
       {/* Persistent Global Floating Audiobook Player */}

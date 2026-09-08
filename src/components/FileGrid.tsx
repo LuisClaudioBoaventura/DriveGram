@@ -22,7 +22,8 @@ import {
   ArrowDownToLine,
   BookOpen,
   CloudUpload,
-  RefreshCw
+  RefreshCw,
+  FolderInput
 } from 'lucide-react';
 import { DriveItem, FolderItem, FileType } from '../types/index.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
@@ -47,6 +48,7 @@ interface FileGridProps {
   onUploadToFolder?: (files: FileList | File[] | { file: File; relativePath?: string }[], targetFolderId: string) => Promise<void>;
   onRetryUploadTelegram?: (fileId: string) => Promise<any> | void;
   retryingFileIds?: string[];
+  onOpenMoveModal?: (item: DriveItem | FolderItem, isFolder: boolean) => void;
 }
 
 export const FileGrid: React.FC<FileGridProps> = ({
@@ -66,7 +68,8 @@ export const FileGrid: React.FC<FileGridProps> = ({
   onMoveItem,
   onUploadToFolder,
   onRetryUploadTelegram,
-  retryingFileIds = []
+  retryingFileIds = [],
+  onOpenMoveModal
 }) => {
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -324,6 +327,18 @@ export const FileGrid: React.FC<FileGridProps> = ({
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
+                        {onOpenMoveModal && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenMoveModal(folder, true);
+                            }}
+                            className="p-1 rounded-md text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-drive-darkHover"
+                            title="Mover Pasta / Aninhar ou Desaninhar"
+                          >
+                            <FolderInput className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -528,6 +543,19 @@ export const FileGrid: React.FC<FileGridProps> = ({
                             >
                               <Edit3 className="w-3 h-3" />
                             </button>
+
+                            {onOpenMoveModal && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenMoveModal(file, false);
+                                }}
+                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-drive-darkHover text-gray-400 hover:text-blue-500"
+                                title="Mover Arquivo para Outra Pasta"
+                              >
+                                <FolderInput className="w-3 h-3" />
+                              </button>
+                            )}
 
                             <button
                               onClick={(e) => {

@@ -355,9 +355,21 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
             )}
 
             <button
-              onClick={() => setIsVideoDownloadModalOpen(true)}
+              onClick={() => {
+                if (file.type === 'video') {
+                  setIsVideoDownloadModalOpen(true);
+                } else {
+                  const url = resolveApiUrl(`/api/stream/${file.id}`);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = file.name;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }
+              }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow transition-all active:scale-95"
-              title="Baixar Arquivo para Cache Local"
+              title="Baixar Arquivo"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Baixar</span>
@@ -464,7 +476,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   {file.description || 'Este arquivo está salvo com segurança nas suas Mensagens Salvas do Telegram.'}
                 </p>
                 <a
-                  href={`/api/stream/${file.id}`}
+                  href={resolveApiUrl(`/api/stream/${file.id}`)}
                   download={file.name}
                   className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg"
                 >
@@ -474,7 +486,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
             )}
 
             {/* Previous / Next Arrow Controls for Standard Media */}
-            {!isComic && !isEpub && hasPrev && (
+            {!isComic && !isEpub && file.type !== 'pdf' && hasPrev && (
               <button
                 onClick={handlePrev}
                 className="absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-gray-700 transition-transform hover:scale-110"
@@ -484,7 +496,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               </button>
             )}
 
-            {!isComic && !isEpub && hasNext && (
+            {!isComic && !isEpub && file.type !== 'pdf' && hasNext && (
               <button
                 onClick={handleNext}
                 className="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-gray-700 transition-transform hover:scale-110"

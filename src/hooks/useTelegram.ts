@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { TelegramAuthState, StreamingMode, CacheDurationConfig } from '../types/index.js';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult } from '../types/index.js';
 
 export function useTelegram() {
   const [authState, setAuthState] = useState<TelegramAuthState>({
@@ -20,6 +22,7 @@ export function useTelegram() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const startupSyncTriggered = useRef(false);
+
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -48,6 +51,100 @@ export function useTelegram() {
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
+
+  // Sincronização em Tempo Real via Server-Sent Events (SSE)
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let reconnectTimeout: any = null;
+
+    const connectSSE = () => {
+      try {
+        eventSource = new EventSource('/api/telegram/events');
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'metadata-updated') {
+              console.log('[DriveGram Real-Time SSE] Atualização de metadados recebida:', data);
+              fetchStatus();
+              window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: data }));
+            }
+          } catch (_) {}
+        };
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          reconnectTimeout = setTimeout(connectSSE, 5000);
+        };
+      } catch (e) {
+        reconnectTimeout = setTimeout(connectSSE, 8000);
+      }
+    };
+
+    connectSSE();
+
+    return () => {
+      if (eventSource) eventSource.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, [fetchStatus]);
+
+  // Sincronização por Ciclo de Vida: verifica alterações ao focar a janela ou retomar o aplicativo (Desktop e Celular)
+  useEffect(() => {
+    let lastResumeSync = 0;
+    const handleResumeOrFocus = () => {
+      const now = Date.now();
+      // Debounce para não disparar mais de uma vez a cada 15 segundos
+      if (now - lastResumeSync < 15000) return;
+      lastResumeSync = now;
+
+      fetchStatus();
+      fetch('/api/telegram/startup-sync', { method: 'POST' })
+        .then(r => r.json())
+        .then(syncRes => {
+          if (syncRes.success && (syncRes.details?.updated || syncRes.details?.addedFiles > 0)) {
+            console.log('[DriveGram Lifecycle Sync] Dados atualizados em segundo plano:', syncRes.message);
+            window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: syncRes }));
+          }
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener('focus', handleResumeOrFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleResumeOrFocus();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // Listener nativo do Capacitor para Android / Mobile
+    let capAppListener: any = null;
+    if (Capacitor.isPluginAvailable('App')) {
+      try {
+        capAppListener = CapApp.addListener('appStateChange', (state) => {
+          if (state.isActive) {
+            handleResumeOrFocus();
+          }
+        });
+        if (capAppListener && typeof capAppListener.catch === 'function') {
+          capAppListener.catch(() => {});
+        }
+      } catch (_) {}
+    }
+
+    return () => {
+      window.removeEventListener('focus', handleResumeOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (capAppListener && typeof capAppListener.then === 'function') {
+        capAppListener.then((handle: any) => handle?.remove?.()).catch(() => {});
+      } else if (capAppListener?.remove) {
+        capAppListener.remove();
+      }
+    };
+  }, [fetchStatus]);
+
 
   const startQrLogin = async (apiId?: string, apiHash?: string, password?: string) => {
     setLoading(true);
@@ -197,6 +294,39 @@ export function useTelegram() {
     }
   };
 
+  const auditSavedMessages = async (limit = 500): Promise<SavedAuditResult> => {
+    try {
+      const res = await fetch(`/api/telegram/audit-saved?limit=${limit}`);
+      const data = await res.json();
+      return data;
+    } catch (e: any) {
+      return {
+        success: false,
+        telegramTotalFiles: 0,
+        manifestTotalFiles: 0,
+        missingCount: 0,
+        missingFiles: [],
+        message: e?.message || 'Falha de comunicação com o servidor.'
+      };
+    }
+  };
+
+  const reconcileMissingFiles = async (messageIds?: number[]) => {
+    try {
+      const res = await fetch('/api/telegram/reconcile-saved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageIds })
+      });
+      const data = await res.json();
+      await fetchStatus();
+      window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: data }));
+      return data;
+    } catch (e: any) {
+      return { success: false, addedCount: 0, addedFoldersCount: 0, message: e?.message || 'Falha ao conectar com o servidor.' };
+    }
+  };
+
   return {
     authState,
     loading,
@@ -211,6 +341,9 @@ export function useTelegram() {
     restoreFromTelegram,
     updateStreamingMode,
     updateCacheDuration,
-    clearLocalCache
+    clearLocalCache,
+    auditSavedMessages,
+    reconcileMissingFiles
   };
 }
+

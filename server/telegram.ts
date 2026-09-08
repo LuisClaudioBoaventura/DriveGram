@@ -2,11 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { TelegramClient } from 'telegram';
+import { NewMessage } from 'telegram/events/index.js';
+import { EventEmitter } from 'events';
 import { StringSession } from 'telegram/sessions/index.js';
 import bigInt from 'big-integer';
 import QRCode from 'qrcode';
-import { TelegramAuthState, DriveGramSyncManifest } from '../src/types/index.js';
+import { TelegramAuthState, DriveGramSyncManifest, SavedAuditItem, SavedAuditResult, FileType } from '../src/types/index.js';
 import { db } from './database.js';
+
+export const telegramEvents = new EventEmitter();
+
 
 const toBigInt = (v: any) => {
   const fn = typeof bigInt === 'function' ? bigInt : (bigInt as any).default;
@@ -15,6 +20,10 @@ const toBigInt = (v: any) => {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const DATA_DIR = process.env.DRIVEGRAM_DATA_DIR || process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
 // Default public credentials for Telegram Desktop/Web if user doesn't specify
 const DEFAULT_API_ID = process.env.TELEGRAM_API_ID ? parseInt(process.env.TELEGRAM_API_ID, 10) : 2040;
@@ -45,9 +54,26 @@ class TelegramService {
   private isInitialSyncCompleted: boolean = false;
   private activeStartupSyncPromise: Promise<{ success: boolean; message: string; details?: any }> | null = null;
   private isSyncingMetadata: boolean = false;
+  private hasPendingSyncRequest: boolean = false;
+  private lastSentMetadataMessageId: number | null = null;
+  private isRealtimeListenerActive: boolean = false;
 
   public isInitialSyncDone(): boolean {
     return this.isInitialSyncCompleted;
+  }
+
+  public isConnected(): boolean {
+    return this.authState.isConnected && this.client !== null;
+  }
+
+  public async sendSavedMessage(text: string): Promise<boolean> {
+    if (!this.isConnected() || !this.client) return false;
+    try {
+      await this.client.sendMessage('me', { message: text });
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   constructor() {
@@ -72,8 +98,10 @@ class TelegramService {
 
     // If client exists and is connected
     if (this.client && this.client.connected) {
+      this.setupRealtimeListener(this.client);
       return this.client;
     }
+
 
     // If client exists but disconnected, try connecting
     if (this.client) {
@@ -95,6 +123,7 @@ class TelegramService {
       this.stringSession = new StringSession(settings.telegramSession);
       this.client = new TelegramClient(this.stringSession, this.apiId, this.apiHash, {
         connectionRetries: 5,
+        useWSS: true,
       });
       this.client.setLogLevel('none' as any);
       this.client.onError = async (err: any) => {
@@ -116,6 +145,7 @@ class TelegramService {
           totalSavedFiles: db.getAllFiles().length,
           storageUsedBytes: db.getAllFiles().reduce((acc, f) => acc + (f.size || 0), 0)
         };
+        this.setupRealtimeListener(this.client);
         return this.client;
       } else {
         console.warn('[DriveGram Telegram] Session is not authorized.');
@@ -129,11 +159,59 @@ class TelegramService {
     }
   }
 
+  private setupRealtimeListener(client: TelegramClient) {
+    if (this.isRealtimeListenerActive) return;
+    this.isRealtimeListenerActive = true;
+
+    try {
+      client.addEventHandler(async (event: any) => {
+        try {
+          const msg = event?.message;
+          if (!msg) return;
+
+          const caption = msg.message || '';
+          const isMetadataSync = caption.includes('#drivegram_metadata_sync') ||
+            ((msg.media as any)?.document?.attributes?.some((a: any) => a.fileName === 'drivegram_metadata.json'));
+
+          if (!isMetadataSync) return;
+
+          // Se for a mensagem de metadados que este próprio processo acabou de enviar, ignorar
+          if (this.lastSentMetadataMessageId && msg.id === this.lastSentMetadataMessageId) {
+            return;
+          }
+
+          console.log(`[DriveGram Real-Time Push] Nova atualização de metadados detectada nas Mensagens Salvas (Msg ID: ${msg.id}). Reconciliando...`);
+          const buffer = await client.downloadMedia(msg) as Buffer;
+          if (!buffer) return;
+
+          const remoteManifest: DriveGramSyncManifest = JSON.parse(buffer.toString('utf-8'));
+          const reconcileRes = db.reconcileManifest(remoteManifest);
+          this.isInitialSyncCompleted = true;
+          console.log(`[DriveGram Real-Time Push] Reconciliação em tempo real concluída (+${reconcileRes.addedFiles} arquivos, +${reconcileRes.addedFolders} pastas).`);
+
+          telegramEvents.emit('metadata-updated', {
+            source: 'telegram-push',
+            messageId: msg.id,
+            reconcileResult: reconcileRes,
+            timestamp: new Date().toISOString()
+          });
+        } catch (err: any) {
+          console.warn('[DriveGram Real-Time Push] Erro ao processar evento de metadados:', err?.message || err);
+        }
+      }, new NewMessage({ chats: ['me'] }));
+
+      console.log('[DriveGram Real-Time Push] Escuta de eventos em tempo real ativada nas Mensagens Salvas.');
+    } catch (listenerErr: any) {
+      console.warn('[DriveGram Real-Time Push] Falha ao registrar escuta de eventos:', listenerErr?.message || listenerErr);
+    }
+  }
+
   private async initClient(): Promise<boolean> {
     try {
       if (!this.apiId || !this.apiHash) return false;
       this.client = new TelegramClient(this.stringSession, this.apiId, this.apiHash, {
         connectionRetries: 5,
+        useWSS: true,
       });
       this.client.setLogLevel('none' as any);
       this.client.onError = async (err: any) => {
@@ -156,6 +234,8 @@ class TelegramService {
           totalSavedFiles: db.getAllFiles().length,
           storageUsedBytes: db.getAllFiles().reduce((acc, f) => acc + (f.size || 0), 0)
         };
+
+        this.setupRealtimeListener(this.client);
 
         // Sincronizar metadados ativos com a nuvem do Telegram
         this.performStartupMetadataSync().catch((e) => {
@@ -200,6 +280,7 @@ class TelegramService {
       const tempSession = new StringSession('');
       this.authClient = new TelegramClient(tempSession, loginApiId, loginApiHash, {
         connectionRetries: 5,
+        useWSS: true,
       });
       this.authClient.setLogLevel('none' as any);
       this.authClient.onError = async (err: any) => {
@@ -316,6 +397,7 @@ class TelegramService {
       const tempSession = new StringSession('');
       this.authClient = new TelegramClient(tempSession, this.apiId, this.apiHash, {
         connectionRetries: 3,
+        useWSS: true,
       });
       this.authClient.setLogLevel('none' as any);
       this.authClient.onError = async (err: any) => {
@@ -420,6 +502,8 @@ class TelegramService {
     this.isInitialSyncCompleted = false;
     this.activeStartupSyncPromise = null;
     this.isSyncingMetadata = false;
+    this.isRealtimeListenerActive = false;
+    this.lastSentMetadataMessageId = null;
     db.updateSettings({
       telegramSession: undefined
     });
@@ -574,11 +658,12 @@ class TelegramService {
     }
 
     if (this.isSyncingMetadata) {
-      console.log('[DriveGram Auto-Backup] Já existe um envio de metadados em andamento. Ignorando chamada concorrente.');
-      return { success: false, message: 'Envio de metadados já em andamento.' };
+      this.hasPendingSyncRequest = true;
+      return { success: false, message: 'Envio de metadados já em andamento. Alterações enfileiradas para o próximo ciclo.' };
     }
 
     this.isSyncingMetadata = true;
+    console.log('[DriveGram Auto-Backup] Salvando alterações de metadados nas Mensagens Salvas do Telegram...');
 
     try {
       const manifest = db.exportManifest();
@@ -621,15 +706,25 @@ class TelegramService {
       const manifestJson = JSON.stringify(manifest, null, 2);
       const caption = `📁 #drivegram_metadata_sync\n📅 Atualizado em: ${new Date().toLocaleString('pt-BR')}\nPastas: ${manifest.folders.length} | Arquivos: ${manifest.files.length} | Cursos: ${courseCount} | Livros: ${bookCount}`;
 
-      const buffer = Buffer.from(manifestJson, 'utf-8');
-      (buffer as any).name = 'drivegram_metadata.json';
+      // Salva o manifesto em disco para envio seguro via stream no GramJS
+      // (Arquivos > 20MB exigem caminho em disco para que o GramJS particione o upload sem erros de CustomBuffer)
+      const tempManifestPath = path.join(DATA_DIR, 'drivegram_metadata.json');
+      await fs.promises.writeFile(tempManifestPath, manifestJson, 'utf-8');
 
       const sent = await client.sendFile('me', {
-        file: buffer,
+        file: tempManifestPath,
         caption: caption,
       });
 
+      this.lastSentMetadataMessageId = sent.id;
+
       db.updateSettings({ lastSyncDate: new Date().toISOString() });
+
+      telegramEvents.emit('metadata-updated', {
+        source: 'sync',
+        messageId: sent.id,
+        timestamp: new Date().toISOString()
+      });
 
       // Auto-pruning de metadados antigos para manter o chat de Mensagens Salvas limpo
       this.pruneOldMetadataMessages().catch(err => {
@@ -642,6 +737,12 @@ class TelegramService {
       return { success: false, message: e.message || 'Falha ao sincronizar metadados no Telegram' };
     } finally {
       this.isSyncingMetadata = false;
+      if (this.hasPendingSyncRequest) {
+        this.hasPendingSyncRequest = false;
+        setTimeout(() => {
+          this.syncMetadataToTelegram().catch(() => {});
+        }, 1200);
+      }
     }
   }
 
@@ -802,6 +903,12 @@ class TelegramService {
         console.log(`[DriveGram Startup Sync] Reconciliação concluída: +${reconcileResult.addedFiles} arquivos, +${reconcileResult.addedFolders} pastas.`);
 
         this.isInitialSyncCompleted = true;
+
+        telegramEvents.emit('metadata-updated', {
+          source: 'startup-sync',
+          reconcileResult,
+          timestamp: new Date().toISOString()
+        });
 
         // Se houver arquivos novos locais que não existiam na nuvem, atualiza o manifesto no Telegram
         if (reconcileResult.localHasNewerChanges) {
@@ -1063,9 +1170,8 @@ class TelegramService {
     const client = await this.ensureClient();
     if (client && this.authState.isConnected) {
       try {
-        (buffer as any).name = `${diskFileName}`;
         const message = await client.sendFile('me', {
-          file: buffer,
+          file: localFilePath,
           caption: `🖼️ #drivegram_cover #${tag}\n📌 ${title}\n📅 ${new Date().toLocaleString('pt-BR')}`
         });
 
@@ -1407,6 +1513,282 @@ class TelegramService {
       return { success: false, importedCount: 0, message: e.message || 'Erro ao escanear mensagens salvas' };
     }
   }
+
+  /**
+   * Escaneia as Mensagens Salvas ('me'), identifica arquivos e compara com o manifesto de metadados local
+   */
+  public async auditSavedMessages(limit = 500): Promise<SavedAuditResult> {
+    const client = await this.ensureClient();
+    if (!client || !this.authState.isConnected) {
+      return {
+        success: false,
+        telegramTotalFiles: 0,
+        manifestTotalFiles: db.getAllFiles().length,
+        missingCount: 0,
+        missingFiles: [],
+        message: 'Telegram não conectado para auditoria.'
+      };
+    }
+
+    try {
+      const messages = await client.getMessages('me', { limit });
+      const localFiles = db.getAllFiles();
+      const existingMessageIds = new Set(localFiles.map(f => f.telegramMeta?.messageId).filter(Boolean));
+      const allFolders = db.getAllFolders();
+
+      const missingFiles: SavedAuditItem[] = [];
+      let telegramTotalFiles = 0;
+
+      for (const msg of messages) {
+        const caption = msg.message || '';
+        // Ignora mensagens que são manifestos de metadados
+        if (caption.includes('#drivegram_metadata_sync')) {
+          continue;
+        }
+
+        if (!msg.media) continue;
+
+        let fileName = '';
+        let fileSize = 0;
+        let mimeType = 'application/octet-stream';
+
+        if ((msg.media as any).document) {
+          const doc = (msg.media as any).document;
+          fileSize = Number(doc.size || 0);
+          mimeType = doc.mimeType || 'application/octet-stream';
+          const nameAttr = doc.attributes?.find((a: any) => a.fileName);
+          fileName = nameAttr ? nameAttr.fileName : '';
+          
+          if (fileName === 'drivegram_metadata.json') {
+            continue;
+          }
+        } else if ((msg.media as any).photo) {
+          fileName = `foto_${msg.id}.jpg`;
+          mimeType = 'image/jpeg';
+          fileSize = 1024 * 500;
+        } else {
+          continue;
+        }
+
+        telegramTotalFiles++;
+
+        const isDriveGramTagged = caption.includes('DriveGram File') || caption.includes('📁 DriveGram') || caption.includes('🎙️ Podcast');
+
+        // Extrair nome da legenda se disponível
+        const nameMatch = caption.match(/📄\s*Nome:\s*(.+)/i);
+        if (nameMatch && nameMatch[1]?.trim()) {
+          fileName = nameMatch[1].trim();
+        } else if (!fileName) {
+          fileName = `arquivo_${msg.id}`;
+        }
+
+        // 1. Extrair metadados estruturados ou linhas da legenda
+        let suggestedPath: string[] | undefined = undefined;
+        let suggestedFolderId: string | null = null;
+        let suggestedFolderName: string | undefined = undefined;
+
+        const metaTagMatch = caption.match(/#drivegram_meta:(\{.*?\})/);
+        if (metaTagMatch) {
+          try {
+            const parsed = JSON.parse(metaTagMatch[1]);
+            if (Array.isArray(parsed.path) && parsed.path.length > 0) {
+              const cleaned: string[] = parsed.path.map((s: any) => String(s).trim()).filter(Boolean);
+              if (cleaned.length > 0) {
+                suggestedPath = cleaned;
+                suggestedFolderName = cleaned[cleaned.length - 1];
+              }
+            }
+            if (parsed.pid) {
+              suggestedFolderId = parsed.pid;
+            }
+          } catch (e) {}
+        }
+
+        // 2. Extrair caminho hierárquico legível: 📂 Caminho: A / B / C
+        if (!suggestedPath || suggestedPath.length === 0) {
+          const pathMatch = caption.match(/📂\s*Caminho:\s*(.+)/i);
+          if (pathMatch && pathMatch[1]?.trim()) {
+            const rawPath = pathMatch[1].trim();
+            const segments = rawPath.split('/').map(s => s.trim()).filter(s => s && s.toLowerCase() !== 'raiz' && s.toLowerCase() !== 'root');
+            if (segments.length > 0) {
+              suggestedPath = segments;
+              suggestedFolderName = segments[segments.length - 1];
+            }
+          }
+        }
+
+        // 3. Extrair pasta e pasta ID da legenda se ainda não definido
+        const folderMatch = caption.match(/🏷️\s*Pasta(?:\s*Nome)?:\s*(.+)/i);
+        if (folderMatch && folderMatch[1]?.trim() && !suggestedFolderName) {
+          const rawFolder = folderMatch[1].trim();
+          if (rawFolder.toLowerCase() !== 'raiz' && rawFolder.toLowerCase() !== 'root') {
+            if (!/^folder-\d+-[a-z0-9]+$/i.test(rawFolder)) {
+              suggestedFolderName = rawFolder;
+            }
+          }
+        }
+
+        const folderIdMatch = caption.match(/🔖\s*Pasta\s*ID:\s*([a-zA-Z0-9_-]+)/i);
+        if (folderIdMatch && folderIdMatch[1]) {
+          suggestedFolderId = folderIdMatch[1].trim();
+        }
+
+        if (suggestedFolderId && !suggestedFolderName) {
+          const found = allFolders.find(f => f.id === suggestedFolderId);
+          if (found) {
+            suggestedFolderName = found.name;
+          }
+        }
+
+        const ext = path.extname(fileName).toLowerCase().replace('.', '') || (mimeType.includes('video') ? 'mp4' : mimeType.includes('audio') ? 'mp3' : 'bin');
+        let fileType: FileType = 'other';
+        if (['mp4', 'mkv', 'avi', 'mov', 'webm', 'm4v'].includes(ext) || mimeType.includes('video')) fileType = 'video';
+        else if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext) || mimeType.includes('audio')) fileType = 'audio';
+        else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || mimeType.includes('image')) fileType = 'image';
+        else if (['pdf'].includes(ext) || mimeType.includes('pdf')) fileType = 'pdf';
+        else if (['cbr', 'cbz', 'cbt', 'cb7'].includes(ext)) fileType = 'comic';
+        else if (['epub', 'mobi', 'azw', 'azw3'].includes(ext)) fileType = 'ebook';
+        else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) fileType = 'archive';
+
+        if (!existingMessageIds.has(msg.id)) {
+          missingFiles.push({
+            messageId: msg.id,
+            date: new Date(msg.date * 1000).toISOString(),
+            name: fileName,
+            size: fileSize,
+            mimeType,
+            extension: ext,
+            type: fileType,
+            suggestedFolderId,
+            suggestedFolderName,
+            suggestedPath,
+            isDriveGramTagged
+          });
+        }
+      }
+
+      return {
+        success: true,
+        telegramTotalFiles,
+        manifestTotalFiles: localFiles.length,
+        missingCount: missingFiles.length,
+        missingFiles,
+        message: missingFiles.length > 0
+          ? `Auditoria concluída: ${missingFiles.length} arquivo(s) encontrados nas Mensagens Salvas que não constam no manifesto local.`
+          : 'Auditoria concluída: Todos os arquivos das Mensagens Salvas já estão presentes no manifesto local.'
+      };
+    } catch (e: any) {
+      console.error('[DriveGram Audit] Erro ao auditar mensagens salvas:', e);
+      return {
+        success: false,
+        telegramTotalFiles: 0,
+        manifestTotalFiles: db.getAllFiles().length,
+        missingCount: 0,
+        missingFiles: [],
+        message: e?.message || 'Erro ao auditar mensagens salvas no Telegram'
+      };
+    }
+  }
+
+  /**
+   * Reconcilia os arquivos faltantes encontrados nas Mensagens Salvas, integrando-os ao banco e atualizando a nuvem
+   */
+  public async reconcileMissingFiles(options?: { messageIds?: number[] }): Promise<{
+    success: boolean;
+    addedCount: number;
+    addedFoldersCount: number;
+    message: string;
+  }> {
+    const auditRes = await this.auditSavedMessages(1000);
+    if (!auditRes.success) {
+      return { success: false, addedCount: 0, addedFoldersCount: 0, message: auditRes.message };
+    }
+
+    let itemsToReconcile = auditRes.missingFiles;
+    if (options?.messageIds && options.messageIds.length > 0) {
+      const idSet = new Set(options.messageIds);
+      itemsToReconcile = itemsToReconcile.filter(item => idSet.has(item.messageId));
+    }
+
+    if (itemsToReconcile.length === 0) {
+      return { success: true, addedCount: 0, addedFoldersCount: 0, message: 'Nenhum arquivo faltante selecionado ou encontrado para reconciliação.' };
+    }
+
+    let addedCount = 0;
+    let addedFoldersCount = 0;
+    const allFolders = db.getAllFolders();
+    const folderCache = new Map<string, string>(allFolders.map(f => [f.name.toLowerCase(), f.id]));
+
+    let defaultFolder = allFolders.find(f => f.name === '📥 Importados do Telegram' && !f.isTrash);
+
+    for (const item of itemsToReconcile) {
+      let targetFolderId: string | null = null;
+
+      // 1. Se possuir caminho completo (ex: Cursos / Programação / Módulo 1), garante a criação de toda a árvore recursiva
+      if (item.suggestedPath && item.suggestedPath.length > 0) {
+        targetFolderId = db.ensureFolderPath(item.suggestedPath);
+        const refreshedFolders = db.getAllFolders();
+        refreshedFolders.forEach(f => folderCache.set(f.name.toLowerCase(), f.id));
+      } else if (item.suggestedFolderId && allFolders.some(f => f.id === item.suggestedFolderId)) {
+        targetFolderId = item.suggestedFolderId;
+      } else if (item.suggestedFolderName && !/^folder-\d+-[a-z0-9]+$/i.test(item.suggestedFolderName)) {
+        const lower = item.suggestedFolderName.toLowerCase();
+        if (folderCache.has(lower)) {
+          targetFolderId = folderCache.get(lower)!;
+        } else {
+          const newFolder = db.createFolder(item.suggestedFolderName, null, '#0284c7');
+          targetFolderId = newFolder.id;
+          folderCache.set(lower, newFolder.id);
+          addedFoldersCount++;
+        }
+      } else {
+        if (!defaultFolder) {
+          defaultFolder = db.createFolder('📥 Importados do Telegram', null, '#0088cc');
+          addedFoldersCount++;
+          folderCache.set(defaultFolder.name.toLowerCase(), defaultFolder.id);
+        }
+        targetFolderId = defaultFolder.id;
+      }
+
+      db.createFile({
+        name: item.name,
+        parentId: targetFolderId,
+        size: item.size,
+        mimeType: item.mimeType,
+        extension: item.extension,
+        type: item.type,
+        telegramMeta: {
+          messageId: item.messageId,
+          chatId: 'me',
+          fileSize: item.size,
+          mimeType: item.mimeType,
+          uploadDate: item.date,
+          isUploadedToTelegram: true
+        }
+      });
+
+      addedCount++;
+    }
+
+    // Atualiza o backup de metadados na nuvem do Telegram
+    await this.syncMetadataToTelegram({ force: true, skipInitialCheck: true });
+
+    // Notifica os clientes em tempo real (SSE)
+    telegramEvents.emit('metadata-updated', {
+      source: 'reconcile-saved',
+      addedFiles: addedCount,
+      addedFolders: addedFoldersCount,
+      timestamp: new Date().toISOString()
+    });
+
+    return {
+      success: true,
+      addedCount,
+      addedFoldersCount,
+      message: `Reconciliação concluída com sucesso! +${addedCount} arquivo(s) e +${addedFoldersCount} pasta(s) integrados ao manifesto e sincronizados com a nuvem.`
+    };
+  }
 }
 
 export const telegramService = new TelegramService();
+

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronRight, Home, LayoutGrid, List, ArrowUpDown, Copy, ArrowDownToLine, X, Filter, Search as SearchIcon } from 'lucide-react';
+import { ChevronRight, Home, LayoutGrid, List, ArrowUpDown, Copy, ArrowDownToLine, X, Filter, Search as SearchIcon, FolderOpen } from 'lucide-react';
 import { FolderItem, FileType } from '../types/index.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
 
@@ -17,6 +17,7 @@ interface BreadcrumbsProps {
   searchQuery?: string;
   onResetFilters?: () => void;
   onOpenDuplicates?: () => void;
+  onOpenUploadsFolder?: () => void;
   onMoveItem?: (id: string, isFolder: boolean, targetParentId: string | null) => Promise<boolean>;
   onUploadToFolder?: (files: FileList | File[] | { file: File; relativePath?: string }[], targetFolderId: string | null) => Promise<void>;
 }
@@ -48,6 +49,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   searchQuery = '',
   onResetFilters,
   onOpenDuplicates,
+  onOpenUploadsFolder,
   onMoveItem,
   onUploadToFolder
 }) => {
@@ -197,6 +199,18 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
               <ArrowUpDown className={`w-3.5 h-3.5 ${sortOrder === 'desc' ? 'rotate-180' : ''} transition-transform`} />
             </button>
           </div>
+
+          {/* Open Local Uploads Folder */}
+          {onOpenUploadsFolder && (
+            <button
+              onClick={onOpenUploadsFolder}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-drive-darkSurface dark:hover:bg-drive-darkHover text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-drive-darkBorder text-xs font-semibold transition-all active:scale-95"
+              title="Abrir pasta local onde os arquivos estão sendo salvos no computador"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
+              <span className="hidden md:inline">Pasta Local</span>
+            </button>
+          )}
 
           {/* View mode toggle (Grid / List) */}
           <div className="flex items-center bg-gray-100 dark:bg-drive-darkSurface rounded-xl p-1 border border-gray-200 dark:border-drive-darkBorder">

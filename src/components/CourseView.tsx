@@ -42,7 +42,8 @@ import {
   Share2,
   Shuffle,
   LayoutGrid,
-  List
+  List,
+  Loader2
 } from 'lucide-react';
 import { Course, Lesson, CourseModule, DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
@@ -67,6 +68,7 @@ interface CourseViewProps {
   onEnterPiP?: () => void;
   onLeavePiP?: () => void;
   onRestoreToTab?: () => void;
+  onShowToast?: (message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
 interface SubtitleCue {
@@ -135,7 +137,8 @@ export const CourseView: React.FC<CourseViewProps> = ({
   isPiPHidden = false,
   onEnterPiP,
   onLeavePiP,
-  onRestoreToTab
+  onRestoreToTab,
+  onShowToast
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -193,7 +196,15 @@ export const CourseView: React.FC<CourseViewProps> = ({
   // Cover Image Editing Modal state
   const [isChangingCover, setIsChangingCover] = useState(false);
   const [coverImageUrlInput, setCoverImageUrlInput] = useState(course.coverImage || '');
+  const [isSavingCover, setIsSavingCover] = useState(false);
   const coverFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync cover input whenever modal opens or course.coverImage updates
+  useEffect(() => {
+    if (isChangingCover) {
+      setCoverImageUrlInput(course.coverImage || '');
+    }
+  }, [isChangingCover, course.coverImage]);
 
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [moduleTitleInput, setModuleTitleInput] = useState('');
@@ -504,30 +515,85 @@ export const CourseView: React.FC<CourseViewProps> = ({
     await onUpdateCourse(updatedCourse);
   };
 
-  // ---------------- COVER IMAGE CHANGE ----------------
-  const handleSaveCoverImage = async () => {
-    await onUpdateCourse({
-      ...course,
-      coverImage: coverImageUrlInput.trim() || course.coverImage
+  // Helper to compress uploaded images for lightweight local storage
+  const compressImageFile = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          const maxDim = 1200;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => resolve(e.target?.result as string);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
     });
-    setIsChangingCover(false);
   };
 
-  const handleUploadCoverImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ---------------- COVER IMAGE CHANGE ----------------
+  const handleSaveCoverImage = async () => {
+    if (isSavingCover) return;
+    setIsSavingCover(true);
+    try {
+      const finalCover = coverImageUrlInput.trim();
+      const updatedCourse: Course = {
+        ...course,
+        coverImage: finalCover || undefined,
+        updatedAt: new Date().toISOString()
+      };
+      await onUpdateCourse(updatedCourse);
+      setIsChangingCover(false);
+      if (onShowToast) {
+        onShowToast('🖼️ Capa do curso atualizada com sucesso!', 'success');
+      }
+    } catch (err) {
+      console.error('Erro ao salvar nova capa do curso:', err);
+      if (onShowToast) {
+        onShowToast('❌ Erro ao salvar capa do curso', 'error');
+      }
+    } finally {
+      setIsSavingCover(false);
+    }
+  };
+
+  const handleUploadCoverImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const dataUrl = event.target?.result as string;
-      setCoverImageUrlInput(dataUrl);
-      await onUpdateCourse({
-        ...course,
-        coverImage: dataUrl
-      });
-      setIsChangingCover(false);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressedDataUrl = await compressImageFile(file);
+      if (compressedDataUrl) {
+        setCoverImageUrlInput(compressedDataUrl);
+      }
+    } catch (err) {
+      console.error('Erro ao processar imagem:', err);
+    } finally {
+      if (coverFileInputRef.current) {
+        coverFileInputRef.current.value = '';
+      }
+    }
   };
 
   // ---------------- TIMESTAMPS HANDLERS ----------------
@@ -848,7 +914,27 @@ export const CourseView: React.FC<CourseViewProps> = ({
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+              {/* Course Cover Thumbnail in Header */}
+              <button
+                type="button"
+                onClick={() => {
+                  setCoverImageUrlInput(course.coverImage || '');
+                  setIsChangingCover(true);
+                }}
+                className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-lg overflow-hidden border border-gray-200 dark:border-drive-darkBorder shadow-xs shrink-0 group focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                title="Clique para trocar a capa do curso"
+              >
+                <img
+                  src={course.coverImage || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60'}
+                  alt={course.title}
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <ImageIcon className="w-3 h-3 text-white" />
+                </div>
+              </button>
+
               <h1 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 truncate max-w-[120px] sm:max-w-xs md:max-w-md">
                 {course.title}
               </h1>
@@ -1456,6 +1542,34 @@ export const CourseView: React.FC<CourseViewProps> = ({
         {!isCinemaMode && (
           <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface flex flex-col shrink-0">
             <div className="p-3 border-b border-gray-200 dark:border-drive-darkBorder space-y-2.5">
+              {/* Course Mini Banner with Cover */}
+              <div className="relative rounded-2xl overflow-hidden h-24 sm:h-28 border border-gray-200 dark:border-drive-darkBorder group shadow-xs">
+                <img
+                  src={course.coverImage || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60'}
+                  alt={course.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                <div className="absolute bottom-2 left-2.5 right-2.5 flex items-end justify-between text-white">
+                  <div className="min-w-0 flex-1 mr-2">
+                    <p className="text-xs font-bold truncate drop-shadow-xs">{course.title}</p>
+                    <p className="text-[10px] text-gray-200 truncate drop-shadow-xs">{course.category || 'Curso & Estudos'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCoverImageUrlInput(course.coverImage || '');
+                      setIsChangingCover(true);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-black/40 hover:bg-indigo-600/90 backdrop-blur-md text-white text-[10px] font-bold flex items-center gap-1 transition-all shrink-0 border border-white/20"
+                    title="Mudar Capa do Curso"
+                  >
+                    <ImageIcon className="w-3 h-3" />
+                    <span>Capa</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <ListOrdered className="w-4 h-4 text-blue-500" />
@@ -1792,19 +1906,34 @@ export const CourseView: React.FC<CourseViewProps> = ({
                 <ImageIcon className="w-5 h-5 text-indigo-500" />
                 <h3 className="font-bold text-sm">Alterar Capa do Curso</h3>
               </div>
-              <button onClick={() => setIsChangingCover(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover">
+              <button 
+                disabled={isSavingCover}
+                onClick={() => setIsChangingCover(false)} 
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover disabled:opacity-50"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-4">
-              {/* Preview */}
-              <div className="h-40 rounded-2xl overflow-hidden bg-gray-100 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder">
+              {/* Preview with Reset Badge */}
+              <div className="h-44 rounded-2xl overflow-hidden bg-gray-100 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder relative group">
                 <img
                   src={coverImageUrlInput || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60'}
                   alt="Prévia da Capa"
                   className="w-full h-full object-cover"
                 />
+                {coverImageUrlInput && (
+                  <button
+                    type="button"
+                    onClick={() => setCoverImageUrlInput('')}
+                    className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-black/60 hover:bg-rose-600 text-white text-[10px] font-bold backdrop-blur-md transition-all flex items-center gap-1"
+                    title="Remover capa e usar padrão"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Redefinir</span>
+                  </button>
+                )}
               </div>
 
               <div>
@@ -1812,22 +1941,34 @@ export const CourseView: React.FC<CourseViewProps> = ({
                   URL da Imagem
                 </label>
                 <input
-                  type="url"
-                  value={coverImageUrlInput}
+                  type="text"
+                  value={coverImageUrlInput.startsWith('data:') ? 'Imagem carregada do computador (pronta para salvar)' : coverImageUrlInput}
                   onChange={(e) => setCoverImageUrlInput(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-[11px]"
+                  readOnly={coverImageUrlInput.startsWith('data:')}
+                  placeholder="https://images.unsplash.com/..."
+                  className={`w-full px-3 py-2 text-xs rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-[11px] ${
+                    coverImageUrlInput.startsWith('data:') ? 'text-indigo-600 dark:text-indigo-400 font-sans font-semibold' : ''
+                  }`}
                 />
+                {coverImageUrlInput.startsWith('data:') && (
+                  <button
+                    type="button"
+                    onClick={() => setCoverImageUrlInput('')}
+                    className="mt-1 text-[10px] text-rose-500 hover:underline font-semibold"
+                  >
+                    Remover imagem local e usar link web
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center justify-center">
                 <button
                   type="button"
                   onClick={() => coverFileInputRef.current?.click()}
-                  className="w-full py-2.5 rounded-xl border-2 border-dashed border-indigo-300 dark:border-indigo-800 hover:border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-xl border-2 border-dashed border-indigo-300 dark:border-indigo-800 hover:border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:bg-indigo-50 dark:hover:bg-indigo-950/20"
                 >
                   <Upload className="w-4 h-4" />
-                  <span>Ou Carregar Imagem do Computador</span>
+                  <span>{coverImageUrlInput.startsWith('data:') ? 'Trocar Imagem do Computador' : 'Ou Carregar Imagem do Computador'}</span>
                 </button>
                 <input
                   type="file"
@@ -1841,17 +1982,26 @@ export const CourseView: React.FC<CourseViewProps> = ({
               <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-drive-darkBorder">
                 <button
                   type="button"
+                  disabled={isSavingCover}
                   onClick={() => setIsChangingCover(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-drive-darkHover"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-drive-darkHover disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="button"
+                  disabled={isSavingCover}
                   onClick={handleSaveCoverImage}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-500/20"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-1.5 disabled:opacity-60"
                 >
-                  Salvar Nova Capa
+                  {isSavingCover ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Salvando...</span>
+                    </>
+                  ) : (
+                    <span>Salvar Nova Capa</span>
+                  )}
                 </button>
               </div>
             </div>

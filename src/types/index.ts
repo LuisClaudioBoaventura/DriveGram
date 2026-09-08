@@ -494,3 +494,27 @@ export interface DriveGramSyncManifest {
   adultPerformers?: AdultPerformer[];
   adultVaultSettings?: AdultVaultSettings;
 }
+
+export interface SavedAuditItem {
+  messageId: number;
+  date: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  extension: string;
+  type: FileType;
+  suggestedFolderId?: string | null;
+  suggestedFolderName?: string;
+  suggestedPath?: string[];
+  isDriveGramTagged: boolean;
+}
+
+export interface SavedAuditResult {
+  success: boolean;
+  telegramTotalFiles: number;
+  manifestTotalFiles: number;
+  missingCount: number;
+  missingFiles: SavedAuditItem[];
+  message: string;
+}
+

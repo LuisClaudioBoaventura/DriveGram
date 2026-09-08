@@ -1,12 +1,21 @@
 package com.drivegram.app;
 
+import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.webkit.JavascriptInterface;
+import android.widget.Toast;
 
+import androidx.core.content.FileProvider;
 import androidx.core.splashscreen.SplashScreen;
 
 import com.getcapacitor.BridgeActivity;
@@ -195,6 +204,11 @@ public class MainActivity extends BridgeActivity {
                 runOnUiThread(() -> {
                     try {
                         if (bridge != null && bridge.getWebView() != null) {
+                            try {
+                                bridge.getWebView().addJavascriptInterface(new AndroidUpdateBridge(MainActivity.this), "DriveGramAndroidBridge");
+                            } catch (Throwable it) {
+                                Log.w(TAG, "Notice adding DriveGramAndroidBridge: " + it.getMessage());
+                            }
                             Log.d(TAG, "Transitioning WebView to http://127.0.0.1:5000");
                             bridge.getWebView().loadUrl("http://127.0.0.1:5000");
                         }
@@ -255,5 +269,113 @@ public class MainActivity extends BridgeActivity {
             }
             out.flush();
         } catch (IOException ignored) {}
+    }
+
+    public void startApkDownload(String apkUrl, String versionName) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!getPackageManager().canRequestPackageInstalls()) {
+                    Toast.makeText(this, "Autorize a instalação de fontes desconhecidas para atualizar", Toast.LENGTH_LONG).show();
+                    Intent reqIntent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+                    reqIntent.setData(Uri.parse("package:" + getPackageName()));
+                    reqIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(reqIntent);
+                }
+            }
+
+            Toast.makeText(this, "Iniciando download do DriveGram " + (versionName != null ? versionName : "") + "...", Toast.LENGTH_SHORT).show();
+
+            String cleanVersion = (versionName != null && !versionName.isEmpty()) ? versionName.replace("v", "") : "update";
+            String fileName = "DriveGram_" + cleanVersion + ".apk";
+
+            File destinationDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+            if (destinationDir != null && !destinationDir.exists()) {
+                destinationDir.mkdirs();
+            }
+            File apkFile = new File(destinationDir, fileName);
+            if (apkFile.exists()) {
+                apkFile.delete();
+            }
+
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(apkUrl));
+            request.setTitle("DriveGram " + cleanVersion);
+            request.setDescription("Baixando atualização do DriveGram...");
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setDestinationUri(Uri.fromFile(apkFile));
+            request.setMimeType("application/vnd.android.package-archive");
+
+            DownloadManager downloadManager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+            if (downloadManager == null) {
+                Toast.makeText(this, "Erro: Gerenciador de downloads indisponível", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            final long downloadId = downloadManager.enqueue(request);
+
+            BroadcastReceiver onComplete = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+                    if (id == downloadId) {
+                        try {
+                            context.unregisterReceiver(this);
+                        } catch (Exception ignored) {}
+
+                        promptInstallApk(apkFile);
+                    }
+                }
+            };
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED);
+            } else {
+                registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting APK download: " + e.getMessage(), e);
+            Toast.makeText(this, "Erro no download: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    public void promptInstallApk(File apkFile) {
+        try {
+            if (!apkFile.exists()) {
+                Toast.makeText(this, "Arquivo da atualização não encontrado", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            Uri fileUri = FileProvider.getUriForFile(
+                this,
+                getPackageName() + ".fileprovider",
+                apkFile
+            );
+
+            Intent installIntent = new Intent(Intent.ACTION_VIEW);
+            installIntent.setDataAndType(fileUri, "application/vnd.android.package-archive");
+            installIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(installIntent);
+        } catch (Exception e) {
+            Log.e(TAG, "Error prompting APK install: " + e.getMessage(), e);
+            Toast.makeText(this, "Erro ao abrir instalador: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    public class AndroidUpdateBridge {
+        private final MainActivity activity;
+
+        public AndroidUpdateBridge(MainActivity activity) {
+            this.activity = activity;
+        }
+
+        @JavascriptInterface
+        public boolean isNativeAndroid() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public void downloadAndInstallApk(final String apkUrl, final String versionName) {
+            activity.runOnUiThread(() -> activity.startApkDownload(apkUrl, versionName));
+        }
     }
 }

@@ -12,9 +12,10 @@ import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { exec, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { db, fixUtf8Encoding } from './database.js';
-import { telegramService } from './telegram.js';
+import { telegramService, telegramEvents } from './telegram.js';
 import { castService } from './cast.js';
 import { comicService } from './comicService.js';
 import { parseYouTubeUrl, extractYouTubeVideoId } from './youtube-parser.js';
@@ -48,7 +49,6 @@ db.setCloudBackupCallback(async () => {
         console.log('[DriveGram Auto-Backup] Backup preventivamente suspenso: aguardando reconciliação inicial com a nuvem.');
         return;
       }
-      console.log('[DriveGram Auto-Backup] Salvando alterações de metadados nas Mensagens Salvas do Telegram...');
       await telegramService.syncMetadataToTelegram();
     }
   } catch (err: any) {
@@ -123,7 +123,7 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.0.0',
+    version: '1.3.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -140,10 +140,18 @@ app.get('/api/folders', (req, res) => {
 });
 
 app.post('/api/folders', (req, res) => {
-  const { name, parentId, color } = req.body;
+  const { name, parentId, color, description } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome da pasta é obrigatório' });
   const cleanName = fixUtf8Encoding(name);
-  const folder = db.createFolder(cleanName, parentId || null, color);
+  const folder = db.createFolder(cleanName, parentId || null, color, description);
+
+  if (telegramService.isConnected()) {
+    const caption = db.buildTelegramFolderCaption(folder.id);
+    if (caption) {
+      telegramService.sendSavedMessage(caption).catch(() => {});
+    }
+  }
+
   res.status(201).json(folder);
 });
 
@@ -152,7 +160,24 @@ app.patch('/api/folders/:id', (req, res) => {
   if (body.name) body.name = fixUtf8Encoding(body.name);
   const folder = db.updateFolder(req.params.id, body);
   if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' });
+
+  if (telegramService.isConnected()) {
+    const caption = db.buildTelegramFolderCaption(folder.id);
+    if (caption) {
+      telegramService.sendSavedMessage(caption).catch(() => {});
+    }
+  }
+
   res.json(folder);
+});
+
+app.post('/api/folders/repair-orphans', (_req, res) => {
+  try {
+    const result = db.repairOrphanFolders();
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao reparar pastas órfãs' });
+  }
 });
 
 app.delete('/api/folders/:id', async (req, res) => {
@@ -258,8 +283,14 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
     const ext = path.extname(originalname);
     const fileType = getFileType(ext);
 
-    // Format caption for Telegram
-    const caption = `📁 DriveGram File\n📄 Nome: ${originalname}\n📦 Tamanho: ${(size / (1024 * 1024)).toFixed(2)} MB\n🏷️ Pasta: ${parentId || 'Raiz'}`;
+    // Format high-density caption for Telegram
+    const caption = db.buildTelegramCaption({
+      name: originalname,
+      size,
+      parentId,
+      type: fileType,
+      mimeType: req.file?.mimetype
+    });
 
     const startTime = Date.now();
     // Upload to Telegram Saved Messages (or fallback in demo mode)
@@ -1137,6 +1168,71 @@ app.post('/api/cache/clear', (_req, res) => {
     freedBytesFormatted: (result.freedBytes / (1024 * 1024)).toFixed(2) + ' MB',
     message: `Cache limpo com sucesso! ${result.clearedFiles} arquivo(s) removidos (${(result.freedBytes / (1024 * 1024)).toFixed(2)} MB liberados).`
   });
+});
+
+// ---------------- SYSTEM EXPLORER / LOCAL STORAGE ROUTES ----------------
+app.get('/api/system/storage-paths', (_req, res) => {
+  const dataDir = process.env.DRIVEGRAM_DATA_DIR || process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+  res.json({
+    success: true,
+    uploadsDir: UPLOADS_DIR,
+    dataDir: dataDir
+  });
+});
+
+app.post('/api/system/open-uploads-folder', (req, res) => {
+  try {
+    let targetPath = UPLOADS_DIR;
+
+    // Se o cliente solicitar um arquivo específico dentro de uploads
+    if (req.body?.fileName && typeof req.body.fileName === 'string') {
+      try {
+        const safeFilePath = getSafeUploadPath(req.body.fileName);
+        if (fs.existsSync(safeFilePath)) {
+          targetPath = safeFilePath;
+        }
+      } catch {}
+    }
+
+    if (!fs.existsSync(targetPath)) {
+      fs.mkdirSync(targetPath, { recursive: true });
+    }
+
+    const isFile = fs.existsSync(targetPath) && fs.statSync(targetPath).isFile();
+    const platform = process.platform;
+
+    try {
+      if (platform === 'win32') {
+        const normalized = path.normalize(targetPath);
+        const args = isFile ? [`/select,${normalized}`] : [normalized];
+        const child = spawn('explorer.exe', args, { detached: true, stdio: 'ignore' });
+        child.unref();
+      } else if (platform === 'darwin') {
+        const args = isFile ? ['-R', targetPath] : [targetPath];
+        const child = spawn('open', args, { detached: true, stdio: 'ignore' });
+        child.unref();
+      } else {
+        const dirToOpen = isFile ? path.dirname(targetPath) : targetPath;
+        const child = spawn('xdg-open', [dirToOpen], { detached: true, stdio: 'ignore' });
+        child.unref();
+      }
+    } catch (spawnErr: any) {
+      console.warn('[DriveGram System] Aviso ao despachar comando do explorador nativo:', spawnErr?.message || spawnErr);
+    }
+
+    return res.json({
+      success: true,
+      path: targetPath,
+      message: 'Pasta aberta no explorador de arquivos'
+    });
+  } catch (error: any) {
+    console.error('[DriveGram System] Erro ao abrir pasta local:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Falha ao abrir pasta local',
+      path: UPLOADS_DIR
+    });
+  }
 });
 
 // ---------------- FILE DOWNLOAD ON DEMAND ----------------
@@ -3792,6 +3888,61 @@ app.post('/api/telegram/import-saved', async (_req, res) => {
   res.json(result);
 });
 
+// ---------------- AUDITORIA E RECONCILIAÇÃO INTELIGENTE ----------------
+app.get('/api/telegram/audit-saved', async (req, res) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 500;
+    const result = await telegramService.auditSavedMessages(limit);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message || 'Erro ao realizar auditoria das mensagens salvas' });
+  }
+});
+
+app.post('/api/telegram/reconcile-saved', async (req, res) => {
+  try {
+    const result = await telegramService.reconcileMissingFiles(req.body);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message || 'Erro ao reconciliar arquivos faltantes' });
+  }
+});
+
+// ---------------- EVENTOS EM TEMPO REAL (SSE) ----------------
+app.get('/api/telegram/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  if (typeof (res as any).flushHeaders === 'function') {
+    (res as any).flushHeaders();
+  }
+
+  // Enviar heartbeat inicial
+  res.write(`data: ${JSON.stringify({ type: 'connected', time: new Date().toISOString() })}\n\n`);
+
+  const onMetadataUpdated = (data: any) => {
+    try {
+      res.write(`data: ${JSON.stringify({ type: 'metadata-updated', ...data })}\n\n`);
+    } catch (_) {}
+  };
+
+  telegramEvents.on('metadata-updated', onMetadataUpdated);
+
+  // Heartbeat periódico a cada 25 segundos para manter a conexão aberta
+  const keepAliveInterval = setInterval(() => {
+    try {
+      res.write(': keepalive\n\n');
+    } catch (_) {}
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(keepAliveInterval);
+    telegramEvents.off('metadata-updated', onMetadataUpdated);
+    res.end();
+  });
+});
+
+
 app.post('/api/telegram/download-all', async (_req, res) => {
   const allFiles = db.getAllFiles().filter(f => !f.isTrash);
   let downloadedCount = 0;
@@ -3898,7 +4049,7 @@ app.post('/api/telegram/sync-pending', async (_req, res) => {
     }
 
     const uploadId = `retry-${file.id}`;
-    const caption = `📁 DriveGram File\n📄 Nome: ${file.name}\n📦 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB\n🏷️ Pasta: ${file.parentId || 'Raiz'}`;
+    const caption = db.buildTelegramCaption(file);
     const startTime = Date.now();
 
     activeUploadsMap.set(uploadId, {
@@ -4001,7 +4152,7 @@ app.post('/api/telegram/retry-file/:id', async (req, res) => {
   }
 
   const uploadId = (req.body?.uploadId as string) || `retry-${file.id}`;
-  const caption = `📁 DriveGram File\n📄 Nome: ${file.name}\n📦 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB\n🏷️ Pasta: ${file.parentId || 'Raiz'}`;
+  const caption = db.buildTelegramCaption(file);
   const startTime = Date.now();
 
   activeUploadsMap.set(uploadId, {

@@ -42,7 +42,16 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
 
   useEffect(() => {
     if (item) {
-      setName(item.name || '');
+      if (!isFolder && (item as DriveItem).extension) {
+        const ext = `.${(item as DriveItem).extension}`;
+        if (item.name.toLowerCase().endsWith(ext.toLowerCase())) {
+          setName(item.name.substring(0, item.name.length - ext.length));
+        } else {
+          setName(item.name || '');
+        }
+      } else {
+        setName(item.name || '');
+      }
       setDescription((item as any).description || '');
       const existingColor = (item as FolderItem).color || '#1a73e8';
       setSelectedColor(existingColor);
@@ -50,7 +59,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
       const tags = (item as DriveItem).tags || [];
       setTagsInput(tags.join(', '));
     }
-  }, [item]);
+  }, [item, isFolder]);
 
   if (!isOpen || !item) return null;
 
@@ -58,13 +67,21 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
+    let finalName = name.trim();
+    if (!isFolder) {
+      const originalExt = (item as DriveItem).extension;
+      if (originalExt && !finalName.toLowerCase().endsWith(`.${originalExt.toLowerCase()}`)) {
+        finalName = `${finalName}.${originalExt}`;
+      }
+    }
+
     const parsedTags = tagsInput
       .split(',')
       .map(t => t.trim())
       .filter(t => t.length > 0);
 
     await onSave(item.id, isFolder, {
-      name: name.trim(),
+      name: finalName,
       description: description.trim(),
       tags: parsedTags,
       color: isFolder ? selectedColor : undefined
@@ -77,6 +94,8 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
     await onDelete(item.id, isFolder);
     onClose();
   };
+
+  const fileExt = !isFolder ? (item as DriveItem).extension : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150">
@@ -113,13 +132,20 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
             <label className="block text-xs font-semibold mb-1 text-gray-700 dark:text-gray-300">
               Nome / Título
             </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="flex items-center rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder focus-within:ring-2 focus-within:ring-blue-500 overflow-hidden">
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3.5 py-2 text-xs bg-transparent focus:outline-none"
+              />
+              {fileExt && (
+                <span className="px-2.5 py-1 mr-1 text-[11px] font-mono font-bold rounded-lg bg-gray-200/70 dark:bg-drive-darkSurface text-gray-600 dark:text-gray-300 select-none">
+                  .{fileExt}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Color Picker for Folders */}

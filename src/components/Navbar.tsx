@@ -20,6 +20,7 @@ import {
   Youtube,
   Menu,
   Smartphone,
+  FolderOpen,
   X
 } from 'lucide-react';
 import { TelegramAuthState, FileType } from '../types/index.js';
@@ -35,6 +36,7 @@ interface NavbarProps {
   telegramState: TelegramAuthState;
   onOpenAuth: () => void;
   onOpenSync: () => void;
+  onOpenUploadsFolder?: () => void;
   onOpenApiKeysModal?: () => void;
   onOpenOmdbKeyModal?: () => void;
   onOpenYouTubeModal?: (type?: YouTubeTargetType) => void;
@@ -54,6 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   telegramState,
   onOpenAuth,
   onOpenSync,
+  onOpenUploadsFolder,
   onOpenApiKeysModal,
   onOpenOmdbKeyModal,
   onOpenYouTubeModal,
@@ -167,6 +170,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <HardDrive className="w-4 h-4 text-emerald-500" />
           </button>
+
+          {/* Abrir Pasta Local de Arquivos (Uploads/Downloads) Trigger */}
+          {onOpenUploadsFolder && (
+            <button
+              onClick={onOpenUploadsFolder}
+              title="Abrir pasta onde os arquivos estão sendo salvos no computador (uploads)"
+              className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all active:scale-95"
+            >
+              <FolderOpen className="w-4 h-4 text-amber-500" />
+            </button>
+          )}
 
           {/* Central de Chaves de API Modal Trigger (Desktop/Tablet) */}
           {(onOpenApiKeysModal || onOpenOmdbKeyModal) && (

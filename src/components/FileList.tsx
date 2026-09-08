@@ -19,7 +19,8 @@ import {
   BookOpen,
   LockKeyhole,
   CloudUpload,
-  RefreshCw
+  RefreshCw,
+  FolderInput
 } from 'lucide-react';
 import { DriveItem, FolderItem, FileType } from '../types/index.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
@@ -42,6 +43,7 @@ interface FileListProps {
   onUploadToFolder?: (files: FileList | File[] | { file: File; relativePath?: string }[], targetFolderId: string) => Promise<void>;
   onRetryUploadTelegram?: (fileId: string) => Promise<any> | void;
   retryingFileIds?: string[];
+  onOpenMoveModal?: (item: DriveItem | FolderItem, isFolder: boolean) => void;
 }
 
 export const FileList: React.FC<FileListProps> = ({
@@ -60,7 +62,8 @@ export const FileList: React.FC<FileListProps> = ({
   onMoveItem,
   onUploadToFolder,
   onRetryUploadTelegram,
-  retryingFileIds = []
+  retryingFileIds = [],
+  onOpenMoveModal
 }) => {
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -334,6 +337,18 @@ export const FileList: React.FC<FileListProps> = ({
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
+                          {onOpenMoveModal && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenMoveModal(folder, true);
+                              }}
+                              className="p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-gray-200 dark:hover:bg-drive-darkHover"
+                              title="Mover Pasta / Aninhar ou Desaninhar"
+                            >
+                              <FolderInput className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => onToggleFavorite(folder.id, true)}
                             className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-drive-darkHover ${
@@ -484,6 +499,18 @@ export const FileList: React.FC<FileListProps> = ({
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
+                          {onOpenMoveModal && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenMoveModal(file, false);
+                              }}
+                              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-drive-darkHover text-gray-400 hover:text-blue-500"
+                              title="Mover Arquivo para Outra Pasta"
+                            >
+                              <FolderInput className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

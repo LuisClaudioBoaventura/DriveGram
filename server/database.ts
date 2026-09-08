@@ -1172,6 +1172,118 @@ class Database {
     return this.data.folders.find(f => f.id === id);
   }
 
+  public getFolderHierarchy(folderId: string | null): FolderItem[] {
+    const chain: FolderItem[] = [];
+    let currId = folderId;
+    const visited = new Set<string>();
+    while (currId && !visited.has(currId)) {
+      visited.add(currId);
+      const folder = this.data.folders.find(f => f.id === currId);
+      if (!folder) break;
+      chain.unshift(folder);
+      currId = folder.parentId;
+    }
+    return chain;
+  }
+
+  public getFolderPathString(folderId: string | null): string {
+    const chain = this.getFolderHierarchy(folderId);
+    if (chain.length === 0) return 'Raiz';
+    return chain.map(f => f.name).join(' / ');
+  }
+
+  public getFolderPathArray(folderId: string | null): string[] {
+    const chain = this.getFolderHierarchy(folderId);
+    return chain.map(f => f.name);
+  }
+
+  public ensureFolderPath(pathSegments: string[], defaultColor = '#0284c7'): string | null {
+    if (!pathSegments || pathSegments.length === 0) return null;
+    let currentParentId: string | null = null;
+
+    for (const segment of pathSegments) {
+      const trimmed = segment.trim();
+      if (!trimmed || trimmed.toLowerCase() === 'raiz' || trimmed.toLowerCase() === 'root') {
+        continue;
+      }
+      let existing = this.data.folders.find(f => 
+        !f.isTrash && 
+        f.parentId === currentParentId && 
+        f.name.toLowerCase() === trimmed.toLowerCase()
+      );
+
+      if (!existing) {
+        existing = this.createFolder(trimmed, currentParentId, defaultColor);
+      }
+      currentParentId = existing.id;
+    }
+
+    return currentParentId;
+  }
+
+  public buildTelegramCaption(file: {
+    id?: string;
+    name: string;
+    size: number;
+    parentId?: string | null;
+    type?: string;
+    mimeType?: string;
+    tags?: string[];
+  }): string {
+    const folder = file.parentId ? this.getFolderById(file.parentId) : undefined;
+    const folderName = folder ? folder.name : 'Raiz';
+    const folderPath = this.getFolderPathString(file.parentId || null);
+    const pathArray = this.getFolderPathArray(file.parentId || null);
+    const parentFolder = folder?.parentId ? this.getFolderById(folder.parentId) : undefined;
+    const mbSize = (file.size / (1024 * 1024)).toFixed(2);
+
+    let caption = `📁 DriveGram File\n` +
+      `📄 Nome: ${file.name}\n` +
+      (file.id ? `🆔 Arquivo ID: ${file.id}\n` : '') +
+      `📦 Tamanho: ${mbSize} MB (${file.size} B)\n` +
+      (file.type ? `🎞️ Tipo: ${file.type}${file.mimeType ? ` | mime: ${file.mimeType}` : ''}\n` : '') +
+      `📂 Caminho: ${folderPath}\n` +
+      `🏷️ Pasta: ${folderName}\n` +
+      (file.parentId ? `🔖 Pasta ID: ${file.parentId}\n` : '') +
+      (parentFolder ? `🔗 Pasta Pai ID: ${parentFolder.id}\n` : '') +
+      (file.tags && file.tags.length > 0 ? `🏷️ Tags: ${file.tags.join(', ')}\n` : '');
+
+    const metaTag = `#drivegram_meta:${JSON.stringify({
+      v: 2,
+      fid: file.id || undefined,
+      pid: file.parentId || null,
+      path: pathArray,
+      type: file.type || undefined
+    })}`;
+
+    if ((caption + metaTag).length <= 1020) {
+      caption += metaTag;
+    }
+
+    return caption;
+  }
+
+  public buildTelegramFolderCaption(folderId: string): string {
+    const folder = this.getFolderById(folderId);
+    if (!folder) return '';
+    const folderPath = this.getFolderPathString(folder.id);
+    const pathArray = this.getFolderPathArray(folder.id);
+
+    return `📁 DriveGram Folder\n` +
+      `📁 Nome: ${folder.name}\n` +
+      `🆔 Pasta ID: ${folder.id}\n` +
+      `📂 Caminho: ${folderPath}\n` +
+      (folder.parentId ? `🔗 Pasta Pai ID: ${folder.parentId}\n` : '') +
+      (folder.color ? `🎨 Cor: ${folder.color}\n` : '') +
+      `#drivegram_folder_meta:${JSON.stringify({
+        id: folder.id,
+        name: folder.name,
+        parentId: folder.parentId,
+        path: pathArray,
+        color: folder.color
+      })}`;
+  }
+
   public createFolder(name: string, parentId: string | null = null, color?: string, description?: string): FolderItem {
     const newFolder: FolderItem = {
       id: 'folder-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
@@ -1191,11 +1303,50 @@ class Database {
   public updateFolder(id: string, updates: Partial<FolderItem>): FolderItem | null {
     const idx = this.data.folders.findIndex(f => f.id === id);
     if (idx === -1) return null;
+    const oldFolder = { ...this.data.folders[idx] };
+
     this.data.folders[idx] = {
-      ...this.data.folders[idx],
+      ...oldFolder,
       ...updates,
       updatedAt: new Date().toISOString()
     };
+
+    if (updates.name && updates.name !== oldFolder.name) {
+      const newName = updates.name.trim();
+      if (this.data.courses) {
+        for (const course of this.data.courses) {
+          if (course.folderId === id) {
+            course.title = newName;
+            course.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+      if (this.data.series) {
+        for (const s of this.data.series) {
+          if (s.folderId === id) {
+            s.title = newName;
+            s.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+      if (this.data.books) {
+        for (const b of this.data.books) {
+          if (b.folderId === id) {
+            b.title = newName;
+            b.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+      if (this.data.audioShows) {
+        for (const a of this.data.audioShows) {
+          if (a.folderId === id) {
+            a.title = newName;
+            a.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+    }
+
     this.syncAllLibrariesWithFolderStructure();
     this.save(this.data);
     return this.data.folders[idx];
@@ -1276,14 +1427,267 @@ class Database {
     if (updates.timestamps) {
       updates.timestamps = [...updates.timestamps].sort((a, b) => (a.seconds || 0) - (b.seconds || 0));
     }
+
+    const oldFile = { ...this.data.files[idx] };
+    const newName = updates.name ? updates.name.trim() : oldFile.name;
+
+    // Recalcular extensão e tipo se o nome mudou
+    let newExt = oldFile.extension;
+    let newType = oldFile.type;
+    if (updates.name && updates.name !== oldFile.name) {
+      const parsedExt = path.extname(newName).replace('.', '').toLowerCase();
+      if (parsedExt) {
+        newExt = parsedExt;
+        if (['mp4', 'mkv', 'avi', 'mov', 'webm', 'm4v'].includes(newExt)) newType = 'video';
+        else if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(newExt)) newType = 'audio';
+        else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(newExt)) newType = 'image';
+        else if (['pdf'].includes(newExt)) newType = 'pdf';
+        else if (['cbr', 'cbz', 'cbt', 'cb7'].includes(newExt)) newType = 'comic';
+        else if (['epub', 'mobi', 'azw', 'azw3'].includes(newExt)) newType = 'ebook';
+        else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(newExt)) newType = 'archive';
+      }
+    }
+
     this.data.files[idx] = {
-      ...this.data.files[idx],
+      ...oldFile,
       ...updates,
+      name: newName,
+      extension: newExt,
+      type: newType,
       updatedAt: new Date().toISOString()
     };
+
+    // Propagação bidirecional para todas as bibliotecas vinculadas
+    if (updates.name && updates.name !== oldFile.name) {
+      const cleanTitle = newName.replace(/\.[^/.]+$/, "");
+
+      // 1. Cursos (Lessons)
+      if (this.data.courses) {
+        for (const course of this.data.courses) {
+          let courseModified = false;
+          if (course.modules) {
+            for (const mod of course.modules) {
+              if (mod.lessons) {
+                for (const lesson of mod.lessons) {
+                  if (lesson.fileId === id) {
+                    lesson.title = cleanTitle;
+                    courseModified = true;
+                  }
+                }
+              }
+            }
+          }
+          if (courseModified) course.updatedAt = new Date().toISOString();
+        }
+      }
+
+      // 2. Séries (Episodes)
+      if (this.data.series) {
+        for (const show of this.data.series) {
+          let showModified = false;
+          if (show.seasons) {
+            for (const season of show.seasons) {
+              if (season.episodes) {
+                for (const ep of season.episodes) {
+                  if (ep.fileId === id) {
+                    ep.title = cleanTitle;
+                    showModified = true;
+                  }
+                }
+              }
+            }
+          }
+          if (showModified) show.updatedAt = new Date().toISOString();
+        }
+      }
+
+      // 3. Filmes & Vídeos
+      if (this.data.videos) {
+        for (const v of this.data.videos) {
+          if (v.fileId === id) {
+            v.title = cleanTitle;
+            v.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+
+      // 4. Vídeos Pessoais
+      if (this.data.personalVideos) {
+        for (const pv of this.data.personalVideos) {
+          if (pv.fileId === id) {
+            pv.title = cleanTitle;
+            pv.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+
+      // 5. Livros & Audiolivros
+      if (this.data.books) {
+        for (const b of this.data.books) {
+          let bookModified = false;
+          if (b.ebookFileId === id) {
+            b.title = cleanTitle;
+            bookModified = true;
+          }
+          if (b.chapters) {
+            for (const ch of b.chapters) {
+              if (ch.fileId === id) {
+                ch.title = cleanTitle;
+                bookModified = true;
+              }
+            }
+          }
+          if (bookModified) b.updatedAt = new Date().toISOString();
+        }
+      }
+
+      // 6. Quadrinhos (HQs & Mangás)
+      if (this.data.comics) {
+        for (const c of this.data.comics) {
+          let comicModified = false;
+          if (c.issues) {
+            for (const issue of c.issues) {
+              if (issue.fileId === id) {
+                issue.title = cleanTitle;
+                comicModified = true;
+              }
+            }
+          }
+          if (comicModified) c.updatedAt = new Date().toISOString();
+        }
+      }
+
+      // 7. Músicas & Podcasts
+      if (this.data.audioShows) {
+        for (const show of this.data.audioShows) {
+          let showModified = false;
+          if (show.tracks) {
+            for (const tr of show.tracks) {
+              if (tr.fileId === id) {
+                tr.title = cleanTitle;
+                showModified = true;
+              }
+            }
+          }
+          if (showModified) show.updatedAt = new Date().toISOString();
+        }
+      }
+
+      // 8. Cofre Adulto
+      if (this.data.adultVideos) {
+        for (const av of this.data.adultVideos) {
+          if (av.fileId === id) {
+            av.title = cleanTitle;
+            av.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+    }
+
     this.syncAllLibrariesWithFolderStructure();
     this.save(this.data);
     return this.data.files[idx];
+  }
+
+  public repairOrphanFolders(): {
+    repairedFolders: number;
+    cleanedEmptyFolders: number;
+    details: string[];
+  } {
+    let repairedFolders = 0;
+    let cleanedEmptyFolders = 0;
+    const details: string[] = [];
+
+    const isOrphanPattern = (name: string) => /^folder-\d+-[a-z0-9]+$/i.test(name.trim());
+
+    // 1. Procurar pastas com nome que é ID gerado por reconciliação desconfigurada
+    const targetFolders = this.data.folders.filter(f => !f.isTrash && isOrphanPattern(f.name));
+
+    for (const folder of targetFolders) {
+      const filesInFolder = this.data.files.filter(f => !f.isTrash && f.parentId === folder.id);
+
+      // A. Verificar se o nome ou ID da pasta corresponde a algum módulo em algum curso
+      let matchedModule: { course: Course; module: CourseModule } | null = null;
+      if (this.data.courses) {
+        for (const course of this.data.courses) {
+          if (course.modules) {
+            for (const mod of course.modules) {
+              if (mod.id === folder.name || mod.id === folder.id) {
+                matchedModule = { course, module: mod };
+                break;
+              }
+            }
+          }
+          if (matchedModule) break;
+        }
+      }
+
+      if (matchedModule) {
+        folder.name = matchedModule.module.title;
+        if (matchedModule.course.folderId) {
+          folder.parentId = matchedModule.course.folderId;
+        }
+        repairedFolders++;
+        details.push(`Pasta '${folder.id}' renomeada para '${folder.name}' e aninhada ao curso '${matchedModule.course.title}'`);
+        continue;
+      }
+
+      // B. Verificar se arquivos dentro da pasta apontam para um módulo ou curso específico
+      if (filesInFolder.length > 0) {
+        let detectedCourseName: string | null = null;
+        let detectedModuleName: string | null = null;
+        let detectedCourseFolderId: string | null = null;
+
+        for (const file of filesInFolder) {
+          if (this.data.courses) {
+            for (const course of this.data.courses) {
+              for (const mod of (course.modules || [])) {
+                if (mod.lessons?.some(l => l.fileId === file.id)) {
+                  detectedCourseName = course.title;
+                  detectedModuleName = mod.title;
+                  detectedCourseFolderId = course.folderId || null;
+                  break;
+                }
+              }
+              if (detectedModuleName) break;
+            }
+          }
+          if (detectedModuleName) break;
+        }
+
+        if (detectedModuleName) {
+          folder.name = detectedModuleName;
+          if (detectedCourseFolderId) {
+            folder.parentId = detectedCourseFolderId;
+          }
+          repairedFolders++;
+          details.push(`Pasta '${folder.id}' renomeada para '${folder.name}' (Módulo de '${detectedCourseName}')`);
+          continue;
+        }
+
+        // C. Organizar em pasta consolidada de recuperados
+        let recoveredRoot = this.data.folders.find(f => !f.isTrash && f.name === '📥 Recuperados do Telegram');
+        if (!recoveredRoot) {
+          recoveredRoot = this.createFolder('📥 Recuperados do Telegram', null, '#0284c7');
+        }
+        folder.parentId = recoveredRoot.id;
+        folder.name = `Lote ${folder.name.substring(7, 19)}`;
+        repairedFolders++;
+        details.push(`Pasta '${folder.id}' aninhada em '${recoveredRoot.name}'`);
+      } else {
+        // D. Pasta vazia com nome de ID: remove com segurança
+        this.data.folders = this.data.folders.filter(f => f.id !== folder.id);
+        cleanedEmptyFolders++;
+        details.push(`Pasta vazia '${folder.id}' removida com segurança`);
+      }
+    }
+
+    if (repairedFolders > 0 || cleanedEmptyFolders > 0) {
+      this.syncAllLibrariesWithFolderStructure();
+      this.save(this.data);
+    }
+
+    return { repairedFolders, cleanedEmptyFolders, details };
   }
 
   public deleteFile(id: string, permanent = false): { success: boolean; deletedFile?: DriveItem } {
@@ -1507,6 +1911,42 @@ class Database {
     } else {
       this.data.courses.push(course);
     }
+
+    // Sincronizar nome da pasta raiz se alterado
+    if (course.folderId && course.title) {
+      const folder = this.data.folders.find(f => f.id === course.folderId);
+      if (folder && folder.name !== course.title) {
+        folder.name = course.title;
+        folder.updatedAt = new Date().toISOString();
+      }
+    }
+
+    // Sincronizar lições e módulos com os arquivos e pastas do drive
+    if (sanitizedModules) {
+      for (const mod of sanitizedModules) {
+        if (mod.id) {
+          const modFolder = this.data.folders.find(f => f.id === mod.id);
+          if (modFolder && modFolder.name !== mod.title) {
+            modFolder.name = mod.title;
+            modFolder.updatedAt = new Date().toISOString();
+          }
+        }
+        for (const lesson of (mod.lessons || [])) {
+          if (lesson.fileId && lesson.title) {
+            const file = this.data.files.find(f => f.id === lesson.fileId);
+            if (file) {
+              const ext = file.extension ? `.${file.extension}` : '';
+              const expectedName = `${lesson.title}${ext}`;
+              if (file.name !== expectedName) {
+                file.name = expectedName;
+                file.updatedAt = new Date().toISOString();
+              }
+            }
+          }
+        }
+      }
+    }
+
     this.syncCoursesWithFolderStructure();
     this.save(this.data);
     return course;
@@ -1551,6 +1991,44 @@ class Database {
         updatedAt: new Date().toISOString()
       });
     }
+
+    // Sincronizar nome da pasta se alterado
+    if (book.folderId && book.title) {
+      const folder = this.data.folders.find(f => f.id === book.folderId);
+      if (folder && folder.name !== book.title) {
+        folder.name = book.title;
+        folder.updatedAt = new Date().toISOString();
+      }
+    }
+    // Sincronizar nome do arquivo de ebook
+    if (book.ebookFileId && book.title) {
+      const ebookFile = this.data.files.find(f => f.id === book.ebookFileId);
+      if (ebookFile) {
+        const ext = ebookFile.extension ? `.${ebookFile.extension}` : '';
+        const expectedName = `${book.title}${ext}`;
+        if (ebookFile.name !== expectedName) {
+          ebookFile.name = expectedName;
+          ebookFile.updatedAt = new Date().toISOString();
+        }
+      }
+    }
+    // Sincronizar capítulos com arquivos
+    if (book.chapters) {
+      for (const ch of book.chapters) {
+        if (ch.fileId && ch.title) {
+          const file = this.data.files.find(f => f.id === ch.fileId);
+          if (file) {
+            const ext = file.extension ? `.${file.extension}` : '';
+            const expectedName = `${ch.title}${ext}`;
+            if (file.name !== expectedName) {
+              file.name = expectedName;
+              file.updatedAt = new Date().toISOString();
+            }
+          }
+        }
+      }
+    }
+
     this.syncBooksWithFolderStructure();
     this.save(this.data);
     return book;
@@ -1767,6 +2245,18 @@ class Database {
       this.data.videos.push(video);
     }
 
+    if (video.fileId && video.title) {
+      const file = this.data.files.find(f => f.id === video.fileId);
+      if (file) {
+        const ext = file.extension ? `.${file.extension}` : '';
+        const expectedName = `${video.title}${ext}`;
+        if (file.name !== expectedName) {
+          file.name = expectedName;
+          file.updatedAt = new Date().toISOString();
+        }
+      }
+    }
+
     this.syncVideosWithFolderStructure();
     this.save(this.data);
     return video;
@@ -1868,6 +2358,18 @@ class Database {
       this.data.personalVideos.push(video);
     }
 
+    if (video.fileId && video.title) {
+      const file = this.data.files.find(f => f.id === video.fileId);
+      if (file) {
+        const ext = file.extension ? `.${file.extension}` : '';
+        const expectedName = `${video.title}${ext}`;
+        if (file.name !== expectedName) {
+          file.name = expectedName;
+          file.updatedAt = new Date().toISOString();
+        }
+      }
+    }
+
     this.save(this.data);
     return video;
   }
@@ -1966,6 +2468,33 @@ class Database {
       this.data.series[existingIdx] = series;
     } else {
       this.data.series.push(series);
+    }
+
+    // Sincronizar nome da pasta se alterado
+    if (series.folderId && series.title) {
+      const folder = this.data.folders.find(f => f.id === series.folderId);
+      if (folder && folder.name !== series.title) {
+        folder.name = series.title;
+        folder.updatedAt = new Date().toISOString();
+      }
+    }
+    // Sincronizar episódios com arquivos
+    if (series.seasons) {
+      for (const season of series.seasons) {
+        for (const ep of (season.episodes || [])) {
+          if (ep.fileId && ep.title) {
+            const file = this.data.files.find(f => f.id === ep.fileId);
+            if (file) {
+              const ext = file.extension ? `.${file.extension}` : '';
+              const expectedName = `${ep.title}${ext}`;
+              if (file.name !== expectedName) {
+                file.name = expectedName;
+                file.updatedAt = new Date().toISOString();
+              }
+            }
+          }
+        }
+      }
     }
 
     this.syncSeriesWithFolderStructure();
@@ -2107,6 +2636,31 @@ class Database {
       this.data.audioShows[existingIdx] = show;
     } else {
       this.data.audioShows.push(show);
+    }
+
+    // Sincronizar nome da pasta se alterado
+    if (show.folderId && show.title) {
+      const folder = this.data.folders.find(f => f.id === show.folderId);
+      if (folder && folder.name !== show.title) {
+        folder.name = show.title;
+        folder.updatedAt = new Date().toISOString();
+      }
+    }
+    // Sincronizar faixas com arquivos
+    if (show.tracks) {
+      for (const track of show.tracks) {
+        if (track.fileId && track.title) {
+          const file = this.data.files.find(f => f.id === track.fileId);
+          if (file) {
+            const ext = file.extension ? `.${file.extension}` : '';
+            const expectedName = `${track.title}${ext}`;
+            if (file.name !== expectedName) {
+              file.name = expectedName;
+              file.updatedAt = new Date().toISOString();
+            }
+          }
+        }
+      }
     }
 
     this.syncAudioShowsWithFolderStructure();

@@ -17,9 +17,13 @@ import {
   Trash2,
   Sliders,
   Sparkles,
-  CloudUpload
+  CloudUpload,
+  Search,
+  Eye,
+  EyeOff,
+  Radio
 } from 'lucide-react';
-import { TelegramAuthState, StreamingMode, CacheDurationConfig } from '../types/index.js';
+import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult, SavedAuditItem } from '../types/index.js';
 
 interface SyncModalProps {
   isOpen: boolean;
@@ -32,6 +36,8 @@ interface SyncModalProps {
   onUpdateStreamingMode?: (mode: StreamingMode) => Promise<void>;
   onUpdateCacheDuration?: (value: number, unit: 'minutes' | 'hours' | 'days') => Promise<void>;
   onClearCache?: () => Promise<any>;
+  onAuditSaved?: (limit?: number) => Promise<SavedAuditResult>;
+  onReconcileSaved?: (messageIds?: number[]) => Promise<any>;
 }
 
 export const SyncModal: React.FC<SyncModalProps> = ({
@@ -44,7 +50,9 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   syncing,
   onUpdateStreamingMode,
   onUpdateCacheDuration,
-  onClearCache
+  onClearCache,
+  onAuditSaved,
+  onReconcileSaved
 }) => {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
@@ -53,9 +61,14 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   const [syncingPending, setSyncingPending] = useState(false);
   const [performingStartupSync, setPerformingStartupSync] = useState(false);
   const [pruningOld, setPruningOld] = useState(false);
+  const [auditing, setAuditing] = useState(false);
+  const [auditResult, setAuditResult] = useState<SavedAuditResult | null>(null);
+  const [reconcilingSaved, setReconcilingSaved] = useState(false);
+  const [showMissingPreview, setShowMissingPreview] = useState(false);
   const [retentionCount, setRetentionCount] = useState<number>(telegramState.metadataRetentionCount || 1);
   const [pendingInfo, setPendingInfo] = useState<{ totalPending: number; totalBytesFormatted: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   useEffect(() => {
     if (telegramState.metadataRetentionCount) {
@@ -122,6 +135,93 @@ export const SyncModal: React.FC<SyncModalProps> = ({
         });
       }
     } catch (e) {}
+  };
+
+  const handleRunAudit = async () => {
+    if (!onAuditSaved) return;
+    setAuditing(true);
+    setFeedback(null);
+    try {
+      const res = await onAuditSaved(1000);
+      setAuditResult(res);
+      if (res.success) {
+        if (res.missingCount > 0) {
+          setShowMissingPreview(true);
+          setFeedback({
+            type: 'success',
+            message: `Auditoria concluída: ${res.missingCount} arquivo(s) encontrados nas Mensagens Salvas que não constam no manifesto local!`
+          });
+        } else {
+          setFeedback({
+            type: 'success',
+            message: 'Tudo sincronizado! Todos os arquivos das Mensagens Salvas estão devidamente catalogados no manifesto.'
+          });
+        }
+      } else {
+        setFeedback({ type: 'error', message: res.message || 'Erro ao realizar auditoria.' });
+      }
+    } catch (e: any) {
+      setFeedback({ type: 'error', message: e.message || 'Falha ao auditar mensagens salvas.' });
+    } finally {
+      setAuditing(false);
+    }
+  };
+
+  const handleReconcileMissing = async () => {
+    if (!onReconcileSaved) return;
+    setReconcilingSaved(true);
+    setFeedback(null);
+    try {
+      const res = await onReconcileSaved();
+      if (res.success) {
+        setFeedback({
+          type: 'success',
+          message: res.message || `${res.addedCount || 0} arquivos reconciliados e completados com sucesso!`
+        });
+        const newAudit = await onAuditSaved?.(1000);
+        if (newAudit) setAuditResult(newAudit);
+        setShowMissingPreview(false);
+        onRefreshItems();
+      } else {
+        setFeedback({ type: 'error', message: res.message || 'Falha ao reconciliar arquivos faltantes.' });
+      }
+    } catch (e: any) {
+      setFeedback({ type: 'error', message: e.message || 'Erro de comunicação ao reconciliar.' });
+    } finally {
+      setReconcilingSaved(false);
+    }
+  };
+
+  const [repairingOrphans, setRepairingOrphans] = useState(false);
+
+  const handleRepairOrphanFolders = async () => {
+    setRepairingOrphans(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/folders/repair-orphans', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        const total = (data.repairedFolders || 0) + (data.cleanedEmptyFolders || 0);
+        if (total > 0) {
+          setFeedback({
+            type: 'success',
+            message: `✨ Organização concluída: ${data.repairedFolders} pasta(s) renomeadas/aninhadas e ${data.cleanedEmptyFolders} pasta(s) vazias limpas!`
+          });
+        } else {
+          setFeedback({
+            type: 'success',
+            message: 'Todas as pastas já estão organizadas e sem nomes de ID órfãos!'
+          });
+        }
+        onRefreshItems();
+      } else {
+        setFeedback({ type: 'error', message: data.error || 'Erro ao reparar pastas' });
+      }
+    } catch (e: any) {
+      setFeedback({ type: 'error', message: e.message || 'Erro ao conectar ao servidor' });
+    } finally {
+      setRepairingOrphans(false);
+    }
   };
 
   const fetchPendingInfo = async () => {
@@ -584,6 +684,133 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                 <span>{syncingPending ? 'Enviando Arquivos Pendentes para o Telegram...' : `📤 Enviar ${pendingInfo.totalPending} Arquivo(s) Pendente(s) Agora`}</span>
               </button>
             )}
+          </div>
+
+          {/* Auditoria & Reconciliação Inteligente das Mensagens Salvas */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/70 via-purple-50/50 to-blue-50/70 dark:from-drive-darkBg dark:to-drive-darkBg border border-indigo-200/90 dark:border-indigo-900/60 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2 font-bold text-xs text-indigo-800 dark:text-indigo-300">
+                <Search className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span>Auditoria & Reconciliação das Mensagens Salvas</span>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 self-start sm:self-auto">
+                <Radio className="w-2.5 h-2.5 text-emerald-500 animate-pulse" />
+                Tempo Real & Ciclo de Vida Ativos
+              </span>
+            </div>
+
+            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
+              Varre o chat de Mensagens Salvas do seu Telegram, identifica todos os arquivos e compara com o manifesto local. Se houver mais arquivos na nuvem do que no manifesto, reconcilie tudo restaurando nomes, tamanhos e pastas originais.
+            </p>
+
+            {/* Comparativo: 3 Cards */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="p-2.5 rounded-xl bg-white/90 dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder text-center shadow-xs">
+                <span className="text-[10px] text-gray-500 dark:text-gray-400 block font-medium">No Telegram</span>
+                <span className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">
+                  {auditResult ? auditResult.telegramTotalFiles : '—'}
+                </span>
+                <span className="text-[9px] text-gray-400 block">Mensagens Salvas</span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white/90 dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder text-center shadow-xs">
+                <span className="text-[10px] text-gray-500 dark:text-gray-400 block font-medium">No Manifesto</span>
+                <span className="text-base sm:text-lg font-bold text-blue-600 dark:text-blue-400">
+                  {auditResult ? auditResult.manifestTotalFiles : telegramState.totalSavedFiles}
+                </span>
+                <span className="text-[9px] text-gray-400 block">Catalogados</span>
+              </div>
+
+              <div className={`p-2.5 rounded-xl border text-center shadow-xs ${
+                auditResult && auditResult.missingCount > 0
+                  ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                  : 'bg-white/90 dark:bg-drive-darkSurface border-gray-200 dark:border-drive-darkBorder text-gray-800 dark:text-gray-100'
+              }`}>
+                <span className="text-[10px] text-gray-500 dark:text-gray-400 block font-medium">Faltantes</span>
+                <span className={`text-base sm:text-lg font-bold ${
+                  auditResult && auditResult.missingCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+                }`}>
+                  {auditResult ? auditResult.missingCount : '—'}
+                </span>
+                <span className="text-[9px] text-gray-400 block">Não catalogados</span>
+              </div>
+            </div>
+
+            {/* Ações: Botão de Auditoria e Reconciliação */}
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleRunAudit}
+                disabled={auditing || reconcilingSaved || !telegramState.isConnected}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-40 cursor-pointer"
+              >
+                <Search className={`w-3.5 h-3.5 ${auditing ? 'animate-spin' : ''}`} />
+                <span>{auditing ? 'Escaneando Mensagens Salvas...' : '🔍 Escanear & Comparar Mensagens Salvas com Manifesto'}</span>
+              </button>
+
+              {auditResult && auditResult.missingCount > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleReconcileMissing}
+                    disabled={reconcilingSaved || auditing || !telegramState.isConnected}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-40 cursor-pointer"
+                  >
+                    <Zap className={`w-3.5 h-3.5 ${reconcilingSaved ? 'animate-bounce' : ''}`} />
+                    <span>{reconcilingSaved ? 'Reconciliando e integrando arquivos...' : `⚡ Reconciliar e Completar ${auditResult.missingCount} Arquivo(s) Faltante(s) Agora`}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowMissingPreview(!showMissingPreview)}
+                    className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-center gap-1 mt-1 cursor-pointer"
+                  >
+                    {showMissingPreview ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    <span>{showMissingPreview ? 'Ocultar detalhes dos arquivos faltantes' : `Ver detalhes dos ${auditResult.missingCount} arquivos faltantes`}</span>
+                  </button>
+
+                  {showMissingPreview && (
+                    <div className="mt-1 max-h-48 overflow-y-auto rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-white/80 dark:bg-drive-darkSurface/90 p-2 space-y-1.5 text-xs divide-y divide-gray-100 dark:divide-drive-darkBorder">
+                      {auditResult.missingFiles.map((item) => (
+                        <div key={item.messageId} className="pt-1.5 first:pt-0 flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold truncate text-gray-800 dark:text-gray-200 text-[11px]">
+                              {item.name}
+                            </div>
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                              <span>{formatBytes(item.size)}</span>
+                              <span>•</span>
+                              <span>{new Date(item.date).toLocaleDateString('pt-BR')}</span>
+                              {item.suggestedFolderName && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-blue-600 dark:text-blue-400">Pasta: {item.suggestedFolderName}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 shrink-0">
+                            {item.extension.toUpperCase()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Botão de Reparo & Organização de Pastas Órfãs */}
+              <button
+                type="button"
+                onClick={handleRepairOrphanFolders}
+                disabled={repairingOrphans}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-white/90 dark:bg-drive-darkSurface text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-xs font-bold transition-all cursor-pointer shadow-xs disabled:opacity-40"
+                title="Limpa nomes de pastas com IDs e as aninha de volta em seus respectivos módulos e cursos"
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${repairingOrphans ? 'animate-spin' : ''}`} />
+                <span>{repairingOrphans ? 'Reparando e organizando...' : '🧹 Reparar & Organizar Pastas Órfãs (folder-1788...)'}</span>
+              </button>
+            </div>
           </div>
 
           {/* 3. Sincronização Automática & Contínua com Telegram (Mensagens Salvas) */}

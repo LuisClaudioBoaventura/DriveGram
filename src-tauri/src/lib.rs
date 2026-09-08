@@ -155,6 +155,8 @@ pub fn run() {
                 .level(log::LevelFilter::Info)
                 .build(),
         )
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![open_devtools, open_logs_folder])
         .setup(|app| {
             let child = start_backend_server(app.handle());
