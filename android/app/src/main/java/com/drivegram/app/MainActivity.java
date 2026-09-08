@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.DocumentsContract;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.webkit.JavascriptInterface;
@@ -404,6 +405,85 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    public boolean openFolderInFileManager(String customPath) {
+        File folder = null;
+        if (customPath != null && !customPath.trim().isEmpty()) {
+            folder = new File(customPath.trim());
+        }
+        if (folder == null || !folder.exists()) {
+            File dataDir = new File(getExternalFilesDir(null), "drivegram-data");
+            folder = new File(dataDir, "uploads");
+        }
+        if (!folder.exists()) {
+            folder.mkdirs();
+        }
+
+        final File targetDir = folder;
+        Log.d(TAG, "Attempting to open folder in file manager: " + targetDir.getAbsolutePath());
+
+        // Strategy 1: DocumentsUI direct folder view
+        try {
+            String relativePath = "Android/data/" + getPackageName() + "/files/drivegram-data/uploads";
+            Uri documentsDirUri = DocumentsContract.buildDocumentUri(
+                "com.android.externalstorage.documents",
+                "primary:" + relativePath
+            );
+            Intent docIntent = new Intent(Intent.ACTION_VIEW);
+            docIntent.setDataAndType(documentsDirUri, DocumentsContract.Document.MIME_TYPE_DIR);
+            docIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(docIntent);
+            Log.d(TAG, "Opened folder via DocumentsUI: " + documentsDirUri);
+            return true;
+        } catch (Throwable t1) {
+            Log.d(TAG, "DocumentsUI direct view not handled: " + t1.getMessage());
+        }
+
+        // Strategy 2: FileProvider Content Uri with resource/folder and Chooser
+        try {
+            Uri contentUri = FileProvider.getUriForFile(
+                this,
+                getPackageName() + ".fileprovider",
+                targetDir
+            );
+            Intent chooserIntent = new Intent(Intent.ACTION_VIEW);
+            chooserIntent.setDataAndType(contentUri, "resource/folder");
+            chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent chooser = Intent.createChooser(chooserIntent, "Abrir pasta de arquivos com...");
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(chooser);
+            Log.d(TAG, "Launched FileProvider folder chooser");
+            return true;
+        } catch (Throwable t2) {
+            Log.d(TAG, "FileProvider chooser open failed: " + t2.getMessage());
+        }
+
+        // Strategy 3: Open Files by Google if installed
+        try {
+            Intent filesAppIntent = getPackageManager().getLaunchIntentForPackage("com.google.android.apps.nbu.files");
+            if (filesAppIntent != null) {
+                filesAppIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(filesAppIntent);
+                Log.d(TAG, "Launched Files by Google app");
+                return true;
+            }
+        } catch (Throwable t3) {
+            Log.d(TAG, "Files app launch failed: " + t3.getMessage());
+        }
+
+        // Strategy 4: ACTION_OPEN_DOCUMENT_TREE as fallback
+        try {
+            Intent storageIntent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            storageIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(storageIntent);
+            Log.d(TAG, "Launched ACTION_OPEN_DOCUMENT_TREE");
+            return true;
+        } catch (Throwable t4) {
+            Log.w(TAG, "All folder opening intents failed: " + t4.getMessage());
+        }
+
+        return false;
+    }
+
     public class AndroidUpdateBridge {
         private final MainActivity activity;
 
@@ -467,6 +547,17 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void downloadAndInstallApk(final String apkUrl, final String versionName) {
             activity.runOnUiThread(() -> activity.startApkDownload(apkUrl, versionName));
+        }
+
+        @JavascriptInterface
+        public boolean openNativeFolder(final String customPath) {
+            activity.runOnUiThread(() -> {
+                boolean ok = activity.openFolderInFileManager(customPath);
+                if (!ok) {
+                    Toast.makeText(activity, "Diretório local: " + (customPath != null ? customPath : "drivegram-data/uploads"), Toast.LENGTH_LONG).show();
+                }
+            });
+            return true;
         }
     }
 }

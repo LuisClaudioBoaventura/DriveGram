@@ -374,6 +374,14 @@ export function App() {
 
   const handleOpenUploadsFolder = async () => {
     try {
+      // If running inside Android Native App, trigger native Android file manager
+      const androidBridge = (window as any).DriveGramAndroidBridge;
+      if (androidBridge && typeof androidBridge.openNativeFolder === 'function') {
+        androidBridge.openNativeFolder('');
+        showToast('📁 Abrindo gerenciador de arquivos do celular...', 'info');
+        return;
+      }
+
       const res = await fetch('/api/system/open-uploads-folder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
