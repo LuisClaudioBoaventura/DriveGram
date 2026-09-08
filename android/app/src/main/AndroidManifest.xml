@@ -66,5 +66,36 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Allow prompting package installation for app auto-update -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Package visibility queries for Android 11+ to discover installed File Managers -->
+    <queries>
+        <package android:name="com.google.android.apps.nbu.files" />
+        <package android:name="com.google.android.documentsui" />
+        <package android:name="com.android.documentsui" />
+        <package android:name="com.sec.android.app.myfiles" />
+        <package android:name="com.motorola.filemanager" />
+        <package android:name="com.lenovo.filemanager" />
+        <package android:name="com.mi.android.globalFileexplorer" />
+        <package android:name="com.android.filemanager" />
+        <package android:name="com.coloros.filemanager" />
+        <package android:name="com.heytap.filemanager" />
+        <package android:name="com.oneplus.filemanager" />
+        <package android:name="com.huawei.hidisk" />
+        <package android:name="com.asus.filemanager" />
+        <package android:name="pl.solidexplorer2" />
+        <package android:name="com.alphainventor.filemanager" />
+        <package android:name="com.cxinventor.file.explorer" />
+        <package android:name="nextapp.fx" />
+        <package android:name="com.ghisler.android.TotalCommander" />
+        <package android:name="com.amaze.filemanager" />
+        <package android:name="me.zhanghai.android.files" />
+        <intent>
+            <action android:name="android.intent.action.VIEW_DOWNLOADS" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.OPEN_DOCUMENT" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
 </manifest>
 

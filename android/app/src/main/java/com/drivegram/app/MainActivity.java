@@ -2,6 +2,8 @@ package com.drivegram.app;
 
 import android.app.DownloadManager;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -28,6 +30,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "DriveGram";
@@ -405,6 +409,29 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private static final String[] KNOWN_FILE_MANAGERS = new String[] {
+        "com.google.android.apps.nbu.files",        // Files do Google (padrão Motorola, Pixel, etc.)
+        "com.sec.android.app.myfiles",              // Meus Arquivos (Samsung)
+        "com.motorola.filemanager",                 // Motorola File Manager
+        "com.lenovo.filemanager",                   // Lenovo / Moto File Manager
+        "com.mi.android.globalFileexplorer",        // Xiaomi File Manager
+        "com.android.filemanager",                  // Xiaomi / AOSP File Manager
+        "com.coloros.filemanager",                  // Oppo / Realme File Manager
+        "com.heytap.filemanager",                   // OnePlus / Oppo File Manager
+        "com.oneplus.filemanager",                  // OnePlus File Manager
+        "com.asus.filemanager",                     // Asus File Manager
+        "com.huawei.hidisk",                        // Huawei Files
+        "com.google.android.documentsui",           // DocumentsUI (Google Files)
+        "com.android.documentsui",                  // DocumentsUI (AOSP)
+        "pl.solidexplorer2",                        // Solid Explorer
+        "com.alphainventor.filemanager",            // File Manager Plus
+        "com.cxinventor.file.explorer",             // Cx File Explorer
+        "nextapp.fx",                               // FX File Explorer
+        "com.ghisler.android.TotalCommander",       // Total Commander
+        "com.amaze.filemanager",                    // Amaze File Manager
+        "me.zhanghai.android.files"                 // Material Files
+    };
+
     public boolean openFolderInFileManager(String customPath) {
         File folder = null;
         if (customPath != null && !customPath.trim().isEmpty()) {
@@ -419,68 +446,96 @@ public class MainActivity extends BridgeActivity {
         }
 
         final File targetDir = folder;
-        Log.d(TAG, "Attempting to open folder in file manager: " + targetDir.getAbsolutePath());
+        Log.d(TAG, "Attempting to open file manager for folder: " + targetDir.getAbsolutePath());
 
-        // Strategy 1: DocumentsUI direct folder view
+        // Always copy the exact local folder path to clipboard so the user can easily paste or inspect it
         try {
-            String relativePath = "Android/data/" + getPackageName() + "/files/drivegram-data/uploads";
-            Uri documentsDirUri = DocumentsContract.buildDocumentUri(
-                "com.android.externalstorage.documents",
-                "primary:" + relativePath
-            );
-            Intent docIntent = new Intent(Intent.ACTION_VIEW);
-            docIntent.setDataAndType(documentsDirUri, DocumentsContract.Document.MIME_TYPE_DIR);
-            docIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(docIntent);
-            Log.d(TAG, "Opened folder via DocumentsUI: " + documentsDirUri);
-            return true;
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                ClipData clip = ClipData.newPlainText("Caminho DriveGram", targetDir.getAbsolutePath());
+                clipboard.setPrimaryClip(clip);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Clipboard copy notice: " + t.getMessage());
+        }
+
+        // Strategy 1: Find and launch installed genuine File Manager apps ONLY (never matches banking or unrelated apps)
+        try {
+            List<Intent> fileManagerIntents = new ArrayList<>();
+            for (String pkg : KNOWN_FILE_MANAGERS) {
+                try {
+                    Intent launchIntent = getPackageManager().getLaunchIntentForPackage(pkg);
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        fileManagerIntents.add(launchIntent);
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            if (!fileManagerIntents.isEmpty()) {
+                if (fileManagerIntents.size() == 1) {
+                    startActivity(fileManagerIntents.get(0));
+                    Log.d(TAG, "Launched installed file manager directly: " + fileManagerIntents.get(0).getPackage());
+                } else {
+                    Intent firstIntent = fileManagerIntents.remove(0);
+                    Intent chooser = Intent.createChooser(firstIntent, "Abrir Gerenciador de Arquivos");
+                    chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, fileManagerIntents.toArray(new Intent[0]));
+                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(chooser);
+                    Log.d(TAG, "Launched file manager chooser with " + (fileManagerIntents.size() + 1) + " file manager options");
+                }
+                Toast.makeText(this, "📁 Gerenciador de arquivos aberto (caminho copiado)", Toast.LENGTH_SHORT).show();
+                return true;
+            }
         } catch (Throwable t1) {
-            Log.d(TAG, "DocumentsUI direct view not handled: " + t1.getMessage());
+            Log.d(TAG, "Installed file managers launch failed: " + t1.getMessage());
         }
 
-        // Strategy 2: FileProvider Content Uri with resource/folder and Chooser
+        // Strategy 2: System DownloadManager folder view (native system Files/Downloads)
         try {
-            Uri contentUri = FileProvider.getUriForFile(
-                this,
-                getPackageName() + ".fileprovider",
-                targetDir
-            );
-            Intent chooserIntent = new Intent(Intent.ACTION_VIEW);
-            chooserIntent.setDataAndType(contentUri, "resource/folder");
-            chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            Intent chooser = Intent.createChooser(chooserIntent, "Abrir pasta de arquivos com...");
-            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(chooser);
-            Log.d(TAG, "Launched FileProvider folder chooser");
-            return true;
+            Intent dmIntent = new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS);
+            dmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (dmIntent.resolveActivity(getPackageManager()) != null) {
+                startActivity(dmIntent);
+                Log.d(TAG, "Launched DownloadManager.ACTION_VIEW_DOWNLOADS");
+                Toast.makeText(this, "📁 Abrindo Arquivos do sistema (caminho copiado)", Toast.LENGTH_SHORT).show();
+                return true;
+            }
         } catch (Throwable t2) {
-            Log.d(TAG, "FileProvider chooser open failed: " + t2.getMessage());
+            Log.d(TAG, "ACTION_VIEW_DOWNLOADS failed: " + t2.getMessage());
         }
 
-        // Strategy 3: Open Files by Google if installed
+        // Strategy 3: DocumentsUI roots browser
         try {
-            Intent filesAppIntent = getPackageManager().getLaunchIntentForPackage("com.google.android.apps.nbu.files");
-            if (filesAppIntent != null) {
-                filesAppIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(filesAppIntent);
-                Log.d(TAG, "Launched Files by Google app");
+            Intent browseIntent = new Intent("android.provider.action.BROWSE");
+            browseIntent.setData(DocumentsContract.buildRootsUri("com.android.externalstorage.documents"));
+            browseIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (browseIntent.resolveActivity(getPackageManager()) != null) {
+                startActivity(browseIntent);
+                Log.d(TAG, "Launched DocumentsUI roots browser");
+                Toast.makeText(this, "📁 Abrindo Arquivos do sistema (caminho copiado)", Toast.LENGTH_SHORT).show();
                 return true;
             }
         } catch (Throwable t3) {
-            Log.d(TAG, "Files app launch failed: " + t3.getMessage());
+            Log.d(TAG, "DocumentsUI roots browser failed: " + t3.getMessage());
         }
 
-        // Strategy 4: ACTION_OPEN_DOCUMENT_TREE as fallback
+        // Strategy 4: Storage Access Framework file browser fallback
         try {
-            Intent storageIntent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-            storageIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent storageIntent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            storageIntent.addCategory(Intent.CATEGORY_OPENABLE);
+            storageIntent.setType("*/*");
+            storageIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(storageIntent);
-            Log.d(TAG, "Launched ACTION_OPEN_DOCUMENT_TREE");
+            Log.d(TAG, "Launched ACTION_OPEN_DOCUMENT fallback");
+            Toast.makeText(this, "📁 Navegador de arquivos aberto (caminho copiado)", Toast.LENGTH_SHORT).show();
             return true;
         } catch (Throwable t4) {
-            Log.w(TAG, "All folder opening intents failed: " + t4.getMessage());
+            Log.w(TAG, "All file manager intents failed: " + t4.getMessage());
         }
 
+        // Fallback: Notify user of folder path
+        Toast.makeText(this, "📁 Caminho copiado: " + targetDir.getAbsolutePath(), Toast.LENGTH_LONG).show();
         return false;
     }
 
