@@ -93,19 +93,65 @@ project.ext.cdvPluginPostBuildExtras.add({ ->`
     console.log('[patch-nodejs-mobile] Patched CMakeLists.txt path for Capacitor');
   }
 
-  // Also ensure libs/cdvnodejsmobile/CMakeLists.txt exists in app and plugins for safety
+  // 6. Explicitly patch nodejs-mobile CMakeLists.txt with correct source paths & project definition
   const cmakeSrc = path.join(rootDir, 'node_modules', '@red-mobile', 'nodejs-mobile-cordova', 'src', 'android', 'CMakeLists.txt');
   if (fs.existsSync(cmakeSrc)) {
+    const robustCmakeContent = `cmake_minimum_required(VERSION 3.4.1)
+project(nodejs_mobile_cordova)
+
+add_library( # Sets the name of the library.
+             nodejs-mobile-cordova-native-lib
+
+             # Sets the library as a shared library.
+             SHARED
+
+             # Provides a relative path to your source file(s).
+             \${CMAKE_CURRENT_LIST_DIR}/jni/native-lib.cpp
+             \${CMAKE_CURRENT_LIST_DIR}/../common/cordova-bridge/cordova-bridge.cpp
+           )
+
+include_directories(\${CMAKE_CURRENT_LIST_DIR}/libnode/include/node/)
+include_directories(\${CMAKE_CURRENT_LIST_DIR}/../common/cordova-bridge/)
+
+add_library( libnode
+             SHARED
+             IMPORTED )
+
+set_target_properties( # Specifies the target library.
+                       libnode
+
+                       # Specifies the parameter you want to define.
+                       PROPERTIES IMPORTED_LOCATION
+
+                       # Provides the path to the library you want to import.
+                       \${CMAKE_CURRENT_LIST_DIR}/libnode/bin/\${ANDROID_ABI}/libnode.so )
+
+find_library( # Sets the name of the path variable.
+              log-lib
+
+              # Specifies the name of the NDK library that
+              # you want CMake to locate.
+              log )
+
+target_link_libraries( # Specifies the target library.
+                       nodejs-mobile-cordova-native-lib
+                       libnode
+                       \${log-lib} )
+`;
+    fs.writeFileSync(cmakeSrc, robustCmakeContent, 'utf8');
+    console.log('[patch-nodejs-mobile] Overwrote CMakeLists.txt with robust Capacitor paths');
+
     const targets = [
       path.join(rootDir, 'android', 'app', 'libs', 'cdvnodejsmobile', 'CMakeLists.txt'),
       path.join(rootDir, 'android', 'capacitor-cordova-android-plugins', 'libs', 'cdvnodejsmobile', 'CMakeLists.txt'),
+      path.join(rootDir, 'android', 'capacitor-cordova-android-plugins', 'src', 'main', 'libs', 'cdvnodejsmobile', 'CMakeLists.txt'),
       path.join(rootDir, 'android', 'app', 'src', 'main', 'libs', 'cdvnodejsmobile', 'CMakeLists.txt')
     ];
     for (const t of targets) {
       fs.mkdirSync(path.dirname(t), { recursive: true });
-      fs.copyFileSync(cmakeSrc, t);
+      fs.writeFileSync(t, robustCmakeContent, 'utf8');
     }
-    console.log('[patch-nodejs-mobile] Mirrored CMakeLists.txt to app and plugin libs');
+    console.log('[patch-nodejs-mobile] Mirrored robust CMakeLists.txt to app and plugin libs');
   }
 
   if (modified) {

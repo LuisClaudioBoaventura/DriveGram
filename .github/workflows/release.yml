@@ -43,6 +43,9 @@ jobs:
       - name: Build Web Frontend, Embedded Bundle & Capacitor Sync
         run: npm run mobile:sync
 
+      - name: Ensure nodejs-mobile Patch is Applied
+        run: node scripts/patch-nodejs-mobile.js
+
       - name: Make Gradle Executable
         run: chmod +x android/gradlew
 
