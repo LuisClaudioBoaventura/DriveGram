@@ -45,3 +45,32 @@ Toda vez que a versão for incrementada, ela deve ser atualizada em **todos** os
    - Atualizar a constante: `export const CURRENT_APP_VERSION = 'x.y.z';` (usada pelo sistema de atualização automática do app).
 5. **`server/index.ts`**:
    - Atualizar o campo `version: 'x.y.z'` nas respostas de status/versão da API.
+
+---
+
+## 4. Regra de Criação de Tags e Disparo de Releases no GitHub
+
+Toda vez que houver **incremento de versão** (PATCH, MINOR ou MAJOR), após realizar o merge na branch `main` e subir os commits para o GitHub:
+
+1. **Criar a Tag Git correspondente à nova versão**:
+   A tag deve seguir estritamente o formato `v<MAJOR>.<MINOR>.<PATCH>` (com o prefixo `v` minúsculo):
+   ```bash
+   git tag -a vx.y.z -m "Release vx.y.z"
+   ```
+   *Exemplo:* `git tag -a v1.6.0 -m "Release v1.6.0"`
+
+2. **Enviar a Tag para o GitHub imediatamente**:
+   ```bash
+   git push origin vx.y.z
+   ```
+
+### ⚠️ Por que a tag é mandatória a cada versão?
+O workflow automatizado de CI/CD do GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) é disparado **exclusivamente** por tags com o padrão `v*`:
+```yaml
+on:
+  push:
+    tags:
+      - 'v*'
+```
+Se a tag não for criada e enviada para o GitHub, o GitHub Actions **não compilará os binários de produção** e o novo release com o executável Windows (`DriveGram-Setup.exe`) e o Android (`DriveGram.apk`) **não será publicado** para os usuários.
+
