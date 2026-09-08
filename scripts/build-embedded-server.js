@@ -9,6 +9,7 @@
 import { build } from 'esbuild';
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -133,7 +134,17 @@ try {
 
 // ---- 3. Deploy to all target directories ----
 const distDir = path.join(rootDir, 'dist');
-const hasDist = fs.existsSync(distDir) && fs.existsSync(path.join(distDir, 'index.html'));
+let hasDist = fs.existsSync(distDir) && fs.existsSync(path.join(distDir, 'index.html'));
+
+if (!hasDist) {
+  console.log('[build-embedded] Frontend dist/index.html not found. Building web frontend now...');
+  execSync('npm run build', { stdio: 'inherit', cwd: rootDir });
+  hasDist = fs.existsSync(distDir) && fs.existsSync(path.join(distDir, 'index.html'));
+}
+
+if (!hasDist) {
+  throw new Error('[build-embedded] FATAL: Failed to locate or build frontend dist/index.html!');
+}
 
 for (const targetDir of targetDirs) {
   fs.mkdirSync(targetDir, { recursive: true });

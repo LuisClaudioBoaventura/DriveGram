@@ -89,8 +89,10 @@ jobs:
       - name: Ensure Desktop Node Runtime
         run: npm run ensure:desktop-node
 
-      - name: Package Embedded Node Server
-        run: npm run package:embedded
+      - name: Build Frontend & Package Embedded Node Server
+        run: |
+          npm run build
+          npm run package:embedded
 
       - name: Build Desktop & Generate Tauri Release
         uses: tauri-apps/tauri-action@v0

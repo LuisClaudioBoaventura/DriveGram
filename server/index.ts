@@ -123,7 +123,7 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.6.2',
+    version: '1.6.3',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -4377,9 +4377,13 @@ const candidateDirs = [
   path.join(__dirname, 'public'),
   path.join(__dirname, 'dist'),
   path.join(__dirname, '..', 'dist'),
-  path.join(__dirname, '..', '..', 'www'),
+  path.join(__dirname, '..', 'public'),
+  path.join(__dirname, '..', '..', 'dist'),
   path.join(__dirname, '..', '..', 'public'),
-  path.join(__dirname, '..', '..', 'dist')
+  path.join(__dirname, '..', '..', 'www'),
+  path.join(process.cwd(), 'dist'),
+  path.join(process.cwd(), 'public'),
+  path.join(process.cwd(), 'www', 'nodejs-project', 'public'),
 ].filter(Boolean) as string[];
 
 let STATIC_DIR: string | null = null;
@@ -4400,6 +4404,20 @@ if (STATIC_DIR) {
   });
 } else {
   console.warn('[DriveGram] Warning: No static frontend index.html directory found.');
+  app.get('/', (_req, res) => {
+    res.status(503).send(`
+      <!DOCTYPE html>
+      <html>
+        <head><title>DriveGram Desktop</title><meta charset="utf-8"/></head>
+        <body style="background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+          <div style="text-align:center;padding:32px;background:#1e293b;border-radius:16px;border:1px solid #334155;max-width:500px;box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+            <h2 style="margin-top:0;color:#38bdf8;">DriveGram Desktop</h2>
+            <p style="font-size:14px;color:#cbd5e1;line-height:1.6;">O servidor backend foi inicializado, mas os arquivos do frontend estático estão sendo preparados.</p>
+          </div>
+        </body>
+      </html>
+    `);
+  });
 }
 
 app.listen(Number(PORT), '0.0.0.0', () => {

@@ -171,6 +171,27 @@ fn start_backend_server(app: &AppHandle) -> Option<Child> {
         cmd.env("DRIVEGRAM_DATA_DIR", &data_dir);
         cmd.env("DRIVEGRAM_UPLOADS_DIR", &uploads_dir);
 
+        if let Some(parent) = bundle_path.parent() {
+            let public_dir = parent.join("public");
+            if public_dir.join("index.html").exists() {
+                cmd.env("DRIVEGRAM_STATIC_DIR", &public_dir);
+            }
+        }
+        if let Ok(res_dir) = app.path().resource_dir() {
+            let candidates = [
+                res_dir.join("www").join("nodejs-project").join("public"),
+                res_dir.join("_up_").join("www").join("nodejs-project").join("public"),
+                res_dir.join("public"),
+                res_dir.join("dist"),
+            ];
+            for cand in candidates {
+                if cand.join("index.html").exists() {
+                    cmd.env("DRIVEGRAM_STATIC_DIR", &cand);
+                    break;
+                }
+            }
+        }
+
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
