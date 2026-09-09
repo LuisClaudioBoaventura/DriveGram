@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { isTauriPlatform } from './mobileBridge.js';
 
-export const CURRENT_APP_VERSION = '1.6.3';
+export const CURRENT_APP_VERSION = '1.6.4';
 export const GITHUB_REPO = 'LuisClaudioBoaventura/DriveGram';
 
 export interface UpdateInfo {

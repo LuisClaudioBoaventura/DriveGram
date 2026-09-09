@@ -41,13 +41,12 @@ Forget about storage constraints and recurring fees of traditional cloud storage
 
 ## 📥 Ready-to-Use Downloads (Easy Installation)
 
-Download the official release installers directly from the [**GitHub Releases Page**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/tag/v1.2.0):
+Download the official release installers directly from the [**GitHub Releases Page**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/latest):
 
-| Platform | Package / Installer | Size | Description | Direct Link |
-| :--- | :--- | :--- | :--- | :--- |
-| 💻 **Windows Desktop** | **`DriveGram-Setup.exe`** | **`4.33 MB`** | **Recommended**. Ultra-lightweight native installer (Tauri v2) with setup wizard and Desktop shortcut. | [⬇️ **Download .EXE**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram-Setup.exe) |
-| 🏢 **Windows Enterprise** | **`DriveGram.msi`** | **`13.24 MB`** | Windows Installer enterprise deployment package (native .msi). | [⬇️ **Download .MSI**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram.msi) |
-| 📱 **Android** | **`DriveGram.apk`** | **`82.8 MB`** | Official Android application featuring an embedded self-hosted Node.js engine. | [⬇️ **Download .APK**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram.apk) |
+| Platform | Package / Installer | Description | Direct Link |
+| :--- | :--- | :--- | :--- |
+| 💻 **Windows Desktop** | **`DriveGram-Setup.exe`** | **Recommended**. Self-contained installer (Tauri v2) with bundled Node.js runtime and Desktop shortcut. | [⬇️ **Download .EXE**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/latest/download/DriveGram-Setup.exe) |
+| 📱 **Android** | **`DriveGram.apk`** | Official Android application featuring an embedded self-hosted Node.js engine. | [⬇️ **Download .APK**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/latest/download/DriveGram.apk) |
 
 > 🏷️ *All release packages, changelogs, and source code archives are also available on the [Releases Tab](https://github.com/LuisClaudioBoaventura/DriveGram/releases).*
 
@@ -217,7 +216,7 @@ DriveGram Desktop is powered by **Tauri v2**, making it remarkably lightweight: 
 
 The Android application operates 100% autonomously without needing a host computer, thanks to its embedded high-performance Node.js runtime.
 
-1. **Download APK**: Download the [**`DriveGram.apk`**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v1.2.0/DriveGram.apk) package from the [Releases Page](https://github.com/LuisClaudioBoaventura/DriveGram/releases/tag/v1.2.0) directly onto your Android device.
+1. **Download APK**: Download the [**`DriveGram.apk`**](https://github.com/LuisClaudioBoaventura/DriveGram/releases/latest/download/DriveGram.apk) package from the [Releases Page](https://github.com/LuisClaudioBoaventura/DriveGram/releases/latest) directly onto your Android device.
 2. **Authorize Installation**:
    - Open the downloaded file.
    - When prompted by Android, permit installation from your browser or file manager under *"Install unknown apps"*.
@@ -234,23 +233,59 @@ If you wish to run or modify the source code:
 #### Prerequisites:
 - **Node.js (v18+)** and **npm**
 - **Rust and Cargo** (required for compiling Tauri Desktop)
+- **JDK 21** and **Android SDK** (if compiling Android APK locally)
 
-#### Quick Commands:
+#### Quick Launchers (Root Directory):
+- **`iniciar_desktop.bat`**: Starts the native Desktop app (Tauri + Vite Hot-Reload).
+- **`iniciar.bat`**: Starts the backend server and opens the Web UI in your browser (`localhost:3000`).
+- **`Criar_Atalho_Desktop.bat`**: Creates a direct Desktop shortcut with the official DriveGram icon.
+
+#### Terminal Commands (`npm`):
 ```bash
 # 1. Install dependencies
 npm install
 
-# 2. Run the Desktop App in Development Mode (Tauri + Hot-reload)
+# 2. Run Desktop App in Development Mode (Tauri + Hot-reload)
 npm run desktop:dev
-# (Or double-click 'iniciar_desktop.bat')
 
-# 3. Run the traditional Web version in your Browser
+# 3. Run traditional Web version in Browser
 npm start
 # Open http://localhost:3000
 
-# 4. Build a fresh Windows Desktop Installer (.exe and .msi)
+# 4. Build Standalone Windows Installer (.exe)
 npm run desktop:build
-# (Or double-click 'build_desktop.bat')
+
+# 5. Sync and build Android APK (Capacitor)
+npm run mobile:sync
+npm run mobile:apk
+
+# 6. Clean build caches to reclaim disk space (~9 GB)
+npm run clean          # Cleans both Tauri/Rust and Android Gradle caches
+npm run clean:desktop  # Cleans only Tauri cache (src-tauri/target)
+npm run clean:android  # Cleans only Android cache (android/build)
+```
+
+#### Automation Scripts (`scripts/`):
+All build, setup, and maintenance scripts are organized in the [`scripts/`](scripts/) folder:
+- **`scripts/build-desktop.bat`**: 1-click Windows Tauri installer build.
+- **`scripts/build-apk.bat`**: Builds the Android APK with Gradle and copies the binary.
+- **`scripts/compile-apk.ps1`**: Full PowerShell build pipeline for Android.
+- **`scripts/setup-android-sdk.ps1`**: Automated Android SDK configuration and license acceptance for Windows.
+- **`scripts/generate-icon.ps1`**: Multi-resolution icon generation script.
+
+#### Project Structure:
+```text
+DriveGram/
+├── android/              # Native Android project (Capacitor 8 + Node.js Mobile)
+├── data/                 # Local SQLite/JSON databases & sync manifests (gitignored)
+├── public/               # Static assets, official icons & PWA manifest
+├── scripts/              # Build, setup & maintenance automation scripts
+├── server/               # Backend Express + Telegram GramJS MTProto engine
+├── src/                  # Frontend React 18 + TypeScript + Tailwind CSS
+├── src-tauri/            # Lightweight native Desktop Rust core (Tauri v2)
+├── Criar_Atalho_Desktop.bat # Desktop shortcut creator with icon
+├── iniciar.bat           # Web + Backend launcher
+└── iniciar_desktop.bat   # Native Desktop app launcher
 ```
 
 ---
