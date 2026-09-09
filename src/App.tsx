@@ -55,6 +55,7 @@ import { MobileServerSettingsModal } from './components/MobileServerSettingsModa
 import { YouTubeImportModal, YouTubeTargetType } from './components/YouTubeImportModal.js';
 import { UpdateModal } from './components/UpdateModal.js';
 import { checkForAppUpdates, UpdateInfo } from './utils/updater.js';
+import { resolveApiUrl } from './utils/mobileBridge.js';
 import { useFileSystem } from './hooks/useFileSystem.js';
 import { useTelegram } from './hooks/useTelegram.js';
 import { useCourses } from './hooks/useCourses.js';
@@ -382,7 +383,7 @@ export function App() {
         return;
       }
 
-      const res = await fetch('/api/system/open-uploads-folder', {
+      const res = await fetch(resolveApiUrl('/api/system/open-uploads-folder'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });

@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
-import { isTauriPlatform } from './mobileBridge.js';
+import { isTauriPlatform, resolveApiUrl } from './mobileBridge.js';
 
-export const CURRENT_APP_VERSION = '1.6.4';
+export const CURRENT_APP_VERSION = '1.6.5';
 export const GITHUB_REPO = 'LuisClaudioBoaventura/DriveGram';
 
 export interface UpdateInfo {
@@ -107,7 +107,10 @@ export async function checkForAppUpdates(): Promise<UpdateInfo> {
       }
 
       const exeAsset = data.assets.find(
-        (a: any) => a.name?.includes('setup.exe') || a.name?.endsWith('.exe')
+        (a: any) =>
+          typeof a.name === 'string' &&
+          (a.name.endsWith('.exe') || a.name.includes('-setup.exe') || a.name.includes('setup.exe')) &&
+          !a.name.endsWith('.sig')
       );
       if (exeAsset) {
         result.windowsDownloadUrl = exeAsset.browser_download_url;
@@ -181,17 +184,81 @@ export function installAndroidUpdate(apkUrl: string, versionName: string): void 
 export async function openExternalUrl(url: string): Promise<void> {
   if (!url) return;
 
+  // 1. Try Tauri native command if available
   if (isTauriPlatform()) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('open_external_url', { url });
       return;
     } catch (err) {
-      console.warn('[Updater] Failed to open external URL via Tauri command:', err);
+      console.warn('[Updater] Failed to open external URL via Tauri command, trying backend:', err);
     }
   }
 
+  // 2. Try backend endpoint to launch system default browser
+  try {
+    const res = await fetch(resolveApiUrl('/api/system/open-url'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    if (res.ok) {
+      return;
+    }
+  } catch (err) {
+    console.warn('[Updater] Failed to open URL via backend:', err);
+  }
+
+  // 3. Fallback to window.open
   if (typeof window !== 'undefined') {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
+}
+
+/**
+ * Downloads and launches the desktop installer via local server with live progress
+ */
+export async function triggerBackendDesktopUpdate(
+  downloadUrl: string,
+  version: string,
+  onProgress?: (progress: number) => void
+): Promise<void> {
+  const startRes = await fetch(resolveApiUrl('/api/system/download-and-run-update'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ downloadUrl, version })
+  });
+
+  if (!startRes.ok) {
+    throw new Error('Falha ao iniciar download da atualização pelo servidor local.');
+  }
+
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch(resolveApiUrl('/api/system/update-progress'));
+        if (!res.ok) return;
+        const state = await res.json();
+
+        if (onProgress && typeof state.progress === 'number') {
+          onProgress(state.progress);
+        }
+
+        if (state.status === 'ready') {
+          clearInterval(interval);
+          resolve();
+        } else if (state.status === 'error') {
+          clearInterval(interval);
+          reject(new Error(state.error || 'Erro ao processar atualização.'));
+        }
+      } catch (err) {
+        if (attempts > 60) {
+          clearInterval(interval);
+          reject(err);
+        }
+      }
+    }, 400);
+  });
 }

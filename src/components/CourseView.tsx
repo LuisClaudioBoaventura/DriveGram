@@ -229,11 +229,15 @@ export const CourseView: React.FC<CourseViewProps> = ({
   // Video Transmission & Cast state
   const [isCastModalOpen, setIsCastModalOpen] = useState(false);
   const [copiedStreamUrl, setCopiedStreamUrl] = useState(false);
+  const [copiedTvUrl, setCopiedTvUrl] = useState(false);
   const [castDevices, setCastDevices] = useState<CastDevice[]>([]);
   const [isScanningCast, setIsScanningCast] = useState(false);
   const [activeCastingDevice, setActiveCastingDevice] = useState<CastDevice | null>(null);
   const [castFeedback, setCastFeedback] = useState<string | null>(null);
   const [networkLanIp, setNetworkLanIp] = useState<string>('');
+  const [manualIpInput, setManualIpInput] = useState<string>('');
+  const [isAddingManual, setIsAddingManual] = useState<boolean>(false);
+  const [tvPlayerUrl, setTvPlayerUrl] = useState<string>('');
 
   const activeMediaFile = activeLesson?.fileId
     ? allFiles.find(f => f.id === activeLesson.fileId)
@@ -249,13 +253,17 @@ export const CourseView: React.FC<CourseViewProps> = ({
     ? `${networkLanIp}/api/stream/${streamFileId}`
     : streamUrl;
 
+  const defaultTvUrl = networkLanIp && streamFileId
+    ? `${networkLanIp}/tv?fileId=${streamFileId}&title=${encodeURIComponent(activeLesson?.title || course.title)}`
+    : '';
+
   const fetchNetworkDevices = async () => {
     setIsScanningCast(true);
     setCastFeedback(null);
     try {
       const [devRes, ipRes] = await Promise.all([
-        fetch('/api/cast/devices'),
-        fetch('/api/cast/network-ip')
+        fetch(resolveApiUrl('/api/cast/devices')),
+        fetch(resolveApiUrl('/api/cast/network-ip'))
       ]);
       if (devRes.ok) {
         const data = await devRes.json();
@@ -290,7 +298,7 @@ export const CourseView: React.FC<CourseViewProps> = ({
     } catch (e) {}
 
     try {
-      const res = await fetch('/api/cast/play', {
+      const res = await fetch(resolveApiUrl('/api/cast/play'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -302,9 +310,36 @@ export const CourseView: React.FC<CourseViewProps> = ({
       if (res.ok) {
         const data = await res.json();
         setCastFeedback(`✅ ${data.message}`);
+        if (data.tvPlayerUrl) {
+          setTvPlayerUrl(data.tvPlayerUrl);
+        }
       }
     } catch (err) {
-      setCastFeedback(`Transmissão iniciada no aparelho ${device.name}`);
+      setCastFeedback(`Transmissão enviada para o aparelho ${device.name}`);
+    }
+  };
+
+  const handleAddManualDevice = async () => {
+    if (!manualIpInput.trim()) return;
+    setIsAddingManual(true);
+    try {
+      const res = await fetch(resolveApiUrl('/api/cast/add-device'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: manualIpInput.trim() })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setManualIpInput('');
+        await fetchNetworkDevices();
+        if (data.device) {
+          handleCastToDevice(data.device);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao adicionar aparelho por IP:', e);
+    } finally {
+      setIsAddingManual(false);
     }
   };
 
@@ -2095,6 +2130,25 @@ export const CourseView: React.FC<CourseViewProps> = ({
                   })}
                 </div>
 
+                {/* Manual TV IP Adder */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    placeholder="Adicionar TV por IP (ex: 192.168.0.50)..."
+                    value={manualIpInput}
+                    onChange={(e) => setManualIpInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddManualDevice(); }}
+                    className="flex-1 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder text-xs text-gray-800 dark:text-gray-200 focus:outline-none focus:border-sky-500"
+                  />
+                  <button
+                    onClick={handleAddManualDevice}
+                    disabled={isAddingManual || !manualIpInput.trim()}
+                    className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all disabled:opacity-50 shrink-0"
+                  >
+                    {isAddingManual ? 'Conectando...' : '+ Conectar IP'}
+                  </button>
+                </div>
+
                 {/* Feedback Alert */}
                 {castFeedback && (
                   <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-xs font-semibold text-sky-800 dark:text-sky-200 flex items-center justify-between animate-in fade-in">
@@ -2171,6 +2225,40 @@ export const CourseView: React.FC<CourseViewProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Web TV Player Link for Smart TV Browser */}
+              {(tvPlayerUrl || defaultTvUrl) && (
+                <div className="p-4 rounded-2xl border border-sky-200 dark:border-sky-800/60 bg-sky-50/50 dark:bg-sky-950/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-sky-900 dark:text-sky-200">
+                      <Tv className="w-4 h-4 text-sky-500" />
+                      <span>DriveGram TV Player (Para Navegador da Smart TV)</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    Abra este endereço na sua TV (Samsung, LG, Android TV) para assistir em tela cheia com controle remoto:
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={tvPlayerUrl || defaultTvUrl}
+                      className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder text-[11px] font-mono text-gray-700 dark:text-gray-300 focus:outline-none select-all"
+                    />
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(tvPlayerUrl || defaultTvUrl);
+                        setCopiedTvUrl(true);
+                        setTimeout(() => setCopiedTvUrl(false), 2000);
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow shrink-0 transition-all active:scale-95"
+                    >
+                      {copiedTvUrl ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedTvUrl ? 'Copiado!' : 'Copiar Link TV'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer */}

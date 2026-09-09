@@ -12,6 +12,7 @@ import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { exec, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { db, fixUtf8Encoding } from './database.js';
@@ -123,7 +124,7 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.6.4',
+    version: '1.6.5',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -415,6 +416,15 @@ app.post('/api/cast/play', async (req, res) => {
   }
   const result = await castService.playOnDevice(deviceId, mediaUrl, title);
   res.json(result);
+});
+
+app.post('/api/cast/add-device', (req, res) => {
+  const { ip, name } = req.body;
+  if (!ip || typeof ip !== 'string') {
+    return res.status(400).json({ error: 'IP do dispositivo é obrigatório' });
+  }
+  const device = castService.addManualDevice(ip, name);
+  res.json({ success: true, device });
 });
 
 app.delete('/api/files/:id', async (req, res) => {
@@ -1180,6 +1190,26 @@ app.get('/api/system/storage-paths', (_req, res) => {
   });
 });
 
+interface UpdateDownloadState {
+  isDownloading: boolean;
+  progress: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  status: 'idle' | 'downloading' | 'ready' | 'error';
+  error: string | null;
+  installerPath: string | null;
+}
+
+const desktopUpdateState: UpdateDownloadState = {
+  isDownloading: false,
+  progress: 0,
+  downloadedBytes: 0,
+  totalBytes: 0,
+  status: 'idle',
+  error: null,
+  installerPath: null
+};
+
 app.post('/api/system/open-uploads-folder', (req, res) => {
   try {
     let targetPath = UPLOADS_DIR;
@@ -1202,7 +1232,7 @@ app.post('/api/system/open-uploads-folder', (req, res) => {
     const platform = process.platform;
 
     try {
-      if (process.env.DRIVEGRAM_EMBEDDED || (process.platform as string) === 'android') {
+      if ((process.platform as string) === 'android') {
         return res.json({
           success: true,
           path: targetPath,
@@ -1214,7 +1244,9 @@ app.post('/api/system/open-uploads-folder', (req, res) => {
         const normalized = path.normalize(targetPath);
         const args = isFile ? [`/select,${normalized}`] : [normalized];
         const child = spawn('explorer.exe', args, { detached: true, stdio: 'ignore' });
-        child.on('error', () => {});
+        child.on('error', (err) => {
+          console.warn('[DriveGram System] Erro ao disparar explorer.exe:', err);
+        });
         child.unref();
       } else if (platform === 'darwin') {
         const args = isFile ? ['-R', targetPath] : [targetPath];
@@ -1244,6 +1276,143 @@ app.post('/api/system/open-uploads-folder', (req, res) => {
       path: UPLOADS_DIR
     });
   }
+});
+
+app.post('/api/system/open-logs-folder', (_req, res) => {
+  try {
+    const dataDir = process.env.DRIVEGRAM_DATA_DIR || process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    const platform = process.platform;
+    if (platform === 'win32') {
+      const normalized = path.normalize(dataDir);
+      const child = spawn('explorer.exe', [normalized], { detached: true, stdio: 'ignore' });
+      child.on('error', (e) => console.warn('[DriveGram System] Erro ao abrir logs no explorer:', e));
+      child.unref();
+    } else if (platform === 'darwin') {
+      spawn('open', [dataDir], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      spawn('xdg-open', [dataDir], { detached: true, stdio: 'ignore' }).unref();
+    }
+    return res.json({ success: true, path: dataDir, message: 'Pasta de logs aberta com sucesso' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Falha ao abrir pasta de logs' });
+  }
+});
+
+app.post('/api/system/open-url', (req, res) => {
+  const { url } = req.body;
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL inválida' });
+  }
+  try {
+    const platform = process.platform;
+    if (platform === 'win32') {
+      // Inicia no navegador padrão do Windows sem janela de terminal
+      spawn('cmd.exe', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
+    } else if (platform === 'darwin') {
+      spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Falha ao abrir URL no navegador' });
+  }
+});
+
+app.post('/api/system/download-and-run-update', async (req, res) => {
+  const { downloadUrl, version } = req.body;
+  if (!downloadUrl || typeof downloadUrl !== 'string') {
+    return res.status(400).json({ error: 'URL de download é obrigatória' });
+  }
+
+  if (desktopUpdateState.isDownloading) {
+    return res.json({
+      success: true,
+      message: 'Download já em andamento',
+      state: desktopUpdateState
+    });
+  }
+
+  desktopUpdateState.isDownloading = true;
+  desktopUpdateState.progress = 0;
+  desktopUpdateState.downloadedBytes = 0;
+  desktopUpdateState.totalBytes = 0;
+  desktopUpdateState.status = 'downloading';
+  desktopUpdateState.error = null;
+
+  res.json({
+    success: true,
+    message: 'Iniciando download do instalador oficial',
+    state: desktopUpdateState
+  });
+
+  // Background download and execution
+  (async () => {
+    try {
+      const tempDir = os.tmpdir();
+      const installerFileName = `DriveGram_${version || 'update'}_Setup.exe`;
+      const targetPath = path.join(tempDir, installerFileName);
+      desktopUpdateState.installerPath = targetPath;
+
+      const response = await fetch(downloadUrl, {
+        headers: { 'User-Agent': 'DriveGram-Desktop-Updater' }
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`Falha no download via GitHub (${response.status} ${response.statusText})`);
+      }
+
+      const contentLength = response.headers.get('content-length');
+      desktopUpdateState.totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+
+      const fileStream = fs.createWriteStream(targetPath);
+      const reader = response.body.getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          fileStream.write(Buffer.from(value));
+          desktopUpdateState.downloadedBytes += value.length;
+          if (desktopUpdateState.totalBytes > 0) {
+            desktopUpdateState.progress = Math.min(
+              100,
+              Math.round((desktopUpdateState.downloadedBytes / desktopUpdateState.totalBytes) * 100)
+            );
+          }
+        }
+      }
+
+      fileStream.end();
+      desktopUpdateState.progress = 100;
+      desktopUpdateState.status = 'ready';
+      desktopUpdateState.isDownloading = false;
+
+      // Inicia o instalador baixado
+      if (process.platform === 'win32') {
+        setTimeout(() => {
+          try {
+            const child = spawn(targetPath, [], { detached: true, stdio: 'ignore' });
+            child.unref();
+          } catch (e) {
+            console.error('[DriveGram Updater] Erro ao iniciar instalador:', e);
+          }
+        }, 800);
+      }
+    } catch (err: any) {
+      console.error('[DriveGram Updater] Erro ao baixar atualização:', err);
+      desktopUpdateState.status = 'error';
+      desktopUpdateState.error = err?.message || 'Erro ao baixar atualização';
+      desktopUpdateState.isDownloading = false;
+    }
+  })();
+});
+
+app.get('/api/system/update-progress', (_req, res) => {
+  res.json(desktopUpdateState);
 });
 
 // ---------------- FILE DOWNLOAD ON DEMAND ----------------
@@ -4368,8 +4537,51 @@ function purgeExpiredCacheRoutine() {
 }
 
 // Run 10s after startup, then every 2 minutes
-setTimeout(purgeExpiredCacheRoutine, 10000);
-setInterval(purgeExpiredCacheRoutine, 2 * 60 * 1000);
+// ---------------- WEB SMART TV PLAYER ROUTE ----------------
+app.get('/tv', (req, res) => {
+  const mediaUrl = (req.query.url as string) || (req.query.fileId ? `/api/stream/${req.query.fileId}` : '');
+  const title = (req.query.title as string) || 'DriveGram TV Player';
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #000; color: #fff; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .header { position: absolute; top: 0; left: 0; right: 0; padding: 20px 30px; background: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent); z-index: 10; display: flex; align-items: center; justify-content: space-between; transition: opacity 0.3s; }
+    .title { font-size: 22px; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.9); }
+    .badge { font-size: 13px; background: rgba(56, 189, 248, 0.2); border: 1px solid #38bdf8; color: #38bdf8; padding: 4px 12px; border-radius: 20px; }
+    .player-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; background: #000; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    .footer { position: absolute; bottom: 20px; left: 30px; color: rgba(255,255,255,0.6); font-size: 13px; z-index: 10; text-shadow: 0 1px 2px #000; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">${title}</div>
+    <div class="badge">DriveGram TV Player</div>
+  </div>
+  <div class="player-container">
+    <video id="tvVideo" controls autoplay playsinline src="${mediaUrl}"></video>
+  </div>
+  <div class="footer">Use o controle remoto da Smart TV para pausar, avançar ou retroceder.</div>
+  <script>
+    const v = document.getElementById('tvVideo');
+    window.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Enter') {
+        if (v.paused) v.play(); else v.pause();
+      } else if (e.key === 'ArrowRight') {
+        v.currentTime += 10;
+      } else if (e.key === 'ArrowLeft') {
+        v.currentTime -= 10;
+      }
+    });
+  </script>
+</body>
+</html>`);
+});
 
 // ---------------- SERVIR FRONTEND ESTÁTICO (PRODUÇÃO / RENDER / ANDROID) ----------------
 const candidateDirs = [

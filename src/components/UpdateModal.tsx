@@ -15,7 +15,8 @@ import {
   installTauriDesktopUpdate, 
   installAndroidUpdate, 
   isAndroidNative,
-  openExternalUrl
+  openExternalUrl,
+  triggerBackendDesktopUpdate
 } from '../utils/updater.js';
 import { isTauriPlatform } from '../utils/mobileBridge.js';
 
@@ -53,20 +54,37 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
       // Flow 1: Tauri on Windows (PC)
       if (isTauri) {
         if (updateInfo.tauriUpdateObj) {
-          setDownloadProgress(0);
-          await installTauriDesktopUpdate(updateInfo.tauriUpdateObj, (downloaded, total) => {
-            if (total > 0) {
-              setDownloadProgress(Math.min(100, Math.round((downloaded / total) * 100)));
-            }
-          });
-          setIsReadyToRestart(true);
-          return;
+          try {
+            setDownloadProgress(0);
+            await installTauriDesktopUpdate(updateInfo.tauriUpdateObj, (downloaded, total) => {
+              if (total > 0) {
+                setDownloadProgress(Math.min(100, Math.round((downloaded / total) * 100)));
+              }
+            });
+            setIsReadyToRestart(true);
+            return;
+          } catch (tauriErr) {
+            console.warn('[UpdateModal] Tauri plugin update failed, falling back to direct installer download:', tauriErr);
+          }
         }
 
-        // Fallback for PC when tauriUpdateObj is not available: open direct installer link
-        const downloadUrl = updateInfo.windowsDownloadUrl || updateInfo.releaseUrl;
+        // Fallback for PC: trigger backend direct download and launch of the installer
+        const downloadUrl =
+          updateInfo.windowsDownloadUrl ||
+          `https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v${updateInfo.latestVersion}/DriveGram_${updateInfo.latestVersion}_x64-setup.exe`;
+
         if (downloadUrl) {
-          await openExternalUrl(downloadUrl);
+          setDownloadProgress(0);
+          try {
+            await triggerBackendDesktopUpdate(downloadUrl, updateInfo.latestVersion, (prog) => {
+              setDownloadProgress(prog);
+            });
+            setIsReadyToRestart(true);
+            return;
+          } catch (backendErr) {
+            console.warn('[UpdateModal] Backend update failed, opening external URL:', backendErr);
+            await openExternalUrl(downloadUrl || updateInfo.releaseUrl || '');
+          }
         }
         setIsUpdating(false);
         return;
@@ -195,7 +213,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
               {isReadyToRestart && (
                 <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl flex items-center gap-2.5 text-emerald-700 dark:text-emerald-300 text-xs">
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span>Atualização instalada com sucesso! O aplicativo será reiniciado.</span>
+                  <span>Download concluído com sucesso! O instalador do DriveGram foi iniciado.</span>
                 </div>
               )}
             </div>

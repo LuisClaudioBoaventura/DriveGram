@@ -228,15 +228,30 @@ export async function toggleDevTools(): Promise<void> {
 }
 
 export async function openLogsFolder(): Promise<string | null> {
+  // 1. Try Tauri native invoke
   if (isTauriPlatform()) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<string>('open_logs_folder');
-      return res;
+      if (res) return res;
     } catch (e) {
-      console.warn('[DriveGram Desktop] Failed to open logs folder:', e);
-      return null;
+      console.warn('[DriveGram Desktop] Tauri invoke failed, falling back to local server:', e);
     }
   }
+
+  // 2. Try backend endpoint
+  try {
+    const res = await fetch(resolveApiUrl('/api/system/open-logs-folder'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.path || null;
+    }
+  } catch (err) {
+    console.warn('[DriveGram Desktop] Failed to open logs folder via backend:', err);
+  }
+
   return null;
 }
