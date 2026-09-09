@@ -97,13 +97,15 @@ export function useTelegram() {
   }, [fetchStatus]);
 
   // Sincronização por Ciclo de Vida: verifica alterações ao focar a janela ou retomar o aplicativo (Desktop e Celular)
+  const isSyncingActiveRef = useRef(false);
   useEffect(() => {
     let lastResumeSync = 0;
     const handleResumeOrFocus = () => {
       const now = Date.now();
-      // Debounce para não disparar mais de uma vez a cada 15 segundos
-      if (now - lastResumeSync < 15000) return;
+      // Debounce para não disparar mais de uma vez a cada 30 segundos
+      if (now - lastResumeSync < 30000 || isSyncingActiveRef.current) return;
       lastResumeSync = now;
+      isSyncingActiveRef.current = true;
 
       fetchStatus();
       fetch('/api/telegram/startup-sync', { 
@@ -120,7 +122,10 @@ export function useTelegram() {
             window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: syncRes }));
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          isSyncingActiveRef.current = false;
+        });
     };
 
     window.addEventListener('focus', handleResumeOrFocus);
