@@ -1144,6 +1144,30 @@ class Database {
         }
       }
     }
+
+    // 4. Deduplicate any adultVideos that share the exact same fileId
+    const seenFileIds = new Set<string>();
+    const deduplicatedVideos: AdultVideo[] = [];
+    for (const vid of this.data.adultVideos) {
+      if (vid.fileId) {
+        if (seenFileIds.has(vid.fileId)) {
+          const existingIdx = deduplicatedVideos.findIndex(v => v.fileId === vid.fileId);
+          if (existingIdx >= 0) {
+            const existing = deduplicatedVideos[existingIdx];
+            // Prefer the entry with custom title (not raw filename), custom cover (not unsplash), or with performers
+            const existingIsGeneric = (existing.coverImage?.includes('unsplash') || /^index-v\d+/i.test(existing.title) || !existing.performers);
+            const currentIsGeneric = (vid.coverImage?.includes('unsplash') || /^index-v\d+/i.test(vid.title) || !vid.performers);
+            if (existingIsGeneric && !currentIsGeneric) {
+              deduplicatedVideos[existingIdx] = vid;
+            }
+          }
+          continue;
+        }
+        seenFileIds.add(vid.fileId);
+      }
+      deduplicatedVideos.push(vid);
+    }
+    this.data.adultVideos = deduplicatedVideos;
   }
 
   // ---------------- AUTO-SYNC ALL LIBRARIES ----------------
@@ -3038,6 +3062,12 @@ class Database {
 
         if (existing) {
           // Update metadata if provided
+          if (data.title?.trim() && data.title.trim() !== baseFolderCleanName) {
+            existing.title = videoFiles.length === 1 ? data.title.trim() : `${data.title.trim()} - ${cleanFileName}`;
+          } else if (data.title?.trim() && videoFiles.length === 1) {
+            existing.title = data.title.trim();
+          }
+          if (data.description !== undefined) existing.description = data.description;
           if (data.studio) existing.studio = data.studio.trim();
           if (data.performers) existing.performers = data.performers.trim();
           if (data.aka) existing.aka = data.aka.trim();
