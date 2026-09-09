@@ -355,6 +355,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               src={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
               controls={!isPiPHidden}
               autoPlay
+              preload="auto"
               playsInline
               onLoadedMetadata={() => {
                 if (videoRef.current && (video.lastPositionSeconds || 0) > 0) {

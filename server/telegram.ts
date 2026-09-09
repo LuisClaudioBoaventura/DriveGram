@@ -58,6 +58,32 @@ class TelegramService {
   private lastSentMetadataMessageId: number | null = null;
   private isRealtimeListenerActive: boolean = false;
 
+  // ---- FileLocation Cache ----
+  // Avoids calling getMessages() on every Range HTTP request (a major cause of buffering).
+  // Each Range request from the browser would previously do 1 getMessages RTT (~200-500ms).
+  // Cache TTL: 30 minutes. Invalidated on FILEREF errors or explicit eviction.
+  private static readonly FILE_LOCATION_CACHE_TTL_MS = 30 * 60 * 1000;
+  private fileLocationCache = new Map<number, {
+    fileLocation: any;
+    dcId: number | undefined;
+    fileSize: number;
+    cachedAt: number;
+  }>();
+
+  private getCachedFileLocation(messageId: number) {
+    const entry = this.fileLocationCache.get(messageId);
+    if (!entry) return null;
+    if (Date.now() - entry.cachedAt > TelegramService.FILE_LOCATION_CACHE_TTL_MS) {
+      this.fileLocationCache.delete(messageId);
+      return null;
+    }
+    return entry;
+  }
+
+  public evictFileLocationCache(messageId: number): void {
+    this.fileLocationCache.delete(messageId);
+  }
+
   public isInitialSyncDone(): boolean {
     return this.isInitialSyncCompleted;
   }
@@ -1235,48 +1261,73 @@ class TelegramService {
     if (!client || !this.authState.isConnected) return false;
 
     try {
-      const messages = await client.getMessages('me', { ids: [messageId] });
-      if (!messages || messages.length === 0 || !messages[0].media) {
-        return false;
-      }
-
-      const msg = messages[0];
-      const media = msg.media as any;
       const contentLength = (end - start) + 1;
 
-      // Build proper InputFileLocation from document or photo
+      // ---- FileLocation Cache ----
+      // On every HTTP Range request the browser sends, we used to call getMessages() which adds
+      // ~200-500ms of Telegram MTProto RTT before we can start piping any bytes. The cache avoids
+      // this: after the first Range request resolves the fileLocation, all subsequent requests
+      // (seeks, buffering, etc.) reuse it directly. Cache TTL is 30 minutes.
       const { Api } = await import('telegram');
       let fileLocation: any = null;
       let dcId: number | undefined = undefined;
 
-      if (media?.document || media?.className === 'MessageMediaDocument') {
-        const doc = media.document || media;
-        fileLocation = new Api.InputDocumentFileLocation({
-          id: doc.id,
-          accessHash: doc.accessHash,
-          fileReference: doc.fileReference,
-          thumbSize: ''
-        });
-        dcId = doc.dcId;
-      } else if (media?.photo || media?.className === 'MessageMediaPhoto') {
-        const photo = media.photo || media;
-        const lastSize = (photo.sizes || []).at(-1);
-        fileLocation = new Api.InputPhotoFileLocation({
-          id: photo.id,
-          accessHash: photo.accessHash,
-          fileReference: photo.fileReference,
-          thumbSize: lastSize?.type || 's'
-        });
-        dcId = photo.dcId;
-      }
+      const cached = this.getCachedFileLocation(messageId);
+      if (cached) {
+        fileLocation = cached.fileLocation;
+        dcId = cached.dcId;
+        if (cached.fileSize > 0 && fileSize === 0) {
+          fileSize = cached.fileSize;
+        }
+      } else {
+        // Cache miss → fetch from Telegram and populate cache
+        const messages = await client.getMessages('me', { ids: [messageId] });
+        if (!messages || messages.length === 0 || !messages[0].media) {
+          return false;
+        }
 
-      if (!fileLocation) {
-        return false;
+        const msg = messages[0];
+        const media = msg.media as any;
+
+        if (media?.document || media?.className === 'MessageMediaDocument') {
+          const doc = media.document || media;
+          fileLocation = new Api.InputDocumentFileLocation({
+            id: doc.id,
+            accessHash: doc.accessHash,
+            fileReference: doc.fileReference,
+            thumbSize: ''
+          });
+          dcId = doc.dcId;
+          if (fileSize === 0) fileSize = Number(doc.size || 0);
+        } else if (media?.photo || media?.className === 'MessageMediaPhoto') {
+          const photo = media.photo || media;
+          const lastSize = (photo.sizes || []).at(-1);
+          fileLocation = new Api.InputPhotoFileLocation({
+            id: photo.id,
+            accessHash: photo.accessHash,
+            fileReference: photo.fileReference,
+            thumbSize: lastSize?.type || 's'
+          });
+          dcId = photo.dcId;
+        }
+
+        if (!fileLocation) {
+          return false;
+        }
+
+        // Store in cache for subsequent Range requests in this session
+        this.fileLocationCache.set(messageId, {
+          fileLocation,
+          dcId,
+          fileSize,
+          cachedAt: Date.now()
+        });
       }
 
       // Telegram MTProto upload.getFile strictly requires offset to be divisible by limit (CHUNK_SIZE)
       // unless precise: true is used, and chunks must be powers of 2.
-      const CHUNK_SIZE = 128 * 1024; // 128 KB chunks (power of 2, 4KB multiple)
+      // 512 KB chunks = fewer round-trips per video segment vs. the previous 128 KB.
+      const CHUNK_SIZE = 512 * 1024; // 512 KB chunks (power of 2, 4KB multiple)
       const alignedStart = Math.floor(start / CHUNK_SIZE) * CHUNK_SIZE;
       const skipPrefix = start - alignedStart;
 
@@ -1324,6 +1375,8 @@ class TelegramService {
             chunk = result.bytes;
           } catch (invokeErr: any) {
             if (invokeErr.errorMessage === 'FILEREF_UPGRADE_NEEDED' || invokeErr.name === 'FileMigrateError') {
+              // Invalidate the cache: fileReference is stale and needs to be refreshed
+              this.evictFileLocationCache(messageId);
               if (invokeErr.newDc) {
                 sender = await client.getSender(invokeErr.newDc);
                 continue;
