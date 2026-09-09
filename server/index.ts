@@ -124,7 +124,7 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.6.5',
+    version: '1.6.6',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });

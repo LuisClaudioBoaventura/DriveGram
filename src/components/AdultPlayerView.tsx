@@ -321,6 +321,7 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
                 src={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
                 controls
                 autoPlay
+                preload="auto"
                 playsInline
                 onTimeUpdate={handleTimeUpdate}
                 onPause={() => handlePauseOrEnded(false)}
