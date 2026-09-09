@@ -1,17 +1,13 @@
 @echo off
 chcp 65001 > nul
-set "TARGET=%~dp0iniciar.bat"
-set "WORKING_DIR=%~dp0"
-set "SHORTCUT_PATH=%USERPROFILE%\Desktop\DriveGram.lnk"
-set "ICON_PATH=%~dp0src-tauri\icons\icon.ico"
+title DriveGram - Criando Atalho na Area de Trabalho
 
-powershell -NoProfile -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT_PATH%'); $s.TargetPath='%TARGET%'; $s.WorkingDirectory='%WORKING_DIR%'; if (Test-Path '%ICON_PATH%') { $s.IconLocation='%ICON_PATH%,0' }; $s.Save()"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\create-desktop-shortcut.ps1"
 
-echo.
-echo ======================================================
-echo  Atalho "DriveGram" criado na sua Area de Trabalho!
-echo ======================================================
-echo.
-echo Agora voce pode apenas dar 2 cliques no icone da Area de Trabalho.
-echo.
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [ERRO] Ocorreu uma falha ao criar o atalho.
+    echo.
+)
+
 pause
