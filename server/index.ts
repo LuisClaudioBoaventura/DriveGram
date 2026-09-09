@@ -124,7 +124,7 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.6.6',
+    version: '1.6.7',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1397,6 +1397,10 @@ app.post('/api/system/download-and-run-update', async (req, res) => {
           try {
             const child = spawn(targetPath, [], { detached: true, stdio: 'ignore' });
             child.unref();
+            // Encerra o servidor Node após 2s para liberar o lock no node.exe.
+            // O NSIS precisa sobrescrever node.exe durante a instalação, e isso só é
+            // possível se o processo Node não estiver mais rodando e segurando o arquivo.
+            setTimeout(() => process.exit(0), 2000);
           } catch (e) {
             console.error('[DriveGram Updater] Erro ao iniciar instalador:', e);
           }
