@@ -119,7 +119,7 @@ function getFileType(extension: string): FileType {
 }
 
 // ---------------- HEALTH CHECK (AND READINESS PROBE) ----------------
-app.get('/api/health', (_req, res) => {
+app.get(['/api/health', '/api/status'], (_req, res) => {
   res.json({
     status: 'ok',
     uptime: Math.round(process.uptime()),
