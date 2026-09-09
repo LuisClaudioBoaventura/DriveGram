@@ -1,0 +1,72 @@
+name: CI - DriveGram Quality Assurance
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-web-and-smoke:
+    name: Typecheck, Build & Server Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Full QA (Typecheck, Build, Package & Smoke Test)
+        run: npm run qa
+
+  validate-android-build:
+    name: Validate Android Compilation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Apply nodejs-mobile Gradle Patch
+        run: node scripts/patch-nodejs-mobile.js
+
+      - name: Sync Frontend and Capacitor
+        run: npm run mobile:sync
+
+      - name: Ensure nodejs-mobile Patch is Applied
+        run: node scripts/patch-nodejs-mobile.js
+
+      - name: Make Gradle Executable
+        run: chmod +x android/gradlew
+
+      - name: Compile Android Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --stacktrace
