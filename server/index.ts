@@ -3796,6 +3796,16 @@ app.post('/api/adult-videos/from-folder', (req, res) => {
   }
 });
 
+app.post('/api/adult-videos/sync-root', (_req, res) => {
+  try {
+    const result = db.syncAdultVideosFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing adult videos from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar pastas do Red Locker' });
+  }
+});
+
 app.patch('/api/adult-videos/:id', (req, res) => {
   const updated = db.updateAdultVideo({ ...req.body, id: req.params.id });
   res.json(updated);

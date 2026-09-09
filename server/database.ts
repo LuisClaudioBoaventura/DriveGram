@@ -3115,6 +3115,179 @@ class Database {
     return createdOrExistingVideos;
   }
 
+  public syncAdultVideosFromRootFolder(): {
+    importedCount: number;
+    updatedCount: number;
+    totalVideos: number;
+    videos: AdultVideo[];
+  } {
+    if (!this.data.adultVideos) this.data.adultVideos = [];
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allFiles = (this.data.files || []).filter(f => !f.isTrash);
+
+    const norm = (str: string) => (str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+    const rootAliases = ['red locker', 'redlocker'];
+    const rootFolders = allFolders.filter(f => {
+      const n = norm(f.name);
+      return rootAliases.some(alias => n === alias || n.includes(alias));
+    });
+
+    if (rootFolders.length === 0) {
+      return {
+        importedCount: 0,
+        updatedCount: 0,
+        totalVideos: this.data.adultVideos.length,
+        videos: this.data.adultVideos
+      };
+    }
+
+    const rootFolderIds = new Set(rootFolders.map(r => r.id));
+    const allLockerFolderIds = new Set<string>(rootFolderIds);
+    const queue = [...rootFolderIds];
+
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      const children = allFolders.filter(f => f.parentId === curr);
+      for (const child of children) {
+        allLockerFolderIds.add(child.id);
+        queue.push(child.id);
+      }
+    }
+
+    const videoExts = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv'];
+    const lockerVideoFiles = allFiles.filter(f => 
+      allLockerFolderIds.has(f.parentId || '') &&
+      (f.type === 'video' || videoExts.includes(f.extension?.toLowerCase() || ''))
+    );
+
+    // Helper: auto match performers registered in adultPerformers
+    const registeredPerformers = this.data.adultPerformers || [];
+    const matchPerformers = (text: string): string[] => {
+      const textClean = ` ${norm(text).replace(/[^a-z0-9]+/g, ' ')} `;
+      const matched = new Set<string>();
+
+      for (const p of registeredPerformers) {
+        if (!p.name) continue;
+        const pNameNorm = norm(p.name);
+        if (pNameNorm.length >= 3 && textClean.includes(` ${pNameNorm} `)) {
+          matched.add(p.name);
+        }
+        if (p.aka) {
+          const akas = p.aka.split(/[,;/]+/).map(a => norm(a)).filter(a => a.length >= 3);
+          for (const a of akas) {
+            if (textClean.includes(` ${a} `)) {
+              matched.add(p.name);
+              break;
+            }
+          }
+        }
+      }
+      return Array.from(matched);
+    };
+
+    // Helper: auto extract studio
+    const extractStudio = (text: string): string | undefined => {
+      const match = text.match(/^[\[\(\{]([^\]\)\}]+)[\]\)\}]/);
+      if (match && match[1]) {
+        const cand = match[1].trim();
+        if (cand.length >= 2 && cand.length <= 30 && !/^\d+p?$/i.test(cand) && !/^(x264|x265|hevc|1080p|720p|4k)$/i.test(cand)) {
+          return cand;
+        }
+      }
+      return undefined;
+    };
+
+    // Helper: find image in folder
+    const findFolderImageCover = (folderId: string): string | undefined => {
+      const folderImages = allFiles.filter(f => 
+        f.parentId === folderId &&
+        (f.type === 'image' || ['jpg', 'jpeg', 'png', 'webp'].includes(f.extension?.toLowerCase() || ''))
+      );
+      if (folderImages.length === 0) return undefined;
+
+      // Prioritize files named cover, poster, folder, thumb
+      const priority = folderImages.find(img => {
+        const ln = img.name.toLowerCase();
+        return ln.includes('cover') || ln.includes('poster') || ln.includes('folder') || ln.includes('thumb');
+      });
+      const selected = priority || folderImages[0];
+      return `/api/files/${selected.id}/stream`;
+    };
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    for (let i = 0; i < lockerVideoFiles.length; i++) {
+      const file = lockerVideoFiles[i];
+      const parentFolder = allFolders.find(f => f.id === file.parentId);
+      let existing = this.data.adultVideos.find(v => v.fileId === file.id);
+
+      if (existing) {
+        // Enrich performers if missing
+        if (!existing.performers) {
+          const matched = matchPerformers(`${file.name} ${parentFolder?.name || ''}`);
+          if (matched.length > 0) {
+            existing.performers = matched.join(', ');
+            existing.updatedAt = new Date().toISOString();
+            updatedCount++;
+          }
+        }
+        continue;
+      }
+
+      const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/^[🔞🔥🎬\s]+/, '').trim();
+      const parentFolderName = parentFolder && !rootFolderIds.has(parentFolder.id) 
+        ? parentFolder.name.replace(/^[🔞🔥🎬\s]+/, '').trim() 
+        : '';
+
+      let itemTitle = cleanFileName;
+      if (parentFolderName && !cleanFileName.toLowerCase().includes(parentFolderName.toLowerCase())) {
+        itemTitle = `${parentFolderName} - ${cleanFileName}`;
+      }
+
+      const matchedActors = matchPerformers(`${file.name} ${parentFolder?.name || ''}`);
+      const detectedStudio = extractStudio(parentFolder?.name || '') || extractStudio(file.name);
+      const folderCover = file.parentId ? findFolderImageCover(file.parentId) : undefined;
+      const defaultCover = folderCover || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60';
+
+      const newVid: AdultVideo = {
+        id: 'adult-vid-' + Date.now() + '-' + i + '-' + Math.random().toString(36).substring(2, 7),
+        title: itemTitle,
+        description: parentFolder?.description || '',
+        coverImage: defaultCover,
+        category: 'Longas-Metragens',
+        studio: detectedStudio,
+        performers: matchedActors.length > 0 ? matchedActors.join(', ') : undefined,
+        folderId: file.parentId || rootFolders[0].id,
+        fileId: file.id,
+        tags: [],
+        isFavorite: false,
+        lastPositionSeconds: 0,
+        isCompleted: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      this.data.adultVideos.push(newVid);
+      importedCount++;
+    }
+
+    this.syncAdultVideosWithFolderStructure();
+    this.save(this.data);
+
+    return {
+      importedCount,
+      updatedCount,
+      totalVideos: this.data.adultVideos.length,
+      videos: this.data.adultVideos
+    };
+  }
+
   public createAdultVideo(data: Partial<AdultVideo> & { title: string }): AdultVideo {
     if (!this.data.adultVideos) this.data.adultVideos = [];
     const newVideo: AdultVideo = {

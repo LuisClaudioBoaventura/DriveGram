@@ -124,11 +124,6 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
     const dur = videoRef.current.duration || 0;
     const isFinished = isEnded || (dur > 0 && curr >= dur - 15);
     onUpdateProgress(video.id, curr, isFinished);
-
-    if (isEnded && hasNext && onSelectVideoInPlaylist) {
-      const nextVideo = playlist[currentIndex + 1];
-      onSelectVideoInPlaylist(nextVideo);
-    }
   };
 
   const handleToggleFav = async () => {
