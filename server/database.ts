@@ -67,6 +67,7 @@ export interface DatabaseSchema {
     telegramApiHash?: string;
     telegramSession?: string;
     lastSyncDate?: string;
+    lastMetadataMessageId?: number;
     metadataRetentionCount?: number;
   };
 }

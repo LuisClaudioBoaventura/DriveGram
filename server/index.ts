@@ -270,6 +270,7 @@ app.post('/api/files/upload', async (req, res) => {
 
   try {
     if (!req.file) {
+      console.warn('[Upload] Requisição recebida sem nenhum arquivo anexado.');
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
@@ -280,6 +281,8 @@ app.post('/api/files/upload', async (req, res) => {
     const courseId = req.body.courseId || undefined;
     const moduleId = req.body.moduleId || undefined;
     const lessonId = req.body.lessonId || undefined;
+
+    console.log(`[Upload] Arquivo recebido em disco: "${originalname}" (${(size / (1024 * 1024)).toFixed(2)} MB, tipo: ${mimetype}) -> ${tempFilePath}`);
 
     // Initialise cloud stage in tracker
     activeUploadsMap.set(uploadId, {
@@ -323,6 +326,7 @@ app.post('/api/files/upload', async (req, res) => {
       mimeType: req.file?.mimetype
     });
 
+    console.log(`[Upload] Enviando "${originalname}" para o Telegram Cloud...`);
     const startTime = Date.now();
     // Upload to Telegram Saved Messages (or fallback in demo mode)
     const telegramResult = await telegramService.uploadToSavedMessages(
@@ -374,6 +378,8 @@ app.post('/api/files/upload', async (req, res) => {
       moduleId,
       lessonId
     });
+
+    console.log(`[Upload] ✅ Arquivo enviado ao Telegram com sucesso (Msg ID: ${telegramResult.messageId}) e registrado como ${newFile.id}`);
 
     activeUploadsMap.set(uploadId, {
       uploadId,
@@ -4746,6 +4752,11 @@ const httpServer = app.listen(Number(PORT), '0.0.0.0', () => {
     }
   }, 3500);
 });
+
+// Configura timeouts estendidos para permitir uploads de arquivos grandes (até 2GB) sem queda de conexão
+httpServer.timeout = 1800000; // 30 minutos
+httpServer.keepAliveTimeout = 65000;
+httpServer.headersTimeout = 66000;
 
 // Captura erros de bind (ex: porta em uso) diretamente no servidor HTTP
 httpServer.on('error', (err: any) => {

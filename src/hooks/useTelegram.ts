@@ -126,13 +126,6 @@ export function useTelegram() {
       isSyncingActiveRef.current = true;
 
       fetchStatus();
-
-      // Reseta o flag "triggered" para permitir novo sync ao retomar a janela,
-      // mas usa o triggerStartupSync centralizado que tem debounce e mutex internos
-      startupSyncTriggered.current = false;
-      triggerStartupSync();
-
-      // Libera o flag após 5s (tempo suficiente para o sync completar ou falhar)
       setTimeout(() => { isSyncingActiveRef.current = false; }, 5000);
     };
 
