@@ -4,6 +4,14 @@ process.on('unhandledRejection', (reason: any) => {
   console.warn('[Process Warn] Unhandled rejection:', reason?.message || reason);
 });
 process.on('uncaughtException', (err: any) => {
+  // EADDRINUSE é irrecuperável — não adianta continuar sem escutar na porta
+  if (err.code === 'EADDRINUSE') {
+    const port = err.port || 5000;
+    console.error(`\n[DriveGram] ERRO: A porta ${port} já está em uso!`);
+    console.error(`[DriveGram] Feche o DriveGram anterior (Ctrl+C) ou rode o iniciar.bat novamente.`);
+    console.error(`[DriveGram] Para liberar manualmente: netstat -aon | findstr :${port}\n`);
+    process.exit(1);
+  }
   console.error('[Process Error] Uncaught exception:', err?.message || err);
 });
 
@@ -4717,7 +4725,7 @@ if (STATIC_DIR) {
   });
 }
 
-app.listen(Number(PORT), '0.0.0.0', () => {
+const httpServer = app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`🚀 DriveGram server running on port ${PORT}`);
   console.log(`📁 Uploads dir: ${UPLOADS_DIR}`);
   if (STATIC_DIR) console.log(`🌐 Frontend: ${STATIC_DIR}`);
@@ -4738,3 +4746,14 @@ app.listen(Number(PORT), '0.0.0.0', () => {
     }
   }, 3500);
 });
+
+// Captura erros de bind (ex: porta em uso) diretamente no servidor HTTP
+httpServer.on('error', (err: any) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n[DriveGram] ERRO: A porta ${PORT} já está em uso!`);
+    console.error(`[DriveGram] Feche o DriveGram anterior (Ctrl+C) ou rode o iniciar.bat novamente.\n`);
+    process.exit(1);
+  }
+  throw err;
+});
+
