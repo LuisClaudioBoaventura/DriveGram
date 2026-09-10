@@ -53,6 +53,20 @@ fn open_external_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn stop_backend_server(app: AppHandle) -> Result<bool, String> {
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut lock) = state.server_child.lock() {
+            if let Some(mut child) = lock.take() {
+                log::info!("DriveGram: stop_backend_server command invoked. Killing child PID {}", child.id());
+                let _ = child.kill();
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 fn find_server_bundle(app: &AppHandle) -> Option<PathBuf> {
     // 1. Check relative to resources directory
     if let Ok(res_dir) = app.path().resource_dir() {
@@ -256,7 +270,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![open_devtools, open_logs_folder, open_external_url])
+        .invoke_handler(tauri::generate_handler![open_devtools, open_logs_folder, open_external_url, stop_backend_server])
         .setup(|app| {
             let child = start_backend_server(app.handle());
             app.manage(AppState {

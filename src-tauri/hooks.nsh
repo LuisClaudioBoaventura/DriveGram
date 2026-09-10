@@ -1,10 +1,19 @@
 # NSIS hooks for DriveGram Windows Installer
 
+!macro NSIS_HOOK_PREINSTALL
+  # Encerra qualquer instância anterior do DriveGram ou do Node.js embutido
+  # antes de iniciar a extração dos novos binários, prevenindo "Error opening file for writing" (file lock).
+  ExecWait 'cmd.exe /C "taskkill /F /IM DriveGram.exe /T >nul 2>&1"'
+  ExecWait 'powershell -NoProfile -NonInteractive -Command "Get-Process -ErrorAction SilentlyContinue | Where-Object { `$_.ProcessName -match \"^(node|DriveGram)$\" -and (`$_.Path -like \"*DriveGram*\" -or `$_.Path -like \"*com.drivegram*\") } | Stop-Process -Force"'
+  # Pequena pausa para o sistema operacional Windows liberar os descritores de arquivo
+  Sleep 1000
+!macroend
+
 !macro NSIS_HOOK_PREUNINSTALL
   # Encerra qualquer processo em execução do DriveGram (e seus subprocessos, como o Node.js)
   # para liberar eventuais bloqueios de arquivo (file locks) nas pastas de dados e cache.
   ExecWait 'cmd.exe /C "taskkill /F /IM DriveGram.exe /T >nul 2>&1"'
-  ExecWait 'cmd.exe /C "taskkill /F /IM node.exe /FI \"WINDOWTITLE eq DriveGram*\" /T >nul 2>&1"'
+  ExecWait 'powershell -NoProfile -NonInteractive -Command "Get-Process -ErrorAction SilentlyContinue | Where-Object { `$_.ProcessName -match \"^(node|DriveGram)$\" -and (`$_.Path -like \"*DriveGram*\" -or `$_.Path -like \"*com.drivegram*\") } | Stop-Process -Force"'
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { isTauriPlatform, resolveApiUrl } from './mobileBridge.js';
 
-export const CURRENT_APP_VERSION = '1.7.0';
+export const CURRENT_APP_VERSION = '1.7.1';
 export const GITHUB_REPO = 'LuisClaudioBoaventura/DriveGram';
 
 export interface UpdateInfo {
@@ -160,6 +160,20 @@ export async function installTauriDesktopUpdate(
       }
     }
   });
+
+  // Antes de disparar o reinício/instalador, encerra o servidor backend (node.exe)
+  // para liberar o bloqueio de arquivo (file lock) no Windows
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('stop_backend_server');
+  } catch (_e) {
+    try {
+      await fetch(resolveApiUrl('/api/system/shutdown'), { method: 'POST' });
+    } catch (_err) {}
+  }
+
+  // Aguarda 500ms para liberação completa dos handles de arquivo
+  await new Promise((r) => setTimeout(r, 500));
 
   const { relaunch } = await import('@tauri-apps/plugin-process');
   await relaunch();

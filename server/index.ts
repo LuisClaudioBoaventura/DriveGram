@@ -124,7 +124,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.7.0',
+    version: '1.7.1',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1417,6 +1417,14 @@ app.post('/api/system/download-and-run-update', async (req, res) => {
 
 app.get('/api/system/update-progress', (_req, res) => {
   res.json(desktopUpdateState);
+});
+
+app.post('/api/system/shutdown', (_req, res) => {
+  res.json({ success: true, message: 'Encerrando servidor DriveGram...' });
+  setTimeout(() => {
+    console.log('[DriveGram] Recebida solicitação de encerramento via API. Encerrando processo...');
+    process.exit(0);
+  }, 400);
 });
 
 // ---------------- FILE DOWNLOAD ON DEMAND ----------------
