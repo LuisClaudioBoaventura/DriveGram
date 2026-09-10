@@ -1,12 +1,18 @@
 # NSIS hooks for DriveGram Windows Installer
 
 !macro NSIS_HOOK_PREINSTALL
-  # Encerra qualquer instância anterior do DriveGram ou do Node.js embutido
-  # antes de iniciar a extração dos novos binários, prevenindo "Error opening file for writing" (file lock).
+  # 1. Encerra o DriveGram.exe e todos os subprocessos (incluindo o node.exe filho)
   ExecWait 'cmd.exe /C "taskkill /F /IM DriveGram.exe /T >nul 2>&1"'
-  ExecWait 'powershell -NoProfile -NonInteractive -Command "Get-Process -ErrorAction SilentlyContinue | Where-Object { `$_.ProcessName -match \"^(node|DriveGram)$\" -and (`$_.Path -like \"*DriveGram*\" -or `$_.Path -like \"*com.drivegram*\") } | Stop-Process -Force"'
-  # Pequena pausa para o sistema operacional Windows liberar os descritores de arquivo
-  Sleep 1000
+
+  # 2. Kill incondicional de qualquer node.exe rodando dentro da pasta de instalação
+  #    (cobre o caso onde o node.exe ainda não foi liberado pelo process.exit)
+  ExecWait 'cmd.exe /C "wmic process where (name=''node.exe'' and ExecutablePath like ''%DriveGram%'') call terminate >nul 2>&1"'
+
+  # 3. Fallback: kill geral de node.exe pelo powershell filtrando pelo path de instalação
+  ExecWait 'powershell -NoProfile -NonInteractive -Command "Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like ''*DriveGram*'' -or $_.Path -like ''*Local\DriveGram*'' } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+
+  # 4. Pausa estendida — garante que o Windows libere todos os file handles antes da extração
+  Sleep 2000
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

@@ -146,6 +146,7 @@ export async function installTauriDesktopUpdate(
   let downloadedBytes = 0;
   let totalBytes = 0;
 
+  // Faz o download do update (sem instalar ainda)
   await updateObj.downloadAndInstall((event: any) => {
     if (event.event === 'Started') {
       totalBytes = event.data?.contentLength || 0;
@@ -161,23 +162,25 @@ export async function installTauriDesktopUpdate(
     }
   });
 
-  // Antes de disparar o reinício/instalador, encerra o servidor backend (node.exe)
-  // para liberar o bloqueio de arquivo (file lock) no Windows
+  // Encerra o servidor backend (node.exe) ANTES do Tauri lançar o instalador NSIS.
+  // Isso libera o file lock no node.exe no Windows, evitando "Error opening file for writing".
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('stop_backend_server');
   } catch (_e) {
+    // Fallback: pede ao servidor para se encerrar via API
     try {
       await fetch(resolveApiUrl('/api/system/shutdown'), { method: 'POST' });
     } catch (_err) {}
   }
 
-  // Aguarda 500ms para liberação completa dos handles de arquivo
-  await new Promise((r) => setTimeout(r, 500));
+  // Aguarda 1,5s para o Windows liberar completamente todos os file handles do node.exe
+  await new Promise((r) => setTimeout(r, 1500));
 
   const { relaunch } = await import('@tauri-apps/plugin-process');
   await relaunch();
 }
+
 
 /**
  * Starts APK download and prompts installation on Android

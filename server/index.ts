@@ -1391,20 +1391,35 @@ app.post('/api/system/download-and-run-update', async (req, res) => {
       desktopUpdateState.status = 'ready';
       desktopUpdateState.isDownloading = false;
 
-      // Inicia o instalador baixado
+      // Lança o instalador e encerra o Node.js ANTES do NSIS começar a extrair arquivos.
+      // Ordem correta para evitar "Error opening file for writing: node.exe" (file lock):
+      //   1. Aguarda 1s para o frontend processar a resposta status='ready'
+      //   2. Lança o instalador NSIS como processo totalmente independente (detached)
+      //   3. Encerra o Node.js IMEDIATAMENTE com process.exit(0)
+      //      → node.exe libera o file lock antes do NSIS tentar sobrescrever o arquivo
       if (process.platform === 'win32') {
-        setTimeout(() => {
+        setTimeout(async () => {
           try {
-            const child = spawn(targetPath, [], { detached: true, stdio: 'ignore' });
+            // Usa cmd /c start para garantir que o NSIS seja completamente desvinculado
+            // do processo Node atual — evita herança de handles de arquivo abertos.
+            const child = spawn('cmd.exe', ['/c', 'start', '', '/b', targetPath], {
+              detached: true,
+              stdio: 'ignore',
+              windowsHide: false
+            });
             child.unref();
-            // Encerra o servidor Node após 2s para liberar o lock no node.exe.
-            // O NSIS precisa sobrescrever node.exe durante a instalação, e isso só é
-            // possível se o processo Node não estiver mais rodando e segurando o arquivo.
-            setTimeout(() => process.exit(0), 2000);
+
+            // Pequena pausa para o SO registrar o spawn antes do exit
+            await new Promise((r) => setTimeout(r, 200));
+
+            // Encerra o Node IMEDIATAMENTE — libera o file lock no node.exe
+            // O NSIS_HOOK_PREINSTALL já fará um kill adicional como segurança
+            console.log('[DriveGram Updater] Encerrando servidor Node para liberar file lock. NSIS iniciado.');
+            process.exit(0);
           } catch (e) {
             console.error('[DriveGram Updater] Erro ao iniciar instalador:', e);
           }
-        }, 800);
+        }, 1000);
       }
     } catch (err: any) {
       console.error('[DriveGram Updater] Erro ao baixar atualização:', err);
