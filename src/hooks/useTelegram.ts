@@ -22,7 +22,40 @@ export function useTelegram() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const startupSyncTriggered = useRef(false);
+  const startupSyncInProgress = useRef(false);
+  const startupSyncDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const triggerStartupSync = useCallback(() => {
+    // Ignora se já foi disparado ou está em progresso
+    if (startupSyncTriggered.current || startupSyncInProgress.current) return;
+
+    // Debounce de 500ms para absorver duplas chamadas do React StrictMode em dev
+    if (startupSyncDebounceTimer.current) clearTimeout(startupSyncDebounceTimer.current);
+    startupSyncDebounceTimer.current = setTimeout(() => {
+      if (startupSyncTriggered.current || startupSyncInProgress.current) return;
+      startupSyncTriggered.current = true;
+      startupSyncInProgress.current = true;
+
+      fetch('/api/telegram/startup-sync', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      })
+        .then(async r => {
+          if (!r.ok) return null;
+          return r.json().catch(() => null);
+        })
+        .then(syncRes => {
+          if (syncRes && syncRes.success) {
+            console.log('[DriveGram] Sincronização ativa concluída:', syncRes.message);
+            window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: syncRes }));
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          startupSyncInProgress.current = false;
+        });
+    }, 500);
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -30,29 +63,14 @@ export function useTelegram() {
       if (res.ok) {
         const data = await res.json();
         setAuthState(data);
-        if (data.isConnected && !startupSyncTriggered.current) {
-          startupSyncTriggered.current = true;
-          fetch('/api/telegram/startup-sync', { 
-            method: 'POST',
-            headers: { 'Accept': 'application/json' }
-          })
-            .then(async r => {
-              if (!r.ok) return null;
-              return r.json().catch(() => null);
-            })
-            .then(syncRes => {
-              if (syncRes && syncRes.success) {
-                console.log('[DriveGram] Sincronização ativa concluída:', syncRes.message);
-                window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: syncRes }));
-              }
-            })
-            .catch(() => {});
+        if (data.isConnected) {
+          triggerStartupSync();
         }
       }
     } catch (e) {
       console.warn('Backend offline, using local state');
     }
-  }, []);
+  }, [triggerStartupSync]);
 
   useEffect(() => {
     fetchStatus();
@@ -108,25 +126,16 @@ export function useTelegram() {
       isSyncingActiveRef.current = true;
 
       fetchStatus();
-      fetch('/api/telegram/startup-sync', { 
-        method: 'POST',
-        headers: { 'Accept': 'application/json' }
-      })
-        .then(async r => {
-          if (!r.ok) return null;
-          return r.json().catch(() => null);
-        })
-        .then(syncRes => {
-          if (syncRes && syncRes.success && (syncRes.details?.updated || syncRes.details?.addedFiles > 0)) {
-            console.log('[DriveGram Lifecycle Sync] Dados atualizados em segundo plano:', syncRes.message);
-            window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: syncRes }));
-          }
-        })
-        .catch(() => {})
-        .finally(() => {
-          isSyncingActiveRef.current = false;
-        });
+
+      // Reseta o flag "triggered" para permitir novo sync ao retomar a janela,
+      // mas usa o triggerStartupSync centralizado que tem debounce e mutex internos
+      startupSyncTriggered.current = false;
+      triggerStartupSync();
+
+      // Libera o flag após 5s (tempo suficiente para o sync completar ou falhar)
+      setTimeout(() => { isSyncingActiveRef.current = false; }, 5000);
     };
+
 
     window.addEventListener('focus', handleResumeOrFocus);
     const handleVisibility = () => {

@@ -877,6 +877,7 @@ class TelegramService {
    * Garante reconciliação antes de qualquer backup e evita race conditions.
    */
   public async performStartupMetadataSync(): Promise<{ success: boolean; message: string; details?: any }> {
+    // Mutex: se já há uma sync em andamento, aguarda ela terminar e retorna o mesmo resultado
     if (this.activeStartupSyncPromise) {
       return this.activeStartupSyncPromise;
     }
@@ -917,13 +918,30 @@ class TelegramService {
           };
         }
 
-        const buffer = await client.downloadMedia(latestMsg) as Buffer;
+        // Faz o download com timeout de 60s para evitar que uma conexão travada
+        // deixe o servidor pendurado indefinidamente (e subsequent requests com ERR_EMPTY_RESPONSE)
+        const downloadTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout ao baixar manifesto do Telegram (60s)')), 60_000)
+        );
+        const buffer = await Promise.race([
+          client.downloadMedia(latestMsg) as Promise<Buffer>,
+          downloadTimeout
+        ]);
+
         if (!buffer) {
           return { success: false, message: 'Falha ao baixar mensagem de metadados do Telegram.' };
         }
 
-        const manifestText = buffer.toString('utf-8');
-        const remoteManifest: DriveGramSyncManifest = JSON.parse(manifestText);
+        const manifestText = (buffer as Buffer).toString('utf-8');
+
+        let remoteManifest: DriveGramSyncManifest;
+        try {
+          remoteManifest = JSON.parse(manifestText);
+        } catch (_parseErr) {
+          console.warn('[DriveGram Startup Sync] Manifesto corrompido ou em formato inválido. Ignorando backup remoto.');
+          this.isInitialSyncCompleted = true;
+          return { success: false, message: 'Manifesto de metadados corrompido no Telegram. Recomendado: faça um novo backup.' };
+        }
 
         const reconcileResult = db.reconcileManifest(remoteManifest);
         console.log(`[DriveGram Startup Sync] Reconciliação concluída: +${reconcileResult.addedFiles} arquivos, +${reconcileResult.addedFolders} pastas.`);
@@ -948,7 +966,7 @@ class TelegramService {
           details: reconcileResult
         };
       } catch (e: any) {
-        console.error('[DriveGram Startup Sync] Erro durante a sincronização de inicialização:', e);
+        console.error('[DriveGram Startup Sync] Erro durante a sincronização de inicialização:', e?.message || e);
         return { success: false, message: e.message || 'Erro durante a sincronização de inicialização' };
       } finally {
         this.activeStartupSyncPromise = null;
