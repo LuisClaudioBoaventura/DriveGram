@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Film, X, Folder, Sparkles, Image as ImageIcon, Check, Flame, LockKeyhole, Layers, Video } from 'lucide-react';
-import { FolderItem, DriveItem } from '../types/index.js';
+import { FolderItem, DriveItem, AdultPerformer } from '../types/index.js';
 import { getLibraryEligibleFolders } from '../utils/libraryFolderUtils.js';
+import { PerformerAutocompleteInput } from './PerformerAutocompleteInput.js';
 
 interface NewAdultVideoModalProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface NewAdultVideoModalProps {
   folders: FolderItem[];
   allFiles?: DriveItem[];
   categories: string[];
+  performersList?: AdultPerformer[];
   onCreateAdultVideo: (params: {
     folderId: string;
     title: string;
@@ -38,6 +40,7 @@ export const NewAdultVideoModal: React.FC<NewAdultVideoModalProps> = ({
   folders,
   allFiles = [],
   categories,
+  performersList = [],
   onCreateAdultVideo,
   onAddCategory
 }) => {
@@ -262,12 +265,11 @@ export const NewAdultVideoModal: React.FC<NewAdultVideoModalProps> = ({
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
                 Elenco / Performers
               </label>
-              <input
-                type="text"
+              <PerformerAutocompleteInput
                 value={performers}
-                onChange={(e) => setPerformers(e.target.value)}
+                onChange={setPerformers}
+                performersList={performersList}
                 placeholder="Ex: Nome 1, Nome 2"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
               />
             </div>
 

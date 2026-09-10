@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Film, X, Upload, Link as LinkIcon, Image as ImageIcon, Save, Check, Flame, LockKeyhole, Camera, Play, Pause, RotateCcw } from 'lucide-react';
-import { AdultVideo, DriveItem } from '../types/index.js';
+import { AdultVideo, DriveItem, AdultPerformer } from '../types/index.js';
+import { PerformerAutocompleteInput } from './PerformerAutocompleteInput.js';
 
 interface EditAdultVideoModalProps {
   isOpen: boolean;
@@ -8,6 +9,7 @@ interface EditAdultVideoModalProps {
   video: AdultVideo | null;
   categories: string[];
   allFiles?: DriveItem[];
+  performersList?: AdultPerformer[];
   onSave: (updated: AdultVideo) => Promise<void>;
   onAddCategory?: (category: string) => Promise<void>;
 }
@@ -27,6 +29,7 @@ export const EditAdultVideoModal: React.FC<EditAdultVideoModalProps> = ({
   video,
   categories,
   allFiles = [],
+  performersList = [],
   onSave,
   onAddCategory
 }) => {
@@ -267,12 +270,11 @@ export const EditAdultVideoModal: React.FC<EditAdultVideoModalProps> = ({
                   <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                     Elenco / Performers
                   </label>
-                  <input
-                    type="text"
+                  <PerformerAutocompleteInput
                     value={performers}
-                    onChange={(e) => setPerformers(e.target.value)}
+                    onChange={setPerformers}
+                    performersList={performersList}
                     placeholder="Ex: Nome 1, Nome 2"
-                    className="w-full px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
                   />
                 </div>
 

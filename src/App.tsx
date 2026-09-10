@@ -1530,6 +1530,7 @@ export function App() {
         folders={fs.allFolders}
         allFiles={fs.allFiles}
         categories={adultVault.categories}
+        performersList={adultVault.performers}
         onAddCategory={adultVault.addCategory}
         onCreateAdultVideo={async (data) => {
           const newVid = await adultVault.createAdultVideoFromFolder(data);
@@ -1550,6 +1551,7 @@ export function App() {
           video={editingAdultVideo}
           categories={adultVault.categories}
           allFiles={fs.allFiles}
+          performersList={adultVault.performers}
           onAddCategory={adultVault.addCategory}
           onSave={async (updated) => {
             await adultVault.updateAdultVideo(updated);
