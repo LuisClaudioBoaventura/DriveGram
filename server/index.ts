@@ -124,7 +124,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.6.7',
+    version: '1.7.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -3793,6 +3793,16 @@ app.post('/api/adult-videos/from-folder', (req, res) => {
   } catch (e: any) {
     console.error('Error creating adult videos from folder:', e);
     res.status(500).json({ error: e.message || 'Erro ao criar vídeos da pasta' });
+  }
+});
+
+app.post('/api/adult-videos/sync-root', (_req, res) => {
+  try {
+    const result = db.syncAdultVideosFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing adult videos from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar pastas do Red Locker' });
   }
 });
 

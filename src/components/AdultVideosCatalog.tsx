@@ -22,7 +22,8 @@ import {
   User,
   Users,
   Globe2,
-  Download
+  Download,
+  RefreshCw
 } from 'lucide-react';
 import { AdultVideo, AdultPerformer, FolderItem, DriveItem } from '../types/index.js';
 import { PerformerDetailModal } from './PerformerDetailModal.js';
@@ -46,6 +47,8 @@ interface AdultVideosCatalogProps {
   onDeleteVideo?: (id: string) => void;
   onLockVault: () => void;
   onOpenSecuritySettings?: () => void;
+  onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalVideos: number } | void>;
+  onShowToast?: (message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
 export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
@@ -65,7 +68,9 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
   onEditVideo,
   onDeleteVideo,
   onLockVault,
-  onOpenSecuritySettings
+  onOpenSecuritySettings,
+  onSyncRootFolder,
+  onShowToast
 }) => {
   const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
   const [activeCatalogTab, setActiveCatalogTab] = useState<'videos' | 'performers'>('videos');
@@ -74,9 +79,32 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
   const [performerFilter, setPerformerFilter] = useState<'all' | 'favorites' | 'female' | 'male' | 'trans'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedPerformerForDetail, setSelectedPerformerForDetail] = useState<AdultPerformer | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isDiscreetMode, setIsDiscreetMode] = useState<boolean>(() => {
     return localStorage.getItem('drivegram_adult_discreet') === 'true';
   });
+
+  const handleSync = async () => {
+    if (!onSyncRootFolder || isSyncing) return;
+    setIsSyncing(true);
+    try {
+      if (onShowToast) onShowToast('⚡ Varrendo pasta Red Locker e sincronizando vídeos...', 'info');
+      const res = await onSyncRootFolder();
+      if (res && typeof res === 'object') {
+        if (res.importedCount > 0) {
+          if (onShowToast) onShowToast(`✨ Sincronização concluída: ${res.importedCount} novos vídeos importados!`, 'success');
+        } else if (res.updatedCount > 0) {
+          if (onShowToast) onShowToast(`✨ Sincronização concluída: ${res.updatedCount} vídeos atualizados com elenco!`, 'success');
+        } else {
+          if (onShowToast) onShowToast('✅ Catálogo já está 100% atualizado com o Drive!', 'info');
+        }
+      }
+    } catch (_) {
+      if (onShowToast) onShowToast('Erro ao sincronizar pastas do Red Locker.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const toggleDiscreetMode = () => {
     const next = !isDiscreetMode;
@@ -181,11 +209,23 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
                 </button>
               )}
 
+              {activeCatalogTab === 'videos' && onSyncRootFolder && (
+                <button
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-rose-600/30 hover:bg-rose-600/50 border border-rose-400/40 text-rose-100 hover:text-white text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                  title="Detectar e sincronizar todas as pastas e vídeos do Red Locker no Drive automaticamente"
+                >
+                  <RefreshCw className={`w-4 h-4 text-rose-300 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                </button>
+              )}
+
               {favoriteVideos.length > 0 && activeCatalogTab === 'videos' && (
                 <button
-                  onClick={() => handlePlayAllFavorites(false)}
+                  onClick={() => setSelectedCategory('favorites')}
                   className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all active:scale-95 shadow-sm"
-                  title="Reproduzir todas as cenas e vídeos favoritados em sequência"
+                  title="Ver coleção de vídeos favoritados"
                 >
                   <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
                   <span>Favoritos ({favoriteVideos.length})</span>
@@ -277,32 +317,23 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
                   </div>
                   <div>
                     <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-black uppercase tracking-wider">
-                      Playlist Única Agrupada
+                      Coleção Especial
                     </span>
                     <h2 className="text-xl sm:text-2xl font-black text-white mt-0.5">
-                      Playlist de Favoritos ({favoriteVideos.length})
+                      Vídeos Favoritados ({favoriteVideos.length})
                     </h2>
                     <p className="text-xs text-gray-300 max-w-xl mt-1">
-                      Todos os vídeos favoritados em qualquer pasta do Red Locker reunidos em um único lugar para reprodução sequencial ou contínua.
+                      Todos os vídeos que você marcou com estrela no Red Locker reunidos nesta coleção.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto justify-center">
                   <button
-                    onClick={() => handlePlayAllFavorites(false)}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 text-black font-black text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-95"
-                  >
-                    <Play className="w-4 h-4 fill-current" />
-                    <span>Reproduzir Todos</span>
-                  </button>
-                  <button
-                    onClick={() => handlePlayAllFavorites(true)}
+                    onClick={() => setSelectedCategory('all')}
                     className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all active:scale-95"
-                    title="Reproduzir em ordem aleatória"
                   >
-                    <Shuffle className="w-3.5 h-3.5" />
-                    <span>Aleatório</span>
+                    <span>← Ver Todo o Catálogo</span>
                   </button>
                 </div>
               </div>
@@ -483,6 +514,60 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
             {/* Video Grid */}
             {filteredVideos.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {/* ⭐ Card Especial de Favoritos */}
+                {selectedCategory === 'all' && favoriteVideos.length > 0 && !searchQuery.trim() && (
+                  <div
+                    onClick={() => setSelectedCategory('favorites')}
+                    className="group relative flex flex-col justify-between rounded-2xl overflow-hidden cursor-pointer bg-gradient-to-br from-amber-950 via-rose-950/80 to-slate-950 border-2 border-amber-500/50 hover:border-amber-400 p-4 shadow-xl hover:shadow-2xl hover:shadow-amber-500/20 transition-all duration-300 select-none hover:-translate-y-1"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shadow-inner">
+                          <Star className="w-5 h-5 fill-amber-400" />
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black uppercase tracking-wider">
+                          ⭐ Favoritos
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="text-sm sm:text-base font-black text-white leading-tight mt-2">
+                          Vídeos Favoritados
+                        </h3>
+                        <p className="text-[11px] text-amber-200/80 font-medium">
+                          {favoriteVideos.length} cena{favoriteVideos.length > 1 ? 's' : ''} com estrela
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Mini stack preview of favorite covers */}
+                    <div className="my-3 flex items-center -space-x-3 overflow-hidden py-1">
+                      {favoriteVideos.slice(0, 4).map((fav, i) => (
+                        <img
+                          key={fav.id}
+                          src={fav.coverImage || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60'}
+                          alt={fav.title}
+                          className={`w-11 h-14 rounded-lg object-cover border-2 border-gray-950 shadow-md group-hover:scale-105 transition-transform ${isDiscreetMode ? 'blur-xs' : ''}`}
+                          style={{ zIndex: 10 - i }}
+                        />
+                      ))}
+                      {favoriteVideos.length > 4 && (
+                        <div
+                          className="w-11 h-14 rounded-lg bg-gray-900 border-2 border-gray-950 shadow-md flex items-center justify-center text-[10px] font-black text-amber-300"
+                          style={{ zIndex: 1 }}
+                        >
+                          +{favoriteVideos.length - 4}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between text-[11px] font-bold text-amber-300 group-hover:text-amber-200">
+                      <span>Acessar Coleção</span>
+                      <span>→</span>
+                    </div>
+                  </div>
+                )}
+
                 {filteredVideos.map(video => (
                   <div
                     key={video.id}

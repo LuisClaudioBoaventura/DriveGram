@@ -33,6 +33,7 @@ import { PerformerDetailModal } from './PerformerDetailModal.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
+import { captureVideoMidFrame } from '../utils/videoFrameCapture.js';
 
 interface AdultPlayerViewProps {
   video: AdultVideo;
@@ -124,11 +125,6 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
     const dur = videoRef.current.duration || 0;
     const isFinished = isEnded || (dur > 0 && curr >= dur - 15);
     onUpdateProgress(video.id, curr, isFinished);
-
-    if (isEnded && hasNext && onSelectVideoInPlaylist) {
-      const nextVideo = playlist[currentIndex + 1];
-      onSelectVideoInPlaylist(nextVideo);
-    }
   };
 
   const handleToggleFav = async () => {
@@ -159,19 +155,41 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
   };
 
   const handleCaptureFrameAsCover = async () => {
-    if (!videoRef.current || !onUpdateCoverImage) return;
+    if (!onUpdateCoverImage) return;
     try {
-      const v = videoRef.current;
-      const canvas = document.createElement('canvas');
-      canvas.width = v.videoWidth || 640;
-      canvas.height = v.videoHeight || 360;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      await onUpdateCoverImage(video.id, dataUrl);
-      setJustCapturedCover(true);
-      setTimeout(() => setJustCapturedCover(false), 3000);
+      const streamUrl = resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`);
+      let dataUrl: string | null = null;
+
+      // 1. Tenta capturar diretamente do elemento <video> em reprodução se estiver disponível
+      if (videoRef.current) {
+        try {
+          const v = videoRef.current;
+          const canvas = document.createElement('canvas');
+          canvas.width = v.videoWidth || 640;
+          canvas.height = v.videoHeight || 360;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+            dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+          }
+        } catch (canvasErr) {
+          console.warn('[AdultPlayerView] Direct canvas capture was tainted, attempting fallback capture:', canvasErr);
+        }
+      }
+
+      // 2. Se a captura direta falhou por política de segurança de canvas, usa captureVideoMidFrame com crossOrigin explícito
+      if (!dataUrl && streamUrl) {
+        const currentProgressPct = videoRef.current?.duration 
+          ? (videoRef.current.currentTime / videoRef.current.duration) 
+          : 0.5;
+        dataUrl = await captureVideoMidFrame(streamUrl, currentProgressPct);
+      }
+
+      if (dataUrl) {
+        await onUpdateCoverImage(video.id, dataUrl);
+        setJustCapturedCover(true);
+        setTimeout(() => setJustCapturedCover(false), 3000);
+      }
     } catch (err) {
       console.error('Error capturing video frame as cover:', err);
     }
@@ -319,6 +337,7 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
                 ref={videoRef}
                 key={videoFile?.id || video.fileId}
                 src={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
+                crossOrigin="anonymous"
                 controls
                 autoPlay
                 preload="auto"

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AdultVideo, AdultPerformer } from '../types/index.js';
+import { captureVideoMidFrame } from '../utils/videoFrameCapture.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface VaultStatus {
   isConfigured: boolean;
@@ -221,6 +223,57 @@ export function useAdultVault() {
       console.error('Error creating adult video from folder:', e);
     }
     return null;
+  };
+
+  const syncFromDriveRoot = async (): Promise<{ importedCount: number; updatedCount: number; totalVideos: number }> => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/adult-videos/sync-root', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.videos)) {
+          setVideos(data.videos);
+        } else {
+          await fetchVideos();
+        }
+
+        // Extração em segundo plano de capas via frame aos 50% para vídeos sem capa customizada
+        setTimeout(async () => {
+          const vids: AdultVideo[] = Array.isArray(data.videos) ? data.videos : [];
+          const defaultUnsplash = 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23';
+          const candidates = vids.filter((v: AdultVideo) => 
+            v.fileId && 
+            (!v.coverImage || v.coverImage.includes(defaultUnsplash))
+          );
+
+          for (const cand of candidates.slice(0, 10)) {
+            try {
+              const streamUrl = resolveApiUrl(`/api/stream/${cand.fileId}`);
+              const midFrame = await captureVideoMidFrame(streamUrl, 0.5);
+              if (midFrame && midFrame.startsWith('data:image/')) {
+                await updateAdultVideo({ ...cand, coverImage: midFrame });
+              }
+            } catch (_) {
+              // Silently ignore if video frame cannot be extracted
+            }
+          }
+        }, 600);
+
+        return {
+          importedCount: data.importedCount || 0,
+          updatedCount: data.updatedCount || 0,
+          totalVideos: data.totalVideos || 0
+        };
+      }
+    } catch (e) {
+      console.error('Error syncing adult videos from root folder:', e);
+    } finally {
+      setLoading(false);
+    }
+    return { importedCount: 0, updatedCount: 0, totalVideos: 0 };
   };
 
   const updateAdultVideo = async (video: AdultVideo): Promise<void> => {
@@ -474,6 +527,7 @@ export function useAdultVault() {
     fetchCategories,
     fetchVaultStatus,
     createAdultVideoFromFolder,
+    syncFromDriveRoot,
     updateAdultVideo,
     deleteAdultVideo,
     updateAdultVideoProgress,

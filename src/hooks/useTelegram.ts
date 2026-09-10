@@ -32,10 +32,16 @@ export function useTelegram() {
         setAuthState(data);
         if (data.isConnected && !startupSyncTriggered.current) {
           startupSyncTriggered.current = true;
-          fetch('/api/telegram/startup-sync', { method: 'POST' })
-            .then(r => r.json())
+          fetch('/api/telegram/startup-sync', { 
+            method: 'POST',
+            headers: { 'Accept': 'application/json' }
+          })
+            .then(async r => {
+              if (!r.ok) return null;
+              return r.json().catch(() => null);
+            })
             .then(syncRes => {
-              if (syncRes.success) {
+              if (syncRes && syncRes.success) {
                 console.log('[DriveGram] Sincronização ativa concluída:', syncRes.message);
                 window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: syncRes }));
               }
@@ -91,24 +97,35 @@ export function useTelegram() {
   }, [fetchStatus]);
 
   // Sincronização por Ciclo de Vida: verifica alterações ao focar a janela ou retomar o aplicativo (Desktop e Celular)
+  const isSyncingActiveRef = useRef(false);
   useEffect(() => {
     let lastResumeSync = 0;
     const handleResumeOrFocus = () => {
       const now = Date.now();
-      // Debounce para não disparar mais de uma vez a cada 15 segundos
-      if (now - lastResumeSync < 15000) return;
+      // Debounce para não disparar mais de uma vez a cada 30 segundos
+      if (now - lastResumeSync < 30000 || isSyncingActiveRef.current) return;
       lastResumeSync = now;
+      isSyncingActiveRef.current = true;
 
       fetchStatus();
-      fetch('/api/telegram/startup-sync', { method: 'POST' })
-        .then(r => r.json())
+      fetch('/api/telegram/startup-sync', { 
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      })
+        .then(async r => {
+          if (!r.ok) return null;
+          return r.json().catch(() => null);
+        })
         .then(syncRes => {
-          if (syncRes.success && (syncRes.details?.updated || syncRes.details?.addedFiles > 0)) {
+          if (syncRes && syncRes.success && (syncRes.details?.updated || syncRes.details?.addedFiles > 0)) {
             console.log('[DriveGram Lifecycle Sync] Dados atualizados em segundo plano:', syncRes.message);
             window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: syncRes }));
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          isSyncingActiveRef.current = false;
+        });
     };
 
     window.addEventListener('focus', handleResumeOrFocus);
