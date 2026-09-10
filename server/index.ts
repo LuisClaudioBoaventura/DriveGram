@@ -235,7 +235,29 @@ app.get(['/api/uploads/progress/:id', '/api/upload-progress/:id'], (req, res) =>
   }
 });
 
-app.post('/api/files/upload', upload.single('file'), async (req, res) => {
+app.post('/api/files/upload', async (req, res) => {
+  // Processa o upload com multer manualmente para capturar erros do Multer (ex: arquivo grande demais)
+  // dentro do handler e retornar respostas HTTP adequadas em vez do 500 genérico do Express.
+  await new Promise<void>((resolve) => {
+    upload.single('file')(req as any, res as any, (err) => {
+      if (err) {
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+        const message =
+          err.code === 'LIMIT_FILE_SIZE'
+            ? `Arquivo muito grande. Limite máximo: 2GB.`
+            : `Erro ao processar o arquivo: ${err.message}`;
+        console.error('[Upload] Multer error:', err.message, err.code);
+        res.status(status).json({ error: message });
+        // Mark as responded so the main handler skips execution
+        (req as any).__multerError = true;
+      }
+      resolve();
+    });
+  });
+
+  // If multer already responded with an error, stop processing
+  if ((req as any).__multerError) return;
+
   const uploadId = (req.body.uploadId as string) || ('up-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5));
 
   try {
@@ -317,6 +339,12 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
       }
     );
 
+    // Se o upload para o Telegram falhou (ex: não conectado, sessão expirada),
+    // lança um erro descritivo para o catch tratar e retornar 500 com mensagem clara.
+    if (!telegramResult.success && telegramResult.error) {
+      throw new Error(telegramResult.error);
+    }
+
     // Register in database
     const newFile = db.createFile({
       name: originalname,
@@ -355,9 +383,23 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
       activeUploadsMap.delete(uploadId);
     }, 15000);
 
+    // Limpa o arquivo temporário do disco após salvar com sucesso no Telegram
+    try {
+      if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    } catch (_unlinkErr) {}
+
     res.status(201).json(newFile);
   } catch (e: any) {
-    console.error('Upload handler error:', e);
+    // Log detalhado com stack trace para facilitar diagnóstico
+    console.error('[Upload] Erro no handler de upload:', e?.message || e);
+    if (e?.stack) console.error('[Upload] Stack trace:', e.stack);
+
+    // Limpa o arquivo temporário do disco em caso de erro (evita acúmulo de lixo)
+    try {
+      const tmpPath = req.file?.path;
+      if (tmpPath && fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    } catch (_unlinkErr) {}
+
     activeUploadsMap.set(uploadId, {
       uploadId,
       fileName: req.file?.originalname || 'Arquivo',
@@ -366,7 +408,7 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
       progress: 0,
       speed: 'Erro',
       stage: 'error',
-      stageLabel: 'Falha no envio',
+      stageLabel: e?.message || 'Falha no envio',
       updatedAt: Date.now()
     });
     res.status(500).json({ error: e.message || 'Erro ao processar upload' });
