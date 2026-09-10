@@ -41,13 +41,17 @@ export function useCourses() {
     }
   };
 
+  // Helper: sort by title using natural alphanumeric order
+  const naturalSort = <T extends { title: string }>(arr: T[]): T[] =>
+    [...arr].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }));
+
   // Find next lesson in the course hierarchy
   const getNextLesson = useCallback((): Lesson | null => {
     if (!activeCourse || !activeLesson) return null;
     
     let foundCurrent = false;
-    for (const module of activeCourse.modules) {
-      for (const lesson of module.lessons) {
+    for (const module of naturalSort(activeCourse.modules)) {
+      for (const lesson of naturalSort(module.lessons)) {
         if (foundCurrent) {
           return lesson;
         }
@@ -64,8 +68,8 @@ export function useCourses() {
     if (!activeCourse || !activeLesson) return null;
 
     let previous: Lesson | null = null;
-    for (const module of activeCourse.modules) {
-      for (const lesson of module.lessons) {
+    for (const module of naturalSort(activeCourse.modules)) {
+      for (const lesson of naturalSort(module.lessons)) {
         if (lesson.id === activeLesson.id) {
           return previous;
         }

@@ -1678,7 +1678,9 @@ export const CourseView: React.FC<CourseViewProps> = ({
 
             {/* Modules and Lessons Accordion with Bolinha Verde Indicator */}
             <div className="lg:flex-1 lg:overflow-y-auto p-3 space-y-3 max-h-[500px] lg:max-h-none">
-              {course.modules.map((module) => {
+              {[...course.modules]
+                .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }))
+                .map((module) => {
                 const isOpen = openModules[module.id] ?? true;
                 const modCompleted = module.lessons.filter(l => l.isCompleted).length;
                 return (
@@ -1776,7 +1778,9 @@ export const CourseView: React.FC<CourseViewProps> = ({
                           dragOverModuleId === module.id ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''
                         }`}
                       >
-                        {module.lessons.map((lesson) => {
+                        {[...module.lessons]
+                          .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }))
+                          .map((lesson) => {
                           const isActive = activeLesson?.id === lesson.id;
                           const isBeingDragged = draggedLessonId === lesson.id;
                           const isDragTarget = dragOverLessonId === lesson.id;
