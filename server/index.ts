@@ -328,6 +328,7 @@ app.post('/api/files/upload', async (req, res) => {
 
     console.log(`[Upload] Enviando "${originalname}" para o Telegram Cloud...`);
     const startTime = Date.now();
+    let lastLoggedPercent = 0;
     // Upload to Telegram Saved Messages (or fallback in demo mode)
     const telegramResult = await telegramService.uploadToSavedMessages(
       tempFilePath,
@@ -337,6 +338,12 @@ app.post('/api/files/upload', async (req, res) => {
         const transferred = Math.round((percent / 100) * size);
         const elapsedSec = (Date.now() - startTime) / 1000;
         const speedMBs = elapsedSec > 0 ? ((transferred / (1024 * 1024)) / elapsedSec).toFixed(1) : '1.0';
+
+        if (percent - lastLoggedPercent >= 10 || percent === 100) {
+          lastLoggedPercent = percent;
+          console.log(`[Upload] Progresso de "${originalname}": ${percent}% (${(transferred / (1024 * 1024)).toFixed(1)} MB / ${(size / (1024 * 1024)).toFixed(1)} MB, ${speedMBs} MB/s)`);
+        }
+
         activeUploadsMap.set(uploadId, {
           uploadId,
           fileName: originalname,

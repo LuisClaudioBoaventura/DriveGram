@@ -3751,12 +3751,12 @@ class Database {
       this.data.settings = initialDemoData.settings;
     }
     this.data.settings.metadataRetentionCount = Math.max(1, count || 1);
-    this.save(this.data);
+    this.save(this.data, false);
   }
 
   public updateSettings(settings: Partial<DatabaseSchema['settings']>) {
     this.data.settings = { ...this.data.settings, ...settings };
-    this.save(this.data);
+    this.save(this.data, false);
   }
 }
 
