@@ -64,13 +64,22 @@ Toda vez que houver **incremento de versão** (PATCH, MINOR ou MAJOR), após rea
    git push origin vx.y.z
    ```
 
-### ⚠️ Por que a tag é mandatória a cada versão?
-O workflow automatizado de CI/CD do GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) é disparado **exclusivamente** por tags com o padrão `v*`:
-```yaml
-on:
-  push:
-    tags:
-      - 'v*'
-```
-Se a tag não for criada e enviada para o GitHub, o GitHub Actions **não compilará os binários de produção** e o novo release com o executável Windows (`DriveGram-Setup.exe`) e o Android (`DriveGram.apk`) **não será publicado** para os usuários.
+### ⚠️ Como funciona o fluxo de Releases (Desktop vs Android)?
+O projeto adota um fluxo de release **desacoplado** para garantir estabilidade e velocidade:
+
+1. **Desktop (Windows) — Imediato via Tag `v*`**:
+   - O workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) é disparado automaticamente pela tag `v*`.
+   - Ele compila o instalador Windows (`DriveGram_*_x64-setup.exe`), gera o manifesto `latest.json` do Tauri e publica a release no GitHub.
+   
+2. **Android (APK) — Sob Demanda após Homologação**:
+   - Para evitar quebras causadas por novidades pensadas primeiro para PC, o APK **não é publicado às cegas**.
+   - Quando o app mobile for testado e validado no Android, dispara-se o workflow dedicado ([`.github/workflows/release-android.yml`](.github/workflows/release-android.yml)):
+     - Pela interface do GitHub Actions (**Release DriveGram Android (APK)** -> *Run workflow* informando a tag, ex: `v1.7.8`).
+     - Ou via terminal com GitHub CLI:
+       ```bash
+       gh workflow run release-android.yml -f release_tag=vx.y.z
+       ```
+   - O workflow compila o APK e anexa o arquivo `DriveGram.apk` diretamente na release existente.
+   - O sistema de auto-update do app no Android detecta o asset `.apk` e disponibiliza a atualização apenas quando ela estiver presente no GitHub.
+
 

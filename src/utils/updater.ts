@@ -77,9 +77,16 @@ export async function checkForAppUpdates(): Promise<UpdateInfo> {
     }
   }
 
-  // 2. Query GitHub Releases API directly
+  // 2. Query GitHub Releases API
   try {
-    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+    const isAndroid = isAndroidNative();
+    // No Android, consultamos os releases recentes para encontrar a última release que possui um APK anexado.
+    // No Desktop/Web, consultamos o release mais recente diretamente.
+    const endpoint = isAndroid
+      ? `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=10`
+      : `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+
+    const response = await fetch(endpoint, {
       headers: {
         Accept: 'application/vnd.github.v3+json',
       },
@@ -91,22 +98,61 @@ export async function checkForAppUpdates(): Promise<UpdateInfo> {
     }
 
     const data = await response.json();
-    const latestTag = (data.tag_name || '').replace(/^v/i, '');
+
+    if (isAndroid) {
+      const releases: any[] = Array.isArray(data) ? data : [data];
+      let matchedRelease: any = null;
+      let matchedApkAsset: any = null;
+
+      for (const rel of releases) {
+        if (Array.isArray(rel.assets)) {
+          const apk = rel.assets.find(
+            (a: any) =>
+              typeof a.name === 'string' &&
+              a.name.endsWith('.apk') &&
+              Boolean(a.browser_download_url)
+          );
+          if (apk) {
+            matchedRelease = rel;
+            matchedApkAsset = apk;
+            break;
+          }
+        }
+      }
+
+      if (matchedRelease && matchedApkAsset) {
+        const tagVer = (matchedRelease.tag_name || '').replace(/^v/i, '');
+        result.latestVersion = tagVer || CURRENT_APP_VERSION;
+        result.apkDownloadUrl = matchedApkAsset.browser_download_url;
+        result.releaseNotes = matchedRelease.body || '';
+        result.publishedAt = matchedRelease.published_at;
+        result.releaseUrl = matchedRelease.html_url;
+
+        if (compareVersions(result.latestVersion, CURRENT_APP_VERSION) > 0) {
+          result.available = true;
+        }
+      }
+      return result;
+    }
+
+    // Desktop / Web flow
+    const latestRelease = data;
+    const latestTag = (latestRelease.tag_name || '').replace(/^v/i, '');
     result.latestVersion = latestTag || CURRENT_APP_VERSION;
-    result.releaseNotes = data.body || '';
-    result.publishedAt = data.published_at;
-    result.releaseUrl = data.html_url;
+    result.releaseNotes = latestRelease.body || '';
+    result.publishedAt = latestRelease.published_at;
+    result.releaseUrl = latestRelease.html_url;
 
     // Find direct asset URLs
-    if (Array.isArray(data.assets)) {
-      const apkAsset = data.assets.find(
+    if (Array.isArray(latestRelease.assets)) {
+      const apkAsset = latestRelease.assets.find(
         (a: any) => a.name?.endsWith('.apk') || a.browser_download_url?.endsWith('.apk')
       );
       if (apkAsset) {
         result.apkDownloadUrl = apkAsset.browser_download_url;
       }
 
-      const exeAsset = data.assets.find(
+      const exeAsset = latestRelease.assets.find(
         (a: any) =>
           typeof a.name === 'string' &&
           (a.name.endsWith('.exe') || a.name.includes('-setup.exe') || a.name.includes('setup.exe')) &&
@@ -115,11 +161,6 @@ export async function checkForAppUpdates(): Promise<UpdateInfo> {
       if (exeAsset) {
         result.windowsDownloadUrl = exeAsset.browser_download_url;
       }
-    }
-
-    // Default fallback URLs if asset was not parsed directly
-    if (!result.apkDownloadUrl && latestTag) {
-      result.apkDownloadUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${latestTag}/DriveGram.apk`;
     }
 
     if (compareVersions(result.latestVersion, CURRENT_APP_VERSION) > 0) {

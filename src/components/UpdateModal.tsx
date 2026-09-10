@@ -92,11 +92,11 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
 
       // Flow 2: Android (APK)
       if (isAndroid) {
-        const apkUrl =
-          updateInfo.apkDownloadUrl ||
-          `https://github.com/LuisClaudioBoaventura/DriveGram/releases/download/v${updateInfo.latestVersion}/DriveGram.apk`;
+        if (!updateInfo.apkDownloadUrl) {
+          throw new Error('O pacote de atualização (APK) para Android ainda não está disponível nesta versão.');
+        }
 
-        installAndroidUpdate(apkUrl, updateInfo.latestVersion);
+        installAndroidUpdate(updateInfo.apkDownloadUrl, updateInfo.latestVersion);
         setIsUpdating(false);
         onClose();
         return;

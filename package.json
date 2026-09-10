@@ -23,7 +23,8 @@
     "clean:android": "cd android && gradlew clean && cd ..",
     "clean": "npm run clean:desktop && npm run clean:android",
     "test:smoke": "node scripts/test-server-smoke.js",
-    "qa": "npm run build && npm run package:embedded && npm run test:smoke"
+    "qa": "npm run build && npm run package:embedded && npm run test:smoke",
+    "release:android": "gh workflow run release-android.yml"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
