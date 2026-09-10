@@ -617,12 +617,18 @@ class Database {
       }
 
       // 2. Fetch all subfolders (now including any newly created module subfolders)
-      const subfolders = folders.filter(f => f.parentId === course.folderId && !f.isTrash);
+      // Sort alphabetically (natural order) so module names like "001 - Intro", "002 - ..." are ordered correctly
+      const subfolders = folders
+        .filter(f => f.parentId === course.folderId && !f.isTrash)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
       if (subfolders.length > 0) {
         const updatedModules: CourseModule[] = subfolders.map((sub, idx) => {
           const existingMod = existingModules.find(m => m.id === sub.id || m.title === sub.name);
-          const subVideos = files.filter(f => f.parentId === sub.id && f.type === 'video');
+          // Sort videos inside each module by name (natural order) for consistent lesson ordering
+          const subVideos = files
+            .filter(f => f.parentId === sub.id && f.type === 'video')
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
           // Keep existing lessons that were manually attached or video files
           const existingLessons = existingMod?.lessons || [];
@@ -661,14 +667,17 @@ class Database {
           return {
             id: sub.id,
             title: sub.name,
-            order: existingMod?.order || (idx + 1),
+            order: idx + 1, // derived from the sorted subfolders array — always reflects correct name-based order
             lessons
           };
         });
 
         course.modules = updatedModules;
       } else {
-        const rootVideos = files.filter(f => f.parentId === course.folderId && f.type === 'video');
+        // Sort videos by name (natural order) for consistent lesson ordering
+        const rootVideos = files
+          .filter(f => f.parentId === course.folderId && f.type === 'video')
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
         if (existingModules.length > 0) {
           const updatedModules = existingModules.map((mod, mIdx) => {

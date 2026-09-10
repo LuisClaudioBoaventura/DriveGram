@@ -3916,7 +3916,9 @@ app.post('/api/courses/from-folder', (req, res) => {
   if (!folderId) return res.status(400).json({ error: 'ID da pasta é obrigatório' });
 
   const rootFolder = db.getAllFolders().find(f => f.id === folderId);
-  const allSubfolders = db.getAllFolders().filter(f => f.parentId === folderId && !f.isTrash);
+  const allSubfolders = db.getAllFolders()
+    .filter(f => f.parentId === folderId && !f.isTrash)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
   const allFiles = db.getAllFiles().filter(f => !f.isTrash);
 
   let modules: any[] = [];
@@ -3924,7 +3926,9 @@ app.post('/api/courses/from-folder', (req, res) => {
   if (allSubfolders.length > 0) {
     // Each subfolder is a module
     modules = allSubfolders.map((sub, idx) => {
-      const subFiles = allFiles.filter(f => f.parentId === sub.id && f.type === 'video');
+      const subFiles = allFiles
+        .filter(f => f.parentId === sub.id && f.type === 'video')
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
       const lessons = subFiles.map((file, lIdx) => ({
         id: 'lesson-' + Date.now() + '-' + idx + '-' + lIdx,
         title: file.name.replace(/\.[^/.]+$/, ""),
@@ -3943,8 +3947,10 @@ app.post('/api/courses/from-folder', (req, res) => {
       };
     });
   } else {
-    // Direct videos in the selected folder
-    const rootVideos = allFiles.filter(f => f.parentId === folderId && f.type === 'video');
+    // Direct videos in the selected folder — sorted by name (natural order)
+    const rootVideos = allFiles
+      .filter(f => f.parentId === folderId && f.type === 'video')
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
     modules = [
       {
         id: 'mod-' + Date.now() + '-1',
