@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   ArrowLeft, 
   Play, 
@@ -32,7 +32,11 @@ import {
   Info,
   RefreshCw,
   Youtube,
-  AlertCircle
+  AlertCircle,
+  ArrowUpDown,
+  ChevronDown,
+  RotateCcw,
+  SlidersHorizontal
 } from 'lucide-react';
 import { SeriesShow, SeriesEpisode, DriveItem } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
@@ -86,6 +90,79 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
   const [countdown, setCountdown] = useState<number | null>(null);
   const [nextEpisodeToPlay, setNextEpisodeToPlay] = useState<SeriesEpisode | null>(null);
   const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
+
+  // Sorting and Filtering states for YouTube Playlist / Series Videos
+  const [sortOption, setSortOption] = useState<'oldest' | 'newest' | 'title-asc' | 'title-desc' | 'duration-desc' | 'duration-asc'>('oldest');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unwatched' | 'watched' | 'in-progress'>('all');
+  const [durationFilter, setDurationFilter] = useState<'all' | 'short' | 'medium' | 'long'>('all');
+
+  const seasonEpisodes = currentSeason?.episodes || [];
+  const unwatchedCount = seasonEpisodes.filter(e => !e.isCompleted).length;
+  const watchedCount = seasonEpisodes.filter(e => e.isCompleted).length;
+  const inProgressCount = seasonEpisodes.filter(e => (e.lastPositionSeconds || 0) > 0 && !e.isCompleted).length;
+
+  const filteredEpisodes = useMemo(() => {
+    let list = [...seasonEpisodes];
+
+    // 1. Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(ep => 
+        ep.title.toLowerCase().includes(q) ||
+        `episodio ${ep.episodeNumber}`.includes(q) ||
+        `e${ep.episodeNumber}`.includes(q) ||
+        `#${ep.episodeNumber}`.includes(q) ||
+        (ep.description && ep.description.toLowerCase().includes(q))
+      );
+    }
+
+    // 2. Status filter
+    if (statusFilter === 'unwatched') {
+      list = list.filter(ep => !ep.isCompleted);
+    } else if (statusFilter === 'watched') {
+      list = list.filter(ep => ep.isCompleted);
+    } else if (statusFilter === 'in-progress') {
+      list = list.filter(ep => (ep.lastPositionSeconds || 0) > 0 && !ep.isCompleted);
+    }
+
+    // 3. Duration filter
+    if (durationFilter === 'short') {
+      // < 10 mins (600s)
+      list = list.filter(ep => (ep.durationSeconds || 0) > 0 && (ep.durationSeconds || 0) < 600);
+    } else if (durationFilter === 'medium') {
+      // 10 to 30 mins (600s to 1800s)
+      list = list.filter(ep => (ep.durationSeconds || 0) >= 600 && (ep.durationSeconds || 0) <= 1800);
+    } else if (durationFilter === 'long') {
+      // > 30 mins (1800s)
+      list = list.filter(ep => (ep.durationSeconds || 0) > 1800);
+    }
+
+    // 4. Sorting
+    switch (sortOption) {
+      case 'newest':
+        // Mais recentes: maior número primeiro (#987 -> #1)
+        list.sort((a, b) => (b.episodeNumber || 0) - (a.episodeNumber || 0));
+        break;
+      case 'oldest':
+        // Mais antigos: menor número primeiro (#1 -> #987)
+        list.sort((a, b) => (a.episodeNumber || 0) - (b.episodeNumber || 0));
+        break;
+      case 'title-asc':
+        list.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }));
+        break;
+      case 'title-desc':
+        list.sort((a, b) => b.title.localeCompare(a.title, undefined, { numeric: true, sensitivity: 'base' }));
+        break;
+      case 'duration-desc':
+        list.sort((a, b) => (b.durationSeconds || 0) - (a.durationSeconds || 0));
+        break;
+      case 'duration-asc':
+        list.sort((a, b) => (a.durationSeconds || 0) - (b.durationSeconds || 0));
+        break;
+    }
+
+    return list;
+  }, [seasonEpisodes, searchQuery, statusFilter, durationFilter, sortOption]);
 
   // Sync & Feedback State
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -160,34 +237,36 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
     }
   };
 
-  // Next episode finder (supports Shuffle / Random)
+  // Next episode finder (supports Shuffle / Random and active visible sorted list)
   const getNextEpisode = useCallback((currentEp: SeriesEpisode): SeriesEpisode | null => {
+    const currentList = filteredEpisodes.length > 0 ? filteredEpisodes : allEpisodes;
     if (isShuffle) {
-      const candidates = allEpisodes.filter(e => e.id !== currentEp.id && !e.isCompleted);
-      const pool = candidates.length > 0 ? candidates : allEpisodes.filter(e => e.id !== currentEp.id);
+      const candidates = currentList.filter(e => e.id !== currentEp.id && !e.isCompleted);
+      const pool = candidates.length > 0 ? candidates : currentList.filter(e => e.id !== currentEp.id);
       if (pool.length > 0) {
         const idx = Math.floor(Math.random() * pool.length);
         return pool[idx];
       }
     }
-    const flatIndex = allEpisodes.findIndex(e => e.id === currentEp.id);
-    if (flatIndex >= 0 && flatIndex < allEpisodes.length - 1) {
-      return allEpisodes[flatIndex + 1];
-    } else if (flatIndex === allEpisodes.length - 1 && allEpisodes.length > 1) {
+    const flatIndex = currentList.findIndex(e => e.id === currentEp.id);
+    if (flatIndex >= 0 && flatIndex < currentList.length - 1) {
+      return currentList[flatIndex + 1];
+    } else if (flatIndex === currentList.length - 1 && currentList.length > 1) {
       // Loop back to start if at last episode
-      return allEpisodes[0];
+      return currentList[0];
     }
     return null;
-  }, [allEpisodes, isShuffle]);
+  }, [allEpisodes, filteredEpisodes, isShuffle]);
 
   // Previous episode finder
   const getPreviousEpisode = useCallback((currentEp: SeriesEpisode): SeriesEpisode | null => {
-    const flatIndex = allEpisodes.findIndex(e => e.id === currentEp.id);
+    const currentList = filteredEpisodes.length > 0 ? filteredEpisodes : allEpisodes;
+    const flatIndex = currentList.findIndex(e => e.id === currentEp.id);
     if (flatIndex > 0) {
-      return allEpisodes[flatIndex - 1];
+      return currentList[flatIndex - 1];
     }
     return null;
-  }, [allEpisodes]);
+  }, [allEpisodes, filteredEpisodes]);
 
   // Delete Video / Episode Handler (with protection against re-import)
   const handleDeleteEpisode = async (episode: SeriesEpisode) => {
@@ -337,17 +416,6 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
 
   const playingFile = playingEpisode?.fileId ? allFiles.find(f => f.id === playingEpisode.fileId) : null;
 
-  // Filter episodes by season and search query
-  const seasonEpisodes = currentSeason?.episodes || [];
-  const filteredEpisodes = seasonEpisodes.filter(ep => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      ep.title.toLowerCase().includes(q) ||
-      `episodio ${ep.episodeNumber}`.includes(q) ||
-      `e${ep.episodeNumber}`.includes(q)
-    );
-  });
 
   // Extract YouTube ID helper for clean thumbnail and embed
   const getYouTubeVideoId = (ep: SeriesEpisode): string | null => {
@@ -718,10 +786,10 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
             <div className="p-3.5 bg-gray-900/90 border-b border-gray-800 space-y-3 shrink-0">
               {/* Header Title & Mode Switches */}
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <Film className="w-4 h-4 text-purple-400" />
                   <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                    Vídeos do Canal ({filteredEpisodes.length})
+                    Vídeos do Canal ({filteredEpisodes.length}{filteredEpisodes.length !== seasonEpisodes.length ? ` / ${seasonEpisodes.length}` : ''})
                   </h3>
                 </div>
 
@@ -826,6 +894,119 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
+              </div>
+
+              {/* Filter & Sort Controls */}
+              <div className="space-y-1.5 pt-0.5">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {/* Sort Selector */}
+                  <div className="relative">
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-purple-400">
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
+                    <select
+                      value={sortOption}
+                      onChange={(e) => setSortOption(e.target.value as any)}
+                      className="w-full appearance-none pl-7 pr-6 py-1.5 bg-gray-950/90 border border-gray-800 rounded-lg text-[11px] font-medium text-gray-200 hover:border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                      title="Ordenar vídeos"
+                    >
+                      <option value="oldest">Mais antigos primeiro</option>
+                      <option value="newest">Mais recentes primeiro</option>
+                      <option value="title-asc">Nome (A - Z)</option>
+                      <option value="title-desc">Nome (Z - A)</option>
+                      <option value="duration-desc">Maior duração</option>
+                      <option value="duration-asc">Menor duração</option>
+                    </select>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                      <ChevronDown className="w-3 h-3" />
+                    </div>
+                  </div>
+
+                  {/* Duration Selector */}
+                  <div className="relative">
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-purple-400">
+                      <SlidersHorizontal className="w-3 h-3" />
+                    </div>
+                    <select
+                      value={durationFilter}
+                      onChange={(e) => setDurationFilter(e.target.value as any)}
+                      className="w-full appearance-none pl-7 pr-6 py-1.5 bg-gray-950/90 border border-gray-800 rounded-lg text-[11px] font-medium text-gray-200 hover:border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                      title="Filtrar por duração"
+                    >
+                      <option value="all">Todas as durações</option>
+                      <option value="short">Curtos (&lt; 10 min)</option>
+                      <option value="medium">Médios (10 - 30 min)</option>
+                      <option value="long">Longos (&gt; 30 min)</option>
+                    </select>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                      <ChevronDown className="w-3 h-3" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Filter Chips & Reset */}
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5">
+                    <button
+                      onClick={() => setStatusFilter('all')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-colors ${
+                        statusFilter === 'all'
+                          ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50'
+                          : 'bg-gray-950/70 text-gray-400 border border-gray-800/80 hover:text-gray-200'
+                      }`}
+                    >
+                      Todos ({seasonEpisodes.length})
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter('unwatched')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-colors ${
+                        statusFilter === 'unwatched'
+                          ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50'
+                          : 'bg-gray-950/70 text-gray-400 border border-gray-800/80 hover:text-gray-200'
+                      }`}
+                    >
+                      Não vistos ({unwatchedCount})
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter('watched')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-colors ${
+                        statusFilter === 'watched'
+                          ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50'
+                          : 'bg-gray-950/70 text-gray-400 border border-gray-800/80 hover:text-gray-200'
+                      }`}
+                    >
+                      Vistos ({watchedCount})
+                    </button>
+                    {inProgressCount > 0 && (
+                      <button
+                        onClick={() => setStatusFilter('in-progress')}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-colors ${
+                          statusFilter === 'in-progress'
+                            ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50'
+                            : 'bg-gray-950/70 text-gray-400 border border-gray-800/80 hover:text-gray-200'
+                        }`}
+                      >
+                        Em progresso ({inProgressCount})
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Reset Filters button if any filter is non-default */}
+                  {(sortOption !== 'oldest' || statusFilter !== 'all' || durationFilter !== 'all') && (
+                    <button
+                      onClick={() => {
+                        setSortOption('oldest');
+                        setStatusFilter('all');
+                        setDurationFilter('all');
+                      }}
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-gray-400 hover:text-purple-300 hover:bg-purple-950/30 rounded transition-colors shrink-0"
+                      title="Redefinir ordenação e filtros"
+                    >
+                      <RotateCcw className="w-2.5 h-2.5" />
+                      <span>Limpar</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1055,10 +1236,26 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   </div>
                 )
               ) : (
-                <div className="flex flex-col items-center justify-center p-8 text-center text-gray-400 space-y-2">
+                <div className="flex flex-col items-center justify-center p-8 text-center text-gray-400 space-y-3">
                   <Search className="w-8 h-8 text-gray-500" />
-                  <p className="text-xs font-semibold">Nenhum vídeo encontrado</p>
-                  <p className="text-[10px] text-gray-500">Tente buscar por outro termo ou limpe o campo de busca.</p>
+                  <p className="text-xs font-semibold text-gray-200">Nenhum vídeo encontrado</p>
+                  <p className="text-[10px] text-gray-400 max-w-[220px]">
+                    Nenhum vídeo corresponde aos filtros e termos de busca selecionados.
+                  </p>
+                  {(sortOption !== 'oldest' || statusFilter !== 'all' || durationFilter !== 'all' || searchQuery.trim() !== '') && (
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSortOption('oldest');
+                        setStatusFilter('all');
+                        setDurationFilter('all');
+                      }}
+                      className="px-3 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Limpar filtros e busca
+                    </button>
+                  )}
                 </div>
               )}
             </div>
