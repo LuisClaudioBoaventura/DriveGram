@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.9.0',
+    version: '1.9.1',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1607,6 +1607,9 @@ app.post('/api/books/from-folder', (req, res) => {
 
     const allFiles = db.getAllFiles().filter(f => !f.isTrash);
     const audioFiles = allFiles.filter(f => f.parentId === folderId && f.type === 'audio');
+    if (audioFiles.length > 1) {
+      audioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    }
     const pdfFiles = allFiles.filter(f => f.parentId === folderId && (f.type === 'pdf' || f.extension === 'epub'));
 
     const totalBytes = audioFiles.reduce((acc, f) => acc + f.size, 0) + pdfFiles.reduce((acc, f) => acc + f.size, 0);

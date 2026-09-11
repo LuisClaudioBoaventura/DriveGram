@@ -46,6 +46,8 @@ import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
 import { PdfReader } from './PdfReader.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
+import { sortChaptersNumerically } from '../hooks/useBooks.js';
 
 interface BookReaderViewProps {
   book: Book;
@@ -444,12 +446,16 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 truncate">
-              <h1 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
-                {book.title}
-              </h1>
+            <div className="flex items-center gap-2 truncate min-w-0 flex-1">
+              <div className="min-w-0 max-w-xs sm:max-w-md overflow-hidden">
+                <MarqueeTitle
+                  text={book.title}
+                  as="h1"
+                  className="text-sm font-bold text-gray-900 dark:text-gray-100"
+                />
+              </div>
               {book.author && (
-                <span className="text-xs text-gray-400 hidden md:inline truncate">
+                <span className="text-xs text-gray-400 hidden md:inline truncate shrink-0">
                   • {book.author}
                 </span>
               )}
@@ -570,13 +576,19 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                       />
                     </div>
                     <div className="overflow-hidden flex-1 min-w-0">
-                      <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block truncate">
-                        {book.title}
-                      </span>
-                      <h3 className="text-xs font-bold text-white truncate leading-tight mt-0.5">
-                        {activeChapter?.title || 'Capítulo Selecionado'}
-                      </h3>
-                      <span className="text-[10px] text-gray-400 font-mono">
+                      <MarqueeTitle
+                        text={book.title}
+                        as="span"
+                        className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block"
+                      />
+                      <div className="mt-0.5">
+                        <MarqueeTitle
+                          text={activeChapter?.title || 'Capítulo Selecionado'}
+                          as="h3"
+                          className="text-xs font-bold text-white leading-tight"
+                        />
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-mono block mt-0.5">
                         {formatSeconds(currentTime)} / {formatSeconds(duration)}
                       </span>
                     </div>
@@ -763,13 +775,17 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                 <div className="fixed sm:absolute bottom-20 sm:bottom-4 left-1/2 -translate-x-1/2 bg-gray-950/95 backdrop-blur-md text-white border border-purple-700/60 shadow-2xl px-3 sm:px-4 py-2 rounded-2xl flex items-center justify-between gap-2.5 z-40 w-[calc(100vw-2rem)] max-w-md">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <Headphones className="w-4 h-4 text-purple-400 shrink-0" />
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] text-purple-300 uppercase font-bold tracking-wider truncate">
-                        {book.title}
-                      </span>
-                      <span className="text-xs font-bold truncate text-white">
-                        {activeChapter.title}
-                      </span>
+                    <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+                      <MarqueeTitle
+                        text={book.title}
+                        as="span"
+                        className="text-[10px] text-purple-300 uppercase font-bold tracking-wider"
+                      />
+                      <MarqueeTitle
+                        text={activeChapter.title}
+                        as="span"
+                        className="text-xs font-bold text-white"
+                      />
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -819,13 +835,17 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                   </div>
 
                   {/* Title & Author Info */}
-                  <div className="text-center max-w-sm w-full mb-3">
-                    <span className="text-[11px] font-bold text-purple-400 uppercase tracking-widest block mb-1">
-                      {book.title}
-                    </span>
-                    <h2 className="text-base sm:text-lg font-bold text-white truncate">
-                      {activeChapter?.title || 'Selecione um capítulo'}
-                    </h2>
+                  <div className="text-center max-w-sm w-full mb-3 overflow-hidden">
+                    <MarqueeTitle
+                      text={book.title}
+                      as="span"
+                      className="text-[11px] font-bold text-purple-400 uppercase tracking-widest block mb-1 text-center"
+                    />
+                    <MarqueeTitle
+                      text={activeChapter?.title || 'Selecione um capítulo'}
+                      as="h2"
+                      className="text-base sm:text-lg font-bold text-white text-center"
+                    />
                     {book.author && (
                       <p className="text-xs text-gray-400 mt-0.5 truncate">
                         {book.author} {book.narrator && `• Voz: ${book.narrator}`}
@@ -1006,7 +1026,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
             </div>
 
             <div className="lg:flex-1 lg:overflow-y-auto p-3 space-y-1.5 max-h-[500px] lg:max-h-none">
-              {book.chapters && book.chapters.map((chap) => {
+              {sortChaptersNumerically(book.chapters || []).map((chap) => {
                 const isActive = activeChapter?.id === chap.id;
                 return (
                   <div
@@ -1018,7 +1038,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                         : 'hover:bg-gray-50 dark:hover:bg-drive-darkHover border-gray-100 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 overflow-hidden flex-1">
+                    <div className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1037,7 +1057,13 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                         <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500 shrink-0" title="Capítulo Concluído" />
                       )}
 
-                      <span className="truncate leading-tight">{chap.title}</span>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <MarqueeTitle
+                          text={chap.title}
+                          as="span"
+                          className="leading-tight block"
+                        />
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">

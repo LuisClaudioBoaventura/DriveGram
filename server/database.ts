@@ -760,6 +760,9 @@ class Database {
       const existingChapters = book.chapters || [];
 
       if (bookAudioFiles.length > 0) {
+        if (bookAudioFiles.length > 1) {
+          bookAudioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        }
         book.chapters = bookAudioFiles.map((audio, idx) => {
           const existing = existingChapters.find(c => c.fileId === audio.id || c.title === audio.name.replace(/\.[^/.]+$/, ""));
           return {
@@ -774,6 +777,9 @@ class Database {
             notes: existing?.notes
           };
         });
+      } else if (book.chapters && book.chapters.length > 1) {
+        book.chapters.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' }))
+          .forEach((ch, idx) => { ch.order = idx + 1; });
       }
 
       if (bookPdfFiles.length > 0 && !book.ebookFileId) {
@@ -1995,21 +2001,37 @@ class Database {
   // ---------------- BOOKS & AUDIOBOOKS CRUD ----------------
   public getBooks(): Book[] {
     this.syncBooksWithFolderStructure();
-    return this.data.books || [];
+    const books = this.data.books || [];
+    for (const b of books) {
+      if (b.chapters && b.chapters.length > 1) {
+        b.chapters.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' }));
+      }
+    }
+    return books;
   }
 
   public getBookById(id: string): Book | null {
     this.syncBooksWithFolderStructure();
-    return (this.data.books || []).find(b => b.id === id) || null;
+    const book = (this.data.books || []).find(b => b.id === id) || null;
+    if (book && book.chapters && book.chapters.length > 1) {
+      book.chapters.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' }));
+    }
+    return book;
   }
 
   public saveBook(book: Book): Book {
     if (!this.data.books) this.data.books = [];
     // Ensure all chapters' timestamps are sorted sequentially
-    const sanitizedChapters = (book.chapters || []).map(ch => ({
+    let sanitizedChapters = (book.chapters || []).map(ch => ({
       ...ch,
       timestamps: (ch.timestamps || []).sort((a: any, b: any) => (a.seconds || 0) - (b.seconds || 0))
     }));
+    if (sanitizedChapters.length > 1) {
+      sanitizedChapters.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' }));
+      sanitizedChapters.forEach((ch, idx) => {
+        ch.order = idx + 1;
+      });
+    }
     book.chapters = sanitizedChapters;
 
     const idx = this.data.books.findIndex(b => b.id === book.id);

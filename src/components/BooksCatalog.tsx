@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Book, DriveItem } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { MarqueeTitle } from './MarqueeTitle.js';
 
 interface BooksCatalogProps {
   books: Book[];
@@ -507,9 +508,11 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                     )}
                   </div>
 
-                  <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors line-clamp-2 leading-snug">
-                    {book.title}
-                  </h3>
+                  <MarqueeTitle
+                    text={book.title}
+                    as="h3"
+                    className="font-bold text-sm text-gray-900 dark:text-gray-100 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors leading-snug"
+                  />
 
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
                     {book.author ? `Por ${book.author}` : 'Autor Desconhecido'}

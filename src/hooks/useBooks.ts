@@ -1,6 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Book, BookChapter } from '../types/index.js';
 
+export function sortChaptersNumerically(chapters: BookChapter[]): BookChapter[] {
+  if (!chapters || chapters.length <= 1) return chapters || [];
+  return [...chapters].sort((a, b) => {
+    const cmp = (a.title || '').localeCompare(b.title || '', undefined, {
+      numeric: true,
+      sensitivity: 'base'
+    });
+    if (cmp !== 0) return cmp;
+    return (a.order || 0) - (b.order || 0);
+  }).map((ch, idx) => ({ ...ch, order: idx + 1 }));
+}
+
 export function useBooks() {
   const [books, setBooks] = useState<Book[]>([]);
   const [categories, setCategories] = useState<string[]>([
@@ -34,11 +46,15 @@ export function useBooks() {
       const res = await fetch('/api/books');
       if (res.ok) {
         const data = await res.json();
-        setBooks(data);
-        if (data.length > 0 && !activeBook) {
-          setActiveBook(data[0]);
-          if (data[0].chapters?.[0]) {
-            setActiveChapter(data[0].chapters[0]);
+        const sortedBooks = (data as Book[]).map(b => ({
+          ...b,
+          chapters: sortChaptersNumerically(b.chapters || [])
+        }));
+        setBooks(sortedBooks);
+        if (sortedBooks.length > 0 && !activeBook) {
+          setActiveBook(sortedBooks[0]);
+          if (sortedBooks[0].chapters?.[0]) {
+            setActiveChapter(sortedBooks[0].chapters[0]);
           }
         }
       }
@@ -175,17 +191,19 @@ export function useBooks() {
   }, [isPlaying, savePlaybackPosition]);
 
   const selectBook = useCallback((book: Book, autoPlay = false) => {
-    setActiveBook(book);
+    const sortedChapters = sortChaptersNumerically(book.chapters || []);
+    const sortedBook: Book = { ...book, chapters: sortedChapters };
+    setActiveBook(sortedBook);
     setIsFloatingOpen(true);
-    if (book.chapters && book.chapters.length > 0) {
-      // Pick last played chapter, or first uncompleted chapter, or first chapter
+    if (sortedChapters.length > 0) {
+      // Pick last played chapter, or first uncompleted chapter, or first chapter (lowest numerical order)
       const targetChapter = 
-        (book.lastPlayedChapterId && book.chapters.find(c => c.id === book.lastPlayedChapterId)) ||
-        book.chapters.find(c => !c.isCompleted) ||
-        book.chapters[0];
+        (sortedBook.lastPlayedChapterId && sortedChapters.find(c => c.id === sortedBook.lastPlayedChapterId)) ||
+        sortedChapters.find(c => !c.isCompleted) ||
+        sortedChapters[0];
 
       setActiveChapter(targetChapter);
-      const startSec = targetChapter.lastPositionSeconds || book.lastPositionSeconds || 0;
+      const startSec = targetChapter.lastPositionSeconds || sortedBook.lastPositionSeconds || 0;
       setCurrentTime(startSec);
       if (audioRef.current) {
         audioRef.current.currentTime = startSec;
@@ -386,18 +404,20 @@ export function useBooks() {
   }, [activeBook, activeChapter, getNextChapter, isAutoPlayEnabled, selectChapter]);
 
   const updateBook = async (updated: Book) => {
-    setActiveBook(updated);
-    setBooks(prev => prev.map(b => b.id === updated.id ? updated : b));
+    const sortedChapters = sortChaptersNumerically(updated.chapters || []);
+    const bookToSave: Book = { ...updated, chapters: sortedChapters };
+    setActiveBook(bookToSave);
+    setBooks(prev => prev.map(b => b.id === bookToSave.id ? bookToSave : b));
     if (activeChapter) {
-      const updatedChap = (updated.chapters || []).find(c => c.id === activeChapter.id);
+      const updatedChap = (sortedChapters || []).find(c => c.id === activeChapter.id);
       if (updatedChap) setActiveChapter(updatedChap);
     }
 
     try {
-      await fetch(`/api/books/${updated.id}`, {
+      await fetch(`/api/books/${bookToSave.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
+        body: JSON.stringify(bookToSave)
       });
     } catch (e) {}
   };
@@ -478,13 +498,13 @@ export function useBooks() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       format: bookData.format || 'audiobook',
-      chapters: bookData.chapters || [
+      chapters: sortChaptersNumerically(bookData.chapters || [
         {
           id: 'chap-' + Date.now(),
           title: 'Capítulo 1: Introdução',
           order: 1
         }
-      ]
+      ])
     };
 
     try {
@@ -495,9 +515,13 @@ export function useBooks() {
       });
       if (res.ok) {
         const saved = await res.json();
-        setBooks(prev => [...prev, saved]);
-        setActiveBook(saved);
-        return saved;
+        const sorted = {
+          ...saved,
+          chapters: sortChaptersNumerically(saved.chapters || [])
+        };
+        setBooks(prev => [...prev, sorted]);
+        setActiveBook(sorted);
+        return sorted;
       }
     } catch (e) {
       setBooks(prev => [...prev, newBook]);
@@ -530,9 +554,13 @@ export function useBooks() {
       });
       if (res.ok) {
         const saved = await res.json();
-        setBooks(prev => [...prev, saved]);
-        selectBook(saved);
-        return saved;
+        const sorted = {
+          ...saved,
+          chapters: sortChaptersNumerically(saved.chapters || [])
+        };
+        setBooks(prev => [...prev, sorted]);
+        selectBook(sorted);
+        return sorted;
       }
     } catch (e) {
       console.error('Error creating book from folder:', e);

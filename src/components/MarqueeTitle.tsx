@@ -6,7 +6,7 @@ interface MarqueeTitleProps {
   as?: 'h1' | 'h2' | 'h3' | 'h4' | 'span' | 'p' | 'div';
   title?: string;
   speed?: number; // pixels per second, default 28
-  onlyMobile?: boolean; // default true
+  onlyMobile?: boolean; // default false
   gap?: number; // space in px between repeats, default 32
 }
 
@@ -16,7 +16,7 @@ export const MarqueeTitle: React.FC<MarqueeTitleProps> = ({
   as: Component = 'span',
   title,
   speed = 28,
-  onlyMobile = true,
+  onlyMobile = false,
   gap = 32
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
