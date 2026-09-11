@@ -198,11 +198,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Configurações Mobile / Servidor Modal Trigger (Desktop/Tablet) */}
+          {/* Diagnóstico do Sistema Desktop Trigger (Desktop/Tablet) */}
           {onOpenMobileServerSettings && (
             <button
               onClick={onOpenMobileServerSettings}
-              title="Configurações do Servidor Mobile / App"
+              title="Diagnóstico do Sistema Desktop (F12)"
               className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 transition-all active:scale-95"
             >
               <Smartphone className="w-4 h-4 text-blue-500" />

@@ -3655,7 +3655,7 @@ class Database {
     const file = this.data.files.find(f => f.id === fileId);
     if (file) {
       file.cachedAt = new Date().toISOString();
-      this.save(this.data);
+      this.save(this.data, false);
     }
   }
 
@@ -3694,7 +3694,7 @@ class Database {
     }
 
     if (purgedFiles > 0) {
-      this.save(this.data);
+      this.save(this.data, false);
     }
 
     return { purgedFiles, freedBytes };
@@ -3721,7 +3721,7 @@ class Database {
       }
     }
 
-    this.save(this.data);
+    this.save(this.data, false);
     return { clearedFiles, freedBytes };
   }
 

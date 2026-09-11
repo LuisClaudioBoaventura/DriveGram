@@ -204,6 +204,11 @@ class TelegramService {
 
           if (!isMetadataSync) return;
 
+          // Se o processo está ativamente enviando metadados neste instante, o evento é eco do próprio envio
+          if (this.isSyncingMetadata) {
+            return;
+          }
+
           // Se for a mensagem de metadados que este próprio processo acabou de enviar, ignorar
           const currentSettings = db.getData().settings;
           if (
@@ -216,6 +221,14 @@ class TelegramService {
           console.log(`[DriveGram Real-Time Push] Nova atualização de metadados detectada nas Mensagens Salvas (Msg ID: ${msg.id}). Reconciliando...`);
           const remoteManifest = await this.downloadManifestFromMessage(msg.id);
           if (!remoteManifest) return;
+
+          // Se o manifesto remoto for estruturalmente idêntico ao último enviado, ignorar eco do Telegram
+          const { exportedAt: _remoteExp, ...remoteContentToHash } = remoteManifest;
+          const remoteHash = crypto.createHash('md5').update(JSON.stringify(remoteContentToHash)).digest('hex');
+          if (this.lastUploadedManifestHash && remoteHash === this.lastUploadedManifestHash) {
+            this.lastSentMetadataMessageId = msg.id;
+            return;
+          }
 
           const reconcileRes = db.reconcileManifest(remoteManifest);
           db.updateSettings({ lastMetadataMessageId: msg.id });
@@ -746,7 +759,9 @@ class TelegramService {
       const bookCount = manifest.books ? manifest.books.length : 0;
 
       const manifestJson = JSON.stringify(manifest, null, 2);
-      const manifestHash = crypto.createHash('md5').update(manifestJson).digest('hex');
+      // Hash baseado no conteúdo estrutural sem timestamp volátil de exportação
+      const { exportedAt: _exp, ...contentToHash } = manifest;
+      const manifestHash = crypto.createHash('md5').update(JSON.stringify(contentToHash)).digest('hex');
 
       // Evita loops infinitos e uploads redundantes: se o manifesto for exatamente igual ao último enviado, não reenvia
       if (this.lastUploadedManifestHash === manifestHash && !force) {
@@ -824,7 +839,7 @@ class TelegramService {
         this.hasPendingSyncRequest = false;
         setTimeout(() => {
           this.syncMetadataToTelegram().catch(() => {});
-        }, 3000);
+        }, 8000);
       }
     }
   }

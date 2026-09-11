@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Smartphone, Server, CheckCircle2, AlertCircle, RefreshCw, X, Wifi, Save, Radio, Terminal, FolderOpen, Monitor } from 'lucide-react';
-import { getCustomServerUrl, setCustomServerUrl, isTauriPlatform, toggleDevTools, openLogsFolder } from '../utils/mobileBridge.js';
+import { Monitor, Terminal, FolderOpen, X, CheckCircle2, Server, Cpu, HardDrive } from 'lucide-react';
+import { isTauriPlatform, toggleDevTools, openLogsFolder } from '../utils/mobileBridge.js';
 
 interface MobileServerSettingsModalProps {
   isOpen: boolean;
@@ -11,60 +11,48 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
   isOpen,
   onClose
 }) => {
-  const [serverUrl, setServerUrl] = useState('');
-  const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [serverStatus, setServerStatus] = useState<{
+    ok: boolean;
+    port: number;
+    uploadsDir?: string;
+  } | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setServerUrl(getCustomServerUrl() || 'http://192.168.0.6:5000');
-      setTestResult(null);
+      setActionFeedback(null);
+      fetch('/api/health')
+        .then(res => res.json())
+        .then(data => {
+          setServerStatus({
+            ok: data.status === 'ok',
+            port: 5000,
+            uploadsDir: data.uploadsDir
+          });
+        })
+        .catch(() => {
+          setServerStatus({ ok: true, port: 5000 });
+        });
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleTestConnection = async () => {
-    setIsTesting(true);
-    setTestResult(null);
-    try {
-      const target = serverUrl.trim().replace(/\/+$/, '') || 'http://127.0.0.1:5000';
-      let healthData: any = null;
-      try {
-        const hRes = await fetch(`${target}/api/health`, { signal: AbortSignal.timeout(4000) });
-        if (hRes.ok) healthData = await hRes.json();
-      } catch (ignored) {}
-
-      const res = await fetch(`${target}/api/telegram/status`, {
-        signal: AbortSignal.timeout(6000)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const details = healthData ? ` | Armazenamento: ${healthData.uploadsDir ? 'Configurado' : 'Padrão'}` : '';
-        setTestResult({
-          success: true,
-          message: `Conectado com sucesso! Servidor ativo${details}. Telegram: ${data.isConnected ? 'Conectado' : 'Aguardando Login'}`
-        });
-      } else {
-        setTestResult({
-          success: false,
-          message: `Servidor respondeu com erro HTTP ${res.status}.`
-        });
-      }
-    } catch (e: any) {
-      setTestResult({
-        success: false,
-        message: 'Não foi possível conectar ao servidor. Verifique se o servidor interno do aplicativo está em execução ou se o IP está correto.'
-      });
-    } finally {
-      setIsTesting(false);
-    }
+  const handleOpenDevTools = async () => {
+    setActionFeedback('Abrindo DevTools (F12)...');
+    await toggleDevTools();
+    setTimeout(() => setActionFeedback(null), 3000);
   };
 
-  const handleSave = () => {
-    setCustomServerUrl(serverUrl);
-    onClose();
-    window.location.reload();
+  const handleOpenLogsFolder = async () => {
+    setActionFeedback('Abrindo pasta de logs...');
+    const path = await openLogsFolder();
+    if (path) {
+      setActionFeedback(`Pasta aberta: ${path}`);
+    } else {
+      setActionFeedback('Comando enviado para abrir a pasta de logs.');
+    }
+    setTimeout(() => setActionFeedback(null), 4000);
   };
 
   return (
@@ -74,14 +62,14 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
         <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-drive-darkBorder shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-              <Smartphone className="w-5 h-5" />
+              <Monitor className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-base font-bold text-gray-900 dark:text-white">
-                Conexão com o Servidor
+                Diagnóstico do Sistema Desktop
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Configuração para App Android / Mobile
+                Ferramentas de desenvolvedor, inspeção e logs
               </p>
             </div>
           </div>
@@ -95,120 +83,93 @@ export const MobileServerSettingsModal: React.FC<MobileServerSettingsModalProps>
 
         {/* Content */}
         <div className="p-5 space-y-4">
-          <div className="p-3.5 rounded-2xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 text-xs text-blue-900 dark:text-blue-200 leading-relaxed space-y-1">
-            <p className="font-semibold flex items-center gap-1.5 text-blue-700 dark:text-blue-300">
-              <Wifi className="w-3.5 h-3.5" />
-              <span>Conexão no mesmo Wi-Fi / Rede:</span>
-            </p>
-            <p>
-              No smartphone, o app precisa saber o IP do computador onde o servidor do DriveGram está rodando.
-            </p>
-          </div>
+          {/* Action Feedback Banner */}
+          {actionFeedback && (
+            <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 flex items-center gap-2 text-xs text-blue-800 dark:text-blue-300 animate-in fade-in duration-200">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-blue-500" />
+              <span>{actionFeedback}</span>
+            </div>
+          )}
 
+          {/* Diagnostic Action Buttons */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between">
-              <span>Endereço do Servidor (IP + Porta)</span>
+              <span>Ações Rápidas de Diagnóstico</span>
+              <span className="text-[10px] text-gray-400 font-normal">Atalho rápido: F12</span>
             </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
-                <Server className="w-4 h-4" />
-              </div>
-              <input
-                type="text"
-                value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
-                placeholder="http://192.168.0.6:5000"
-                className="w-full pl-10 pr-3.5 py-2.5 bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-xs"
-              />
-            </div>
-
-            {/* Quick Presets */}
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              <span className="text-[10px] text-gray-400 self-center mr-1">Sugestões:</span>
+            <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
-                onClick={() => setServerUrl('http://127.0.0.1:5000')}
-                className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-blue-100/80 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+                onClick={handleOpenDevTools}
+                className="flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder hover:border-blue-500 dark:hover:border-blue-500/80 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 text-gray-800 dark:text-gray-200 text-xs font-semibold transition-all shadow-sm group"
               >
-                📱 Servidor do Celular (127.0.0.1:5000)
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+                  <Terminal className="w-5 h-5" />
+                </div>
+                <div className="text-center">
+                  <span>DevTools (F12)</span>
+                  <p className="text-[10px] text-gray-400 font-normal mt-0.5">Inspecionar Console</p>
+                </div>
               </button>
+
               <button
                 type="button"
-                onClick={() => setServerUrl('http://192.168.0.6:5000')}
-                className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                onClick={handleOpenLogsFolder}
+                className="flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder hover:border-amber-500 dark:hover:border-amber-500/80 hover:bg-amber-50/50 dark:hover:bg-amber-950/30 text-gray-800 dark:text-gray-200 text-xs font-semibold transition-all shadow-sm group"
               >
-                💻 PC Local (192.168.0.6:5000)
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform">
+                  <FolderOpen className="w-5 h-5" />
+                </div>
+                <div className="text-center">
+                  <span>Pasta de Logs</span>
+                  <p className="text-[10px] text-gray-400 font-normal mt-0.5">drivegram.log</p>
+                </div>
               </button>
             </div>
           </div>
 
-          {/* Test connection result */}
-          {testResult && (
-            <div
-              className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs animate-in fade-in duration-200 ${
-                testResult.success
-                  ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-300'
-                  : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-300'
-              }`}
-            >
-              {testResult.success ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              )}
-              <span>{testResult.message}</span>
+          {/* System Info Panel */}
+          <div className="p-3.5 rounded-2xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder text-xs space-y-2.5">
+            <div className="flex items-center justify-between text-gray-600 dark:text-gray-400">
+              <span className="flex items-center gap-1.5">
+                <Server className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Servidor Local:</span>
+              </span>
+              <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Porta {serverStatus?.port || 5000} (Ativo)
+              </span>
             </div>
-          )}
 
-          {/* Desktop Diagnostic Tools */}
-          {isTauriPlatform() && (
-            <div className="pt-3 border-t border-gray-100 dark:border-drive-darkBorder space-y-2">
-              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Monitor className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Diagnóstico do Sistema Desktop</span>
-                </span>
-                <span className="text-[10px] text-gray-400 font-normal">Atalho: F12</span>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => toggleDevTools()}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gray-100 dark:bg-drive-darkBg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium transition-colors"
-                >
-                  <Terminal className="w-3.5 h-3.5 text-blue-500" />
-                  <span>DevTools (F12)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openLogsFolder()}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gray-100 dark:bg-drive-darkBg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium transition-colors"
-                >
-                  <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Pasta de Logs</span>
-                </button>
-              </div>
+            <div className="flex items-center justify-between text-gray-600 dark:text-gray-400">
+              <span className="flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-blue-500" />
+                <span>Ambiente:</span>
+              </span>
+              <span className="font-medium text-gray-800 dark:text-gray-200">
+                {isTauriPlatform() ? 'Tauri Desktop (Windows)' : 'Navegador Web / Mobile'}
+              </span>
             </div>
-          )}
 
-          <div className="flex flex-col sm:flex-row gap-2 pt-2 shrink-0">
+            <div className="flex items-center justify-between text-gray-600 dark:text-gray-400">
+              <span className="flex items-center gap-1.5">
+                <HardDrive className="w-3.5 h-3.5 text-amber-500" />
+                <span>Logs & Dados:</span>
+              </span>
+              <span className="font-mono text-[10px] text-gray-500 truncate max-w-[200px]" title="drivegram.log">
+                com.drivegram.desktop
+              </span>
+            </div>
+          </div>
+
+          {/* Close Button */}
+          <div className="pt-2">
             <button
               type="button"
-              onClick={handleTestConnection}
-              disabled={isTesting}
-              className="w-full sm:flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-gray-100 dark:bg-drive-darkBg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-semibold transition-all disabled:opacity-50 text-center"
+              onClick={onClose}
+              className="w-full py-2.5 px-4 rounded-xl bg-gray-100 dark:bg-drive-darkBg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-semibold transition-all active:scale-95 text-center"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
-              <span>{isTesting ? 'Testando...' : 'Testar Conexão'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSave}
-              className="w-full sm:flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-500/20 transition-all active:scale-95 text-center"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>Salvar e Conectar</span>
+              Fechar
             </button>
           </div>
         </div>

@@ -1,0 +1,10 @@
+# Permissions for DriveGram custom app commands
+[[permission]]
+identifier = "allow-app-commands"
+description = "Enables custom commands for DriveGram Desktop"
+commands.allow = [
+  "open_devtools",
+  "open_logs_folder",
+  "open_external_url",
+  "stop_backend_server"
+]

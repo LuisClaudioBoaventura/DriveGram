@@ -206,11 +206,14 @@ export function initMobileBridge(onHardwareBack?: () => boolean): void {
     }
   }
 
-  // Setup F12 shortcut for Desktop DevTools
-  if (isTauriPlatform() && typeof window !== 'undefined') {
+  // Setup F12 and Ctrl+Shift+I shortcut for Desktop DevTools
+  if (typeof window !== 'undefined') {
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'F12') {
-        toggleDevTools();
+      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i'))) {
+        if (isTauriPlatform()) {
+          e.preventDefault();
+          toggleDevTools();
+        }
       }
     });
   }
@@ -221,8 +224,17 @@ export async function toggleDevTools(): Promise<void> {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('open_devtools');
+      return;
     } catch (e) {
-      console.warn('[DriveGram Desktop] Failed to toggle DevTools:', e);
+      console.warn('[DriveGram Desktop] Failed to toggle DevTools via open_devtools:', e);
+    }
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('plugin:webview|internal_toggle_devtools');
+      return;
+    } catch (e2) {
+      console.warn('[DriveGram Desktop] Failed to toggle DevTools via plugin:webview:', e2);
     }
   }
 }
