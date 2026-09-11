@@ -11,6 +11,7 @@ import { BooksCatalog } from './components/BooksCatalog.js';
 import { BookReaderView } from './components/BookReaderView.js';
 import { FloatingAudiobookPlayer } from './components/FloatingAudiobookPlayer.js';
 import { FloatingPodcastPlayer } from './components/FloatingPodcastPlayer.js';
+import { FloatingYouTubePlaylistPlayer } from './components/FloatingYouTubePlaylistPlayer.js';
 import { ComicsCatalog } from './components/ComicsCatalog.js';
 import { ComicStudioView } from './components/ComicStudioView.js';
 import { NewComicModal } from './components/NewComicModal.js';
@@ -66,7 +67,7 @@ import { usePersonalVideos } from './hooks/usePersonalVideos.js';
 import { useSeries } from './hooks/useSeries.js';
 import { useAudioShows } from './hooks/useAudioShows.js';
 import { useAdultVault } from './hooks/useAdultVault.js';
-import { DriveItem, FolderItem, Course, Book, ComicBook, MovieVideo, PersonalVideo, SeriesShow, AudioShow, AdultVideo, AdultPerformer } from './types/index.js';
+import { DriveItem, FolderItem, Course, Book, ComicBook, MovieVideo, PersonalVideo, SeriesShow, SeriesEpisode, AudioShow, AdultVideo, AdultPerformer } from './types/index.js';
 import { getFilesFromDataTransfer } from './utils/dragDropUtils.js';
 import { isRedLockerFolder } from './utils/libraryFolderUtils.js';
 import { UploadCloud, Lock, Flame, LockKeyhole } from 'lucide-react';
@@ -217,6 +218,12 @@ export function App() {
   const isCourseVisibleInMain = Boolean(selectedCourseForView && fs.activeTab === 'courses');
 
   const [selectedSeriesForView, setSelectedSeriesForView] = useState<SeriesShow | null>(null);
+  const [initialSeriesEpisodeId, setInitialSeriesEpisodeId] = useState<string | undefined>(undefined);
+  const [activeYoutubePip, setActiveYoutubePip] = useState<{
+    series: SeriesShow;
+    episode: SeriesEpisode;
+    allEpisodes: SeriesEpisode[];
+  } | null>(null);
   const [selectedAudioForView, setSelectedAudioForView] = useState<AudioShow | null>(null);
   const [selectedAudioTrackIndex, setSelectedAudioTrackIndex] = useState<number>(0);
   const [selectedAdultVideoForView, setSelectedAdultVideoForView] = useState<AdultVideo | null>(null);
@@ -717,15 +724,26 @@ export function App() {
                 <SeriesStudioView
                   series={selectedSeriesForView}
                   allFiles={fs.allFiles}
-                  onBackToCatalog={() => setSelectedSeriesForView(null)}
+                  initialPlayingEpisodeId={initialSeriesEpisodeId}
+                  onBackToCatalog={() => {
+                    setSelectedSeriesForView(null);
+                    setInitialSeriesEpisodeId(undefined);
+                  }}
                   onUpdateSeries={async (updated) => {
                     await series.updateSeries(updated);
                     setSelectedSeriesForView(updated);
+                    if (activeYoutubePip?.series.id === updated.id) {
+                      setActiveYoutubePip(prev => prev ? { ...prev, series: updated } : null);
+                    }
                     fs.refresh();
                   }}
                   onDeleteSeries={async (id) => {
                     await series.deleteSeries(id);
                     setSelectedSeriesForView(null);
+                    setInitialSeriesEpisodeId(undefined);
+                    if (activeYoutubePip?.series.id === id) {
+                      setActiveYoutubePip(null);
+                    }
                     fs.refresh();
                   }}
                   onDeleteEpisode={async (seriesId, episodeId) => {
@@ -746,6 +764,14 @@ export function App() {
                   onToggleEpisodeCompletion={series.toggleEpisodeCompletion}
                   onUpdateEpisodeProgress={series.updateEpisodeProgress}
                   onOpenEditModal={() => setEditingSeries(selectedSeriesForView)}
+                  onMinimizeToFloatingPiP={(seriesShow, ep, allEps) => {
+                    setActiveYoutubePip({
+                      series: seriesShow,
+                      episode: ep,
+                      allEpisodes: allEps
+                    });
+                    setSelectedSeriesForView(null);
+                  }}
                 />
               ) : selectedAudioForView ? (
                 /* Active Music & Podcast Studio */
@@ -1765,6 +1791,27 @@ export function App() {
           hasPreviousTrack={!!audioShows.getPreviousTrack()}
           isCardVisible={selectedAudioForView === null && audioShows.isFloatingOpen}
           onBackupTrack={(track) => audioShows.backupTrackToTelegram(track, fs.trackRemoteTask)}
+        />
+      )}
+
+      {/* Persistent Global Floating YouTube Playlist PiP Player */}
+      {activeYoutubePip && !selectedSeriesForView && (
+        <FloatingYouTubePlaylistPlayer
+          series={activeYoutubePip.series}
+          activeEpisode={activeYoutubePip.episode}
+          allEpisodes={activeYoutubePip.allEpisodes}
+          onSelectEpisode={(ep) => {
+            setActiveYoutubePip(prev => prev ? { ...prev, episode: ep } : null);
+          }}
+          onOpenFullStudio={(seriesShow, ep) => {
+            setSelectedSeriesForView(seriesShow);
+            setInitialSeriesEpisodeId(ep?.id);
+            setActiveYoutubePip(null);
+            fs.setActiveTab('series');
+          }}
+          onClose={() => setActiveYoutubePip(null)}
+          onToggleEpisodeCompletion={series.toggleEpisodeCompletion}
+          onUpdateEpisodeProgress={series.updateEpisodeProgress}
         />
       )}
 

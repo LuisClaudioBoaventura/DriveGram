@@ -9,6 +9,7 @@ import {
   Trash2, 
   Tv, 
   Layers, 
+  Airplay,
   X, 
   Download, 
   SkipForward, 
@@ -54,11 +55,14 @@ interface SeriesStudioViewProps {
   onToggleEpisodeCompletion: (episodeId: string) => Promise<void>;
   onUpdateEpisodeProgress: (episodeId: string, seconds: number, isCompleted?: boolean) => Promise<void>;
   onOpenEditModal?: () => void;
+  initialPlayingEpisodeId?: string;
+  onMinimizeToFloatingPiP?: (series: SeriesShow, episode: SeriesEpisode, allEpisodes: SeriesEpisode[]) => void;
 }
 
 export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
   series,
   allFiles,
+  initialPlayingEpisodeId,
   onBackToCatalog,
   onUpdateSeries,
   onDeleteSeries,
@@ -66,18 +70,31 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
   onRefreshSeries,
   onToggleEpisodeCompletion,
   onUpdateEpisodeProgress,
-  onOpenEditModal
+  onOpenEditModal,
+  onMinimizeToFloatingPiP
 }) => {
-  const [selectedSeasonIdx, setSelectedSeasonIdx] = useState(0);
   const seasons = series.seasons || [];
+  const allEpisodes = useMemo(() => seasons.flatMap(s => s.episodes || []), [seasons]);
+
+  const [selectedSeasonIdx, setSelectedSeasonIdx] = useState<number>(() => {
+    if (initialPlayingEpisodeId) {
+      const sIdx = seasons.findIndex(s => s.episodes?.some(e => e.id === initialPlayingEpisodeId));
+      if (sIdx >= 0) return sIdx;
+    }
+    return 0;
+  });
+
   const currentSeason = seasons[selectedSeasonIdx] || seasons[0];
-  const allEpisodes = seasons.flatMap(s => s.episodes || []);
   const totalEpisodes = allEpisodes.length;
   const completedEpisodes = allEpisodes.filter(e => e.isCompleted).length;
   const progressPct = totalEpisodes > 0 ? Math.round((completedEpisodes / totalEpisodes) * 100) : 0;
 
   // Active playing episode state
   const [playingEpisode, setPlayingEpisode] = useState<SeriesEpisode | null>(() => {
+    if (initialPlayingEpisodeId) {
+      const found = allEpisodes.find(e => e.id === initialPlayingEpisodeId);
+      if (found) return found;
+    }
     return allEpisodes.find(e => !e.isCompleted) || allEpisodes[0] || null;
   });
 
@@ -414,6 +431,12 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
     handleStartPlaying(chosen);
   };
 
+  const handleEnterPiP = () => {
+    if (!playingEpisode || !onMinimizeToFloatingPiP) return;
+    const episodesList = filteredEpisodes.length > 0 ? filteredEpisodes : allEpisodes;
+    onMinimizeToFloatingPiP(series, playingEpisode, episodesList);
+  };
+
   const playingFile = playingEpisode?.fileId ? allFiles.find(f => f.id === playingEpisode.fileId) : null;
 
 
@@ -515,6 +538,18 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
             <Layers className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{isSidebarOpen ? 'Barra Lateral' : 'Mostrar Vídeos'}</span>
           </button>
+
+          {/* Picture-in-Picture Floating Window Button */}
+          {playingEpisode && onMinimizeToFloatingPiP && (
+            <button
+              onClick={handleEnterPiP}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 bg-red-600/20 hover:bg-red-600/30 text-red-300 border-red-500/40 shadow-xs active:scale-95"
+              title="Janela Flutuante (Picture-in-Picture) - Assista enquanto navega pelo DriveGram"
+            >
+              <Airplay className="w-3.5 h-3.5 text-red-400" />
+              <span className="hidden sm:inline">Picture-in-Picture</span>
+            </button>
+          )}
 
           {/* Sync YouTube Playlist Button */}
           {series.youtubeUrl && onRefreshSeries && (
@@ -739,6 +774,17 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                       title="Baixar para Cache Local"
                     >
                       <Download className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {/* Quick Picture-in-Picture Button */}
+                  {onMinimizeToFloatingPiP && (
+                    <button
+                      onClick={handleEnterPiP}
+                      className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-red-400 border border-gray-700 transition-all active:scale-95"
+                      title="Janela Flutuante (Picture-in-Picture)"
+                    >
+                      <Airplay className="w-4 h-4 text-red-400" />
                     </button>
                   )}
 
