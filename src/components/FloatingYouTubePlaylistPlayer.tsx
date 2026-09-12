@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { SeriesShow, SeriesEpisode } from '../types/index.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
+import { isTauriPlatform } from '../utils/mobileBridge.js';
 
 interface FloatingYouTubePlaylistPlayerProps {
   series: SeriesShow;
@@ -48,6 +49,15 @@ export const FloatingYouTubePlaylistPlayer: React.FC<FloatingYouTubePlaylistPlay
   const [countdown, setCountdown] = useState<number | null>(null);
   const [nextEpisodeToPlay, setNextEpisodeToPlay] = useState<SeriesEpisode | null>(null);
   const [isNativePiPActive, setIsNativePiPActive] = useState<boolean>(false);
+  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isTauriPlatform()) {
+      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+        getCurrentWindow().isAlwaysOnTop().then(setIsAlwaysOnTop).catch(() => {});
+      }).catch(() => {});
+    }
+  }, []);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const queueActiveRef = useRef<HTMLButtonElement>(null);
@@ -233,10 +243,27 @@ export const FloatingYouTubePlaylistPlayer: React.FC<FloatingYouTubePlaylistPlay
     }
   }, [isQueueOpen, activeEpisode.id]);
 
-  // Document Picture-in-Picture API (Native Always-on-top OS Window)
-  const isDocPiPSupported = typeof window !== 'undefined' && 'documentPictureInPicture' in window;
+  // External PiP / Always-on-top:
+  // - On Tauri Desktop (Windows): Uses native Tauri window setAlwaysOnTop to keep DriveGram floating above other apps
+  // - On Desktop Web (Chrome/Edge): Uses Document Picture-in-Picture API
+  const isTauri = isTauriPlatform();
+  const isDocPiPSupported = !isTauri && typeof window !== 'undefined' && 'documentPictureInPicture' in window;
+  const canFloatExternally = isTauri || isDocPiPSupported;
 
-  const handleToggleDocumentPiP = async () => {
+  const handleToggleExternalPiP = async () => {
+    if (isTauri) {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        const next = !isAlwaysOnTop;
+        await win.setAlwaysOnTop(next);
+        setIsAlwaysOnTop(next);
+      } catch (err) {
+        console.warn('[DriveGram Desktop] Failed to toggle always on top:', err);
+      }
+      return;
+    }
+
     if (!isDocPiPSupported) return;
 
     // If native window already open, close it to restore
@@ -287,9 +314,23 @@ export const FloatingYouTubePlaylistPlayer: React.FC<FloatingYouTubePlaylistPlay
         setIsNativePiPActive(false);
       });
     } catch (err) {
-      console.warn('Document PiP request failed:', err);
+      // Graceful fallback: Keep in-app floating player active without error
       setIsNativePiPActive(false);
+      pipWindowRef.current = null;
     }
+  };
+
+  const handleClose = () => {
+    if (isTauri && isAlwaysOnTop) {
+      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+        getCurrentWindow().setAlwaysOnTop(false).catch(() => {});
+      }).catch(() => {});
+    }
+    if (pipWindowRef.current) {
+      pipWindowRef.current.close();
+      pipWindowRef.current = null;
+    }
+    onClose();
   };
 
   // Close native PiP on unmount
@@ -344,16 +385,20 @@ export const FloatingYouTubePlaylistPlayer: React.FC<FloatingYouTubePlaylistPlay
 
           {/* Top Actions */}
           <div className="flex items-center gap-1 shrink-0">
-            {/* Native OS Document Picture-in-Picture Toggle */}
-            {isDocPiPSupported && (
+            {/* Native Always-on-Top (Tauri Desktop) or Document PiP (Web Browser) */}
+            {canFloatExternally && (
               <button
-                onClick={handleToggleDocumentPiP}
+                onClick={handleToggleExternalPiP}
                 className={`p-1.5 rounded-xl border transition-all ${
-                  isNativePiPActive
-                    ? 'bg-red-600/30 text-red-300 border-red-500/50'
+                  (isNativePiPActive || isAlwaysOnTop)
+                    ? 'bg-red-600/30 text-red-300 border-red-500/50 shadow-xs'
                     : 'bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-red-400 border-gray-800'
                 }`}
-                title={isNativePiPActive ? 'Retornar janela ao DriveGram' : 'Destacar em Janela Flutuante do Windows (Sempre no Topo)'}
+                title={
+                  isTauri
+                    ? (isAlwaysOnTop ? 'Desafixar Janela do Topo' : 'Fixar DriveGram Sempre no Topo (Always on Top)')
+                    : (isNativePiPActive ? 'Retornar janela ao DriveGram' : 'Destacar em Janela Flutuante (PiP)')
+                }
               >
                 <Airplay className="w-3.5 h-3.5" />
               </button>
@@ -379,7 +424,7 @@ export const FloatingYouTubePlaylistPlayer: React.FC<FloatingYouTubePlaylistPlay
 
             {/* Close PiP */}
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="p-1.5 rounded-xl bg-gray-900 hover:bg-rose-950/60 text-gray-400 hover:text-rose-400 border border-gray-800 hover:border-rose-900 transition-all"
               title="Fechar PiP"
             >
