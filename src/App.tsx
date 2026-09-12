@@ -197,6 +197,11 @@ export function App() {
   const [selectedBookForView, setSelectedBookForView] = useState<Book | null>(null);
   const [selectedComicForView, setSelectedComicForView] = useState<ComicBook | null>(null);
   const [selectedVideoForView, setSelectedVideoForView] = useState<MovieVideo | null>(null);
+  const [activeVideoPlaylist, setActiveVideoPlaylist] = useState<{
+    items: MovieVideo[];
+    title?: string;
+    isShuffle?: boolean;
+  } | null>(null);
   const [selectedPersonalVideoForView, setSelectedPersonalVideoForView] = useState<PersonalVideo | null>(null);
   const [activePipVideo, setActivePipVideo] = useState<{ video: MovieVideo; isPersonal?: boolean } | null>(null);
   const [activePipCourse, setActivePipCourse] = useState<Course | null>(null);
@@ -578,6 +583,13 @@ export function App() {
             <VideoPlayerView
               video={activePlayingMovie}
               allFiles={fs.allFiles}
+              playlist={activeVideoPlaylist?.items}
+              playlistTitle={activeVideoPlaylist?.title}
+              isShuffleInitial={activeVideoPlaylist?.isShuffle}
+              onSelectVideo={(v) => {
+                videos.setActiveVideo(v);
+                setSelectedVideoForView(v);
+              }}
               isPiPHidden={!isMovieVisibleInMain}
               onBackToCatalog={() => {
                 setActivePipVideo(null);
@@ -925,9 +937,13 @@ export function App() {
               categories={videos.categories}
               folders={fs.allFolders}
               allFiles={fs.allFiles}
-              onSelectVideo={(v) => {
+              sagas={videos.sagas}
+              onSelectVideo={(v, pl, title, isShuff) => {
                 videos.setActiveVideo(v);
                 setSelectedVideoForView(v);
+                if (pl && pl.length > 0) {
+                  setActiveVideoPlaylist({ items: pl, title, isShuffle: isShuff });
+                }
               }}
               onOpenNewModal={() => setIsVideoModalOpen(true)}
               onEditVideo={(v) => setEditingVideo(v)}
@@ -935,6 +951,7 @@ export function App() {
                 videos.deleteVideo(id);
                 fs.refresh();
               }}
+              onUpdateVideo={videos.updateVideo}
             />
           ) : fs.activeTab === 'personal-videos' ? (
             /* Personal Videos & Media Catalog */
@@ -1368,6 +1385,8 @@ export function App() {
         folders={fs.allFolders}
         categories={videos.categories}
         onAddCategory={videos.addCategory}
+        existingSagas={videos.sagas.map(s => s.name)}
+        existingVideos={videos.videos}
         onCreateVideo={async (data) => {
           const newVideo = await videos.createVideoFromFolder(data);
           fs.refresh();
@@ -1386,6 +1405,8 @@ export function App() {
         categories={videos.categories}
         allFiles={fs.allFiles}
         onAddCategory={videos.addCategory}
+        existingSagas={videos.sagas.map(s => s.name)}
+        existingVideos={videos.videos}
         onSave={async (updated) => {
           await videos.updateVideo(updated);
           fs.refresh();

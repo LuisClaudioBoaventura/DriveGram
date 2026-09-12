@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { MovieVideo } from '../types/index.js';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { MovieVideo, MovieSagaGroup } from '../types/index.js';
 
 export function useVideos() {
   const [videos, setVideos] = useState<MovieVideo[]>([]);
@@ -137,6 +137,8 @@ export function useVideos() {
     writer?: string;
     metascore?: string;
     country?: string;
+    saga?: string;
+    sagaOrder?: number;
   }): Promise<MovieVideo | null> => {
     try {
       const res = await fetch('/api/videos/from-folder', {
@@ -226,9 +228,47 @@ export function useVideos() {
     }
   }, []);
 
+  // Aggregated reactive Sagas
+  const sagas = useMemo<MovieSagaGroup[]>(() => {
+    const map = new Map<string, MovieVideo[]>();
+    for (const v of videos) {
+      if (v.saga && v.saga.trim()) {
+        const key = v.saga.trim();
+        if (!map.has(key)) {
+          map.set(key, []);
+        }
+        map.get(key)!.push(v);
+      }
+    }
+
+    const result: MovieSagaGroup[] = [];
+    for (const [name, sVideos] of map.entries()) {
+      const sorted = [...sVideos].sort((a, b) => {
+        if (a.sagaOrder !== undefined && b.sagaOrder !== undefined) {
+          return a.sagaOrder - b.sagaOrder;
+        }
+        if (a.sagaOrder !== undefined) return -1;
+        if (b.sagaOrder !== undefined) return 1;
+        return (Number(a.year) || 0) - (Number(b.year) || 0);
+      });
+
+      result.push({
+        name,
+        coverImage: sorted[0]?.coverImage,
+        movieCount: sorted.length,
+        completedCount: sorted.filter(m => m.isCompleted).length,
+        totalDurationSeconds: sorted.reduce((acc, m) => acc + (m.durationSeconds || 5400), 0),
+        movies: sorted
+      });
+    }
+
+    return result.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }, [videos]);
+
   return {
     videos,
     categories,
+    sagas,
     activeVideo,
     loading,
     setActiveVideo,

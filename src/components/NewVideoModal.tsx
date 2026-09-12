@@ -17,7 +17,7 @@ import {
   User, 
   Info 
 } from 'lucide-react';
-import { FolderItem, OMDbSearchResultItem, OMDbMovieDetail } from '../types/index.js';
+import { FolderItem, MovieVideo, OMDbSearchResultItem, OMDbMovieDetail } from '../types/index.js';
 import { getLibraryEligibleFolders } from '../utils/libraryFolderUtils.js';
 import { 
   searchOmdbMovies, 
@@ -31,6 +31,8 @@ interface NewVideoModalProps {
   onClose: () => void;
   folders: FolderItem[];
   categories: string[];
+  existingSagas?: string[];
+  existingVideos?: MovieVideo[];
   onCreateVideo: (params: {
     folderId: string;
     title: string;
@@ -46,6 +48,8 @@ interface NewVideoModalProps {
     actors?: string;
     rated?: string;
     runtime?: string;
+    saga?: string;
+    sagaOrder?: number;
   }) => Promise<void>;
   onAddCategory?: (category: string) => Promise<void>;
 }
@@ -64,6 +68,8 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
   onClose,
   folders,
   categories,
+  existingSagas = [],
+  existingVideos = [],
   onCreateVideo,
   onAddCategory
 }) => {
@@ -81,6 +87,8 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
   const [coverImage, setCoverImage] = useState(PRESET_COVERS[0]);
   const [customCoverUrl, setCustomCoverUrl] = useState('');
   const [isCustomCover, setIsCustomCover] = useState(false);
+  const [saga, setSaga] = useState('');
+  const [sagaOrder, setSagaOrder] = useState<number | string>('');
   const [loading, setLoading] = useState(false);
 
   // OMDb Search & Metadata State
@@ -216,9 +224,22 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
     setOmdbResults([]); // Collapse results list
   };
 
+  const handleSagaChange = (newSaga: string) => {
+    setSaga(newSaga);
+    if (newSaga.trim() && existingVideos && existingVideos.length > 0) {
+      const sagaMovies = existingVideos.filter(v => v.saga && v.saga.trim().toLowerCase() === newSaga.trim().toLowerCase());
+      if (sagaMovies.length > 0) {
+        const maxOrder = Math.max(...sagaMovies.map(m => m.sagaOrder || 0));
+        setSagaOrder(maxOrder + 1);
+      } else {
+        setSagaOrder(1);
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !selectedFolderId) return;
+    if (!selectedFolderId || !title.trim()) return;
 
     setLoading(true);
     try {
@@ -236,7 +257,9 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
         imdbRating: imdbRating.trim() || undefined,
         actors: actors.trim() || undefined,
         rated: rated.trim() || undefined,
-        runtime: runtime.trim() || undefined
+        runtime: runtime.trim() || undefined,
+        saga: saga.trim() || undefined,
+        sagaOrder: sagaOrder !== '' && !isNaN(Number(sagaOrder)) ? Number(sagaOrder) : undefined
       });
       onClose();
     } catch (err) {
@@ -562,6 +585,53 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
                 className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-red-500 focus:outline-none"
               />
             </div>
+          </div>
+
+          {/* Saga / Franquia de Filmes */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-red-600/5 via-amber-500/5 to-transparent border border-red-500/20 dark:border-red-500/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                <Film className="w-3.5 h-3.5 text-red-500" />
+                <span>Saga / Franquia de Filmes</span>
+                <span className="px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 text-[10px] font-bold">
+                  Opcional
+                </span>
+              </label>
+              <span className="text-[10px] text-gray-400">Maratona contínua em sequência</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="sm:col-span-2">
+                <input
+                  type="text"
+                  list="new-sagas-autocomplete-list"
+                  value={saga}
+                  onChange={(e) => handleSagaChange(e.target.value)}
+                  placeholder="Ex: Harry Potter, Star Wars, Matrix, John Wick..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none"
+                />
+                <datalist id="new-sagas-autocomplete-list">
+                  {(existingSagas || []).map(s => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={sagaOrder}
+                  onChange={(e) => setSagaOrder(e.target.value)}
+                  placeholder="Ordem (#1, #2...)"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <span className="text-[10px] text-gray-400 block">
+              💡 Filmes com o mesmo nome de saga serão agrupados e poderão ser assistidos em sequência contínua.
+            </span>
           </div>
 
           {/* Actors / Elenco */}

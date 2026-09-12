@@ -1,5 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2, Sparkles } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { 
+  ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, 
+  Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2, Sparkles,
+  SkipBack, SkipForward, Shuffle, Repeat, List, X, Search
+} from 'lucide-react';
 import { MovieVideo, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { GenerateMarkersModal } from './GenerateMarkersModal.js';
@@ -9,6 +13,10 @@ import { resolveApiUrl } from '../utils/mobileBridge.js';
 interface VideoPlayerViewProps {
   video: MovieVideo;
   allFiles: DriveItem[];
+  playlist?: MovieVideo[];
+  playlistTitle?: string;
+  onSelectVideo?: (video: MovieVideo) => void;
+  isShuffleInitial?: boolean;
   onBackToCatalog: () => void;
   onUpdateProgress: (videoId: string, seconds: number, isCompleted?: boolean) => Promise<void>;
   onOpenEditModal?: () => void;
@@ -22,6 +30,10 @@ interface VideoPlayerViewProps {
 export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   video,
   allFiles,
+  playlist,
+  playlistTitle,
+  onSelectVideo,
+  isShuffleInitial = false,
   onBackToCatalog,
   onUpdateProgress,
   onOpenEditModal,
@@ -71,8 +83,136 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     }
   };
 
+  // Continuous Playback & Queue State
+  const effectivePlaylist = useMemo(() => {
+    return playlist && playlist.length > 0 ? playlist : [video];
+  }, [playlist, video]);
+
+  const currentIndex = useMemo(() => {
+    const idx = effectivePlaylist.findIndex(v => v.id === video.id);
+    return idx >= 0 ? idx : 0;
+  }, [effectivePlaylist, video.id]);
+
+  const [isShuffle, setIsShuffle] = useState(isShuffleInitial);
+  const [isAutoPlayNext, setIsAutoPlayNext] = useState(true);
+  const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [queueSearch, setQueueSearch] = useState('');
+  const [nextCountdown, setNextCountdown] = useState<number | null>(null);
+  const [nextMovieToPlay, setNextMovieToPlay] = useState<MovieVideo | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getNextMovie = useCallback((): MovieVideo | null => {
+    if (effectivePlaylist.length <= 1) return null;
+
+    if (isShuffle) {
+      const candidates = effectivePlaylist.filter(v => v.id !== video.id);
+      const uncompleted = candidates.filter(v => !v.isCompleted);
+      const pool = uncompleted.length > 0 ? uncompleted : candidates;
+      const randomIdx = Math.floor(Math.random() * pool.length);
+      return pool[randomIdx] || null;
+    }
+
+    if (currentIndex < effectivePlaylist.length - 1) {
+      return effectivePlaylist[currentIndex + 1];
+    }
+    return null;
+  }, [effectivePlaylist, currentIndex, isShuffle, video.id]);
+
+  const getPrevMovie = useCallback((): MovieVideo | null => {
+    if (effectivePlaylist.length <= 1) return null;
+    if (currentIndex > 0) {
+      return effectivePlaylist[currentIndex - 1];
+    }
+    return null;
+  }, [effectivePlaylist, currentIndex]);
+
+  const cancelCountdown = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setNextCountdown(null);
+    setNextMovieToPlay(null);
+  }, []);
+
+  const handlePlayNext = useCallback(() => {
+    cancelCountdown();
+    const next = nextMovieToPlay || getNextMovie();
+    if (next && onSelectVideo) {
+      if (videoRef.current) {
+        onUpdateProgress(video.id, videoRef.current.currentTime, false);
+      }
+      onSelectVideo(next);
+    }
+  }, [cancelCountdown, nextMovieToPlay, getNextMovie, onSelectVideo, onUpdateProgress, video.id]);
+
+  const handlePlayPrev = useCallback(() => {
+    cancelCountdown();
+    const prev = getPrevMovie();
+    if (prev && onSelectVideo) {
+      if (videoRef.current) {
+        onUpdateProgress(video.id, videoRef.current.currentTime, false);
+      }
+      onSelectVideo(prev);
+    }
+  }, [cancelCountdown, getPrevMovie, onSelectVideo, onUpdateProgress, video.id]);
+
+  // Clean countdown on unmount or video change
+  useEffect(() => {
+    cancelCountdown();
+  }, [video.id, cancelCountdown]);
+
+  // Keyboard Shortcuts for continuous playback
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+        return;
+      }
+      if (e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+        e.preventDefault();
+        handlePlayNext();
+      } else if (e.shiftKey && (e.key === 'P' || e.key === 'p')) {
+        e.preventDefault();
+        handlePlayPrev();
+      } else if (e.key === 's' || e.key === 'S') {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          setIsShuffle(prev => !prev);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handlePlayNext, handlePlayPrev]);
+
   const handleVideoEnded = () => {
     onUpdateProgress(video.id, duration, true);
+
+    if (isAutoPlayNext && onSelectVideo && effectivePlaylist.length > 1) {
+      const next = getNextMovie();
+      if (next) {
+        setNextMovieToPlay(next);
+        setNextCountdown(6);
+
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+        }
+
+        countdownTimerRef.current = setInterval(() => {
+          setNextCountdown(prev => {
+            if (prev === null || prev <= 1) {
+              if (countdownTimerRef.current) {
+                clearInterval(countdownTimerRef.current);
+                countdownTimerRef.current = null;
+              }
+              onSelectVideo(next);
+              return null;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }
+    }
   };
 
   const onUpdateProgressRef = useRef(onUpdateProgress);
@@ -152,6 +292,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   }, [video.id]);
 
   const handleBack = () => {
+    cancelCountdown();
     if (document.pictureInPictureElement && document.exitPictureInPicture) {
       document.exitPictureInPicture().catch(() => {});
     }
@@ -287,11 +428,18 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             <ArrowLeft className="w-4 h-4" />
           </button>
 
-          {/* Video Title & Category */}
+          {/* Video Title & Category & Playlist Context */}
           <div className="flex items-center gap-2 overflow-hidden px-2 flex-1 min-w-0">
             <span className="px-2 py-0.5 rounded-lg bg-red-600/90 text-white text-[10px] font-black uppercase shadow-sm shrink-0">
               {video.category || 'Filme'}
             </span>
+
+            {playlistTitle && (
+              <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30 shrink-0 truncate max-w-[130px] sm:max-w-[200px]" title={playlistTitle}>
+                {playlistTitle}
+              </span>
+            )}
+
             <div className="min-w-0 flex-1 overflow-hidden">
               <MarqueeTitle
                 text={video.titlePt || video.title}
@@ -301,8 +449,70 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             </div>
           </div>
 
-          {/* Action Controls (Icons Only) */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Action Controls */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            {/* Continuous Playback Navigation Controls */}
+            {effectivePlaylist.length > 1 && (
+              <>
+                <button
+                  onClick={handlePlayPrev}
+                  disabled={currentIndex === 0}
+                  className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shrink-0"
+                  title="Filme Anterior (Shift+P)"
+                >
+                  <SkipBack className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={handlePlayNext}
+                  disabled={!isShuffle && currentIndex >= effectivePlaylist.length - 1}
+                  className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shrink-0"
+                  title="Próximo Filme (Shift+N)"
+                >
+                  <SkipForward className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => setIsShuffle(prev => !prev)}
+                  className={`p-2 rounded-xl border shadow-sm transition-all active:scale-95 shrink-0 ${
+                    isShuffle 
+                      ? 'bg-red-600 text-white border-red-500 shadow-red-600/30' 
+                      : 'bg-gray-900/90 hover:bg-gray-800 text-gray-400 hover:text-white border-gray-800 hover:border-gray-700'
+                  }`}
+                  title={isShuffle ? 'Modo Aleatório Ativo (S)' : 'Ativar Modo Aleatório (S)'}
+                >
+                  <Shuffle className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => setIsAutoPlayNext(prev => !prev)}
+                  className={`p-2 rounded-xl border shadow-sm transition-all active:scale-95 shrink-0 ${
+                    isAutoPlayNext 
+                      ? 'bg-amber-600 text-white border-amber-500 shadow-amber-600/30' 
+                      : 'bg-gray-900/90 hover:bg-gray-800 text-gray-400 hover:text-white border-gray-800 hover:border-gray-700'
+                  }`}
+                  title={isAutoPlayNext ? 'Reprodução Contínua Ativa (Autoplay)' : 'Ativar Reprodução Contínua'}
+                >
+                  <Repeat className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => setIsQueueOpen(prev => !prev)}
+                  className={`p-2 rounded-xl border shadow-sm transition-all active:scale-95 flex items-center gap-1.5 shrink-0 ${
+                    isQueueOpen
+                      ? 'bg-red-600 text-white border-red-500 shadow-red-600/30'
+                      : 'bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border-gray-800 hover:border-gray-700'
+                  }`}
+                  title="Fila de Reprodução / Playlist"
+                >
+                  <List className="w-4 h-4" />
+                  <span className="text-[10px] font-mono font-bold hidden sm:inline">
+                    {currentIndex + 1}/{effectivePlaylist.length}
+                  </span>
+                </button>
+              </>
+            )}
+
             {/* PiP Button */}
             <button
               onClick={async () => {
@@ -384,6 +594,74 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 />
               ))}
             </video>
+
+            {/* Next Movie Autoplay Countdown Overlay */}
+            {nextCountdown !== null && nextMovieToPlay && (
+              <div className="absolute inset-0 z-30 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+                <div className="max-w-md w-full bg-gray-900/95 p-5 sm:p-6 rounded-3xl border border-red-500/40 shadow-2xl space-y-4">
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span className="font-bold flex items-center gap-1.5 text-red-400">
+                      <Sparkles className="w-4 h-4" />
+                      <span>Reprodução Contínua</span>
+                    </span>
+                    <span className="font-mono bg-red-500/20 text-red-300 px-2.5 py-0.5 rounded-full font-bold border border-red-500/30">
+                      Próximo em {nextCountdown}s
+                    </span>
+                  </div>
+
+                  {/* Next Movie Card */}
+                  <div className="flex items-center gap-3.5 bg-gray-950/80 p-3 rounded-2xl border border-gray-800 text-left">
+                    <img
+                      src={nextMovieToPlay.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                      alt={nextMovieToPlay.title}
+                      className="w-14 aspect-[2/3] object-cover rounded-xl shadow-md shrink-0 border border-white/10"
+                    />
+                    <div className="overflow-hidden flex-1 min-w-0">
+                      {nextMovieToPlay.saga && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block truncate">
+                          Saga {nextMovieToPlay.saga} {nextMovieToPlay.sagaOrder ? `• #${nextMovieToPlay.sagaOrder}` : ''}
+                        </span>
+                      )}
+                      <h4 className="font-bold text-sm text-white truncate">
+                        {nextMovieToPlay.titlePt || nextMovieToPlay.title}
+                      </h4>
+                      {nextMovieToPlay.titlePt && nextMovieToPlay.titlePt !== nextMovieToPlay.title && (
+                        <p className="text-xs text-gray-400 italic truncate">{nextMovieToPlay.title}</p>
+                      )}
+                      <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-1 font-mono">
+                        {nextMovieToPlay.year && <span>{nextMovieToPlay.year}</span>}
+                        {nextMovieToPlay.duration && <span>• {nextMovieToPlay.duration}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Progress bar of countdown */}
+                  <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-red-600 to-rose-500 h-full transition-all duration-1000 ease-linear rounded-full"
+                      style={{ width: `${((6 - nextCountdown) / 6) * 100}%` }}
+                    />
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      onClick={handlePlayNext}
+                      className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all hover:scale-105 active:scale-95"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>Assistir Agora</span>
+                    </button>
+                    <button
+                      onClick={cancelCountdown}
+                      className="px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold text-xs transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : (video.embedUrl || (video.videoUrl && (video.videoUrl.includes('youtube.com') || video.videoUrl.includes('youtu.be')))) ? (
           <div className={isPiPHidden ? 'w-px h-px' : 'relative w-full min-h-[50vh] max-h-[75vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center'}>
@@ -397,6 +675,61 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
             />
+
+            {/* Next Movie Autoplay Countdown Overlay for Iframe */}
+            {nextCountdown !== null && nextMovieToPlay && (
+              <div className="absolute inset-0 z-30 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+                <div className="max-w-md w-full bg-gray-900/95 p-5 sm:p-6 rounded-3xl border border-red-500/40 shadow-2xl space-y-4">
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span className="font-bold flex items-center gap-1.5 text-red-400">
+                      <Sparkles className="w-4 h-4" />
+                      <span>Reprodução Contínua</span>
+                    </span>
+                    <span className="font-mono bg-red-500/20 text-red-300 px-2.5 py-0.5 rounded-full font-bold border border-red-500/30">
+                      Próximo em {nextCountdown}s
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3.5 bg-gray-950/80 p-3 rounded-2xl border border-gray-800 text-left">
+                    <img
+                      src={nextMovieToPlay.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                      alt={nextMovieToPlay.title}
+                      className="w-14 aspect-[2/3] object-cover rounded-xl shadow-md shrink-0 border border-white/10"
+                    />
+                    <div className="overflow-hidden flex-1 min-w-0">
+                      {nextMovieToPlay.saga && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block truncate">
+                          Saga {nextMovieToPlay.saga} {nextMovieToPlay.sagaOrder ? `• #${nextMovieToPlay.sagaOrder}` : ''}
+                        </span>
+                      )}
+                      <h4 className="font-bold text-sm text-white truncate">
+                        {nextMovieToPlay.titlePt || nextMovieToPlay.title}
+                      </h4>
+                      <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-1 font-mono">
+                        {nextMovieToPlay.year && <span>{nextMovieToPlay.year}</span>}
+                        {nextMovieToPlay.duration && <span>• {nextMovieToPlay.duration}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      onClick={handlePlayNext}
+                      className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all hover:scale-105 active:scale-95"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>Assistir Agora</span>
+                    </button>
+                    <button
+                      onClick={cancelCountdown}
+                      className="px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold text-xs transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : !isPiPHidden ? (
           <div className="flex flex-col items-center justify-center p-16 text-center bg-gray-900/50 rounded-3xl border border-gray-800 max-w-md w-full">
@@ -614,6 +947,156 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           }}
           onSaveTimestamps={handleSaveGeneratedTimestamps}
         />
+      )}
+      {/* Playlist / Queue Drawer */}
+      {isQueueOpen && (
+        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm sm:max-w-md bg-gray-950/98 backdrop-blur-2xl border-l border-gray-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 select-none">
+          {/* Drawer Header */}
+          <div className="p-4 border-b border-gray-800/80 flex items-center justify-between">
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-xl bg-red-600/20 text-red-500 flex items-center justify-center shrink-0">
+                <List className="w-4 h-4" />
+              </div>
+              <div className="overflow-hidden">
+                <h3 className="font-bold text-sm text-white truncate">
+                  {playlistTitle || (video.saga ? `Saga: ${video.saga}` : 'Fila de Reprodução')}
+                </h3>
+                <p className="text-[11px] text-gray-400">
+                  {effectivePlaylist.length} {effectivePlaylist.length === 1 ? 'filme' : 'filmes'} • #{currentIndex + 1} de {effectivePlaylist.length}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsQueueOpen(false)}
+              className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+              title="Fechar fila"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Quick Controls inside Drawer */}
+          <div className="px-4 py-2.5 bg-gray-900/60 border-b border-gray-800/60 flex items-center justify-between gap-2 text-xs">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={queueSearch}
+                onChange={(e) => setQueueSearch(e.target.value)}
+                placeholder="Buscar na fila..."
+                className="w-full pl-8 pr-3 py-1.5 bg-gray-800/80 rounded-xl text-xs text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-red-500"
+              />
+            </div>
+
+            <button
+              onClick={() => setIsShuffle(prev => !prev)}
+              className={`p-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1 ${
+                isShuffle
+                  ? 'bg-red-600 text-white border-red-500 shadow-md shadow-red-600/30'
+                  : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:text-white'
+              }`}
+              title={isShuffle ? 'Modo Aleatório Ativo (S)' : 'Ativar Modo Aleatório (S)'}
+            >
+              <Shuffle className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={() => setIsAutoPlayNext(prev => !prev)}
+              className={`p-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1 ${
+                isAutoPlayNext
+                  ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/30'
+                  : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:text-white'
+              }`}
+              title={isAutoPlayNext ? 'Reprodução Contínua Ativa (Autoplay)' : 'Ativar Reprodução Contínua'}
+            >
+              <Repeat className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Movies List */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {effectivePlaylist
+              .filter(m => !queueSearch.trim() || 
+                m.title.toLowerCase().includes(queueSearch.toLowerCase()) || 
+                (m.titlePt && m.titlePt.toLowerCase().includes(queueSearch.toLowerCase()))
+              )
+              .map((m) => {
+                const isCurrent = m.id === video.id;
+                const itemIndex = effectivePlaylist.findIndex(item => item.id === m.id);
+
+                return (
+                  <div
+                    key={m.id}
+                    onClick={() => {
+                      if (!isCurrent && onSelectVideo) {
+                        if (videoRef.current) {
+                          onUpdateProgress(video.id, videoRef.current.currentTime, false);
+                        }
+                        onSelectVideo(m);
+                      }
+                    }}
+                    className={`group p-2.5 rounded-2xl flex items-center gap-3 transition-all cursor-pointer border ${
+                      isCurrent
+                        ? 'bg-red-600/20 border-red-500/60 shadow-lg'
+                        : 'bg-gray-900/50 hover:bg-gray-900 border-gray-800/80 hover:border-gray-700'
+                    }`}
+                  >
+                    {/* Order indicator */}
+                    <span className={`w-6 text-center text-xs font-mono font-bold shrink-0 ${
+                      isCurrent ? 'text-red-400' : 'text-gray-500'
+                    }`}>
+                      {m.sagaOrder ? `#${m.sagaOrder}` : `#${itemIndex + 1}`}
+                    </span>
+
+                    {/* Poster */}
+                    <div className="relative w-12 aspect-[2/3] rounded-xl overflow-hidden bg-black/60 shrink-0 border border-white/10">
+                      <img
+                        src={m.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                        alt={m.title}
+                        className="w-full h-full object-cover"
+                      />
+                      {isCurrent && (
+                        <div className="absolute inset-0 bg-red-600/40 flex items-center justify-center">
+                          <Play className="w-4 h-4 fill-white text-white" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="overflow-hidden flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        {isCurrent && (
+                          <span className="px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-black uppercase tracking-wider shrink-0">
+                            Tocando
+                          </span>
+                        )}
+                        <h4 className={`text-xs font-bold truncate ${
+                          isCurrent ? 'text-red-400' : 'text-gray-200 group-hover:text-white'
+                        }`}>
+                          {m.titlePt || m.title}
+                        </h4>
+                      </div>
+                      {m.titlePt && m.titlePt !== m.title && (
+                        <p className="text-[10px] text-gray-400 italic truncate -mt-0.5">{m.title}</p>
+                      )}
+                      <div className="flex items-center gap-2 text-[10px] text-gray-400 mt-1">
+                        {m.year && <span>{m.year}</span>}
+                        {m.duration && <span>• {m.duration}</span>}
+                        {m.isCompleted ? (
+                          <span className="text-emerald-400 flex items-center gap-0.5 ml-auto font-bold">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Assistido</span>
+                          </span>
+                        ) : (m.lastPositionSeconds || 0) > 0 ? (
+                          <span className="text-amber-400 ml-auto font-medium">Continuar</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
       )}
     </div>
   );

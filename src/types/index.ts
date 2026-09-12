@@ -255,6 +255,18 @@ export interface MovieVideo {
   writer?: string;
   metascore?: string;
   country?: string;
+  // Saga / Franquia
+  saga?: string; // Nome da saga/franquia (ex: "Harry Potter", "Star Wars")
+  sagaOrder?: number; // Posição/ordem dentro da saga (ex: 1, 2, 3...)
+}
+
+export interface MovieSagaGroup {
+  name: string;
+  coverImage?: string;
+  movieCount: number;
+  completedCount: number;
+  totalDurationSeconds: number;
+  movies: MovieVideo[];
 }
 
 export interface OMDbSearchResultItem {

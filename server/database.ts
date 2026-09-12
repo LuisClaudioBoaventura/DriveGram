@@ -13,6 +13,7 @@ import {
   ComicBook, 
   ComicIssue, 
   MovieVideo,
+  MovieSagaGroup,
   PersonalVideo,
   SeriesShow,
   SeriesSeason,
@@ -2291,6 +2292,10 @@ class Database {
       writer: videoData.writer,
       metascore: videoData.metascore,
       country: videoData.country,
+      saga: videoData.saga?.trim() || undefined,
+      sagaOrder: typeof videoData.sagaOrder === 'number' && !isNaN(videoData.sagaOrder) 
+        ? videoData.sagaOrder 
+        : (videoData.sagaOrder ? Number(videoData.sagaOrder) || undefined : undefined),
       createdAt: videoData.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -2316,6 +2321,50 @@ class Database {
     this.syncVideosWithFolderStructure();
     this.save(this.data);
     return video;
+  }
+
+  public getMovieSagas(): MovieSagaGroup[] {
+    const videos = this.getVideos();
+    const map = new Map<string, MovieVideo[]>();
+
+    for (const v of videos) {
+      if (v.saga && v.saga.trim()) {
+        const key = v.saga.trim();
+        if (!map.has(key)) {
+          map.set(key, []);
+        }
+        map.get(key)!.push(v);
+      }
+    }
+
+    const sagas: MovieSagaGroup[] = [];
+    for (const [name, movies] of map.entries()) {
+      movies.sort((a, b) => {
+        if (a.sagaOrder !== undefined && b.sagaOrder !== undefined) {
+          return a.sagaOrder - b.sagaOrder;
+        }
+        if (a.sagaOrder !== undefined) return -1;
+        if (b.sagaOrder !== undefined) return 1;
+        return (Number(a.year) || 0) - (Number(b.year) || 0);
+      });
+
+      const movieCount = movies.length;
+      const completedCount = movies.filter(m => m.isCompleted).length;
+      const totalDurationSeconds = movies.reduce((acc, m) => acc + (m.durationSeconds || 5400), 0);
+      const coverImage = movies.find(m => m.coverImage)?.coverImage;
+
+      sagas.push({
+        name,
+        coverImage,
+        movieCount,
+        completedCount,
+        totalDurationSeconds,
+        movies
+      });
+    }
+
+    sagas.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    return sagas;
   }
 
   public deleteVideo(id: string): boolean {

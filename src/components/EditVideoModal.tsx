@@ -32,6 +32,8 @@ interface EditVideoModalProps {
   video: MovieVideo | null;
   categories: string[];
   allFiles?: DriveItem[];
+  existingSagas?: string[];
+  existingVideos?: MovieVideo[];
   onSave: (updated: MovieVideo) => Promise<void>;
   onAddCategory?: (category: string) => Promise<void>;
 }
@@ -51,6 +53,8 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
   video,
   categories,
   allFiles = [],
+  existingSagas = [],
+  existingVideos = [],
   onSave,
   onAddCategory
 }) => {
@@ -69,6 +73,8 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
   const [coverImage, setCoverImage] = useState(video.coverImage || PRESET_COVERS[0]);
   const [customCoverUrl, setCustomCoverUrl] = useState('');
   const [coverTab, setCoverTab] = useState<'upload' | 'url' | 'folder' | 'gallery'>('gallery');
+  const [saga, setSaga] = useState(video.saga || '');
+  const [sagaOrder, setSagaOrder] = useState<string | number>(video.sagaOrder !== undefined ? video.sagaOrder : '');
   const [loading, setLoading] = useState(false);
 
   // Extra IMDb/OMDb Metadata
@@ -95,6 +101,26 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
       setOmdbApiKey(getStoredOmdbApiKey());
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (video) {
+      setTitle(video.title);
+      setTitlePt(video.titlePt || '');
+      setCategory(video.category || 'Filmes');
+      setGenre(video.genre || '');
+      setYear(video.year?.toString() || '');
+      setDirector(video.director || '');
+      setActors(video.actors || '');
+      setDescription(video.description || '');
+      setCoverImage(video.coverImage || PRESET_COVERS[0]);
+      setImdbId(video.imdbId || '');
+      setImdbRating(video.imdbRating || '');
+      setRated(video.rated || '');
+      setRuntime(video.runtime || '');
+      setSaga(video.saga || '');
+      setSagaOrder(video.sagaOrder !== undefined ? video.sagaOrder : '');
+    }
+  }, [video]);
 
   const folderImageFiles = allFiles.filter(f => 
     f.parentId === video.folderId && 
@@ -124,9 +150,8 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
     setIsAddingNewCat(false);
   };
 
-  const handleSearchOmdb = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const query = omdbSearchQuery.trim() || title.trim();
+  const handleSearchOmdb = async () => {
+    const query = omdbSearchQuery.trim();
     if (!query) {
       setOmdbError('Digite o título do filme para buscar');
       return;
@@ -179,8 +204,6 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
     if (movie.Plot && movie.Plot !== 'N/A') setDescription(movie.Plot);
     if (movie.Poster && movie.Poster !== 'N/A') {
       setCoverImage(movie.Poster);
-      setCustomCoverUrl(movie.Poster);
-      setCoverTab('url');
     }
     if (movie.imdbID) setImdbId(movie.imdbID);
     if (movie.imdbRating && movie.imdbRating !== 'N/A') setImdbRating(movie.imdbRating);
@@ -217,6 +240,8 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
         imdbRating: imdbRating.trim() || undefined,
         rated: rated.trim() || undefined,
         runtime: runtime.trim() || undefined,
+        saga: saga.trim() || undefined,
+        sagaOrder: sagaOrder !== '' && !isNaN(Number(sagaOrder)) ? Number(sagaOrder) : undefined,
         updatedAt: new Date().toISOString()
       });
       onClose();
@@ -518,6 +543,53 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Saga / Franquia de Filmes */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-red-600/5 via-amber-500/5 to-transparent border border-red-500/20 dark:border-red-500/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                <Film className="w-3.5 h-3.5 text-red-500" />
+                <span>Saga / Franquia de Filmes</span>
+                <span className="px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 text-[10px] font-bold">
+                  Opcional
+                </span>
+              </label>
+              <span className="text-[10px] text-gray-400">Maratona contínua em sequência</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="sm:col-span-2">
+                <input
+                  type="text"
+                  list="edit-sagas-autocomplete-list"
+                  value={saga}
+                  onChange={(e) => setSaga(e.target.value)}
+                  placeholder="Ex: Harry Potter, Star Wars, Matrix, John Wick..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none"
+                />
+                <datalist id="edit-sagas-autocomplete-list">
+                  {(existingSagas || []).map(s => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={sagaOrder}
+                  onChange={(e) => setSagaOrder(e.target.value)}
+                  placeholder="Ordem (#1, #2...)"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <span className="text-[10px] text-gray-400 block">
+              💡 Filmes com o mesmo nome de saga serão agrupados e poderão ser assistidos em sequência contínua.
+            </span>
           </div>
 
           {/* Actors */}

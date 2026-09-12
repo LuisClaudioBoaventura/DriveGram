@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.10.1',
+    version: '1.11.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1970,6 +1970,10 @@ app.get('/api/videos', (_req, res) => {
   res.json(db.getVideos());
 });
 
+app.get('/api/videos/sagas', (_req, res) => {
+  res.json(db.getMovieSagas());
+});
+
 app.get('/api/videos/:id', (req, res) => {
   const video = db.getVideoById(req.params.id);
   if (!video) return res.status(404).json({ error: 'Vídeo/Filme não encontrado' });
@@ -1985,7 +1989,8 @@ app.post('/api/videos/from-folder', (req, res) => {
   try {
     const { 
       folderId, title, titlePt, category, genre, year, director, description, coverImage,
-      imdbId, imdbRating, actors, rated, runtime, awards, writer, metascore, country
+      imdbId, imdbRating, actors, rated, runtime, awards, writer, metascore, country,
+      saga, sagaOrder
     } = req.body;
     if (!folderId) return res.status(400).json({ error: 'folderId é obrigatório' });
 
@@ -2016,7 +2021,9 @@ app.post('/api/videos/from-folder', (req, res) => {
       awards,
       writer,
       metascore,
-      country
+      country,
+      saga,
+      sagaOrder
     });
 
     res.status(201).json(newVideo);
