@@ -118,10 +118,24 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
   const [sleepTimerRemainingSeconds, setSleepTimerRemainingSeconds] = useState<number | null>(null);
 
-  // Find ebook file (by ebookFileId OR any pdf in the book's folder)
+  // Find ebook file (by ebookFileId OR any pdf/epub in the book's folder)
   const ebookFile = book.ebookFileId 
     ? allFiles.find(f => f.id === book.ebookFileId) 
-    : allFiles.find(f => f.parentId === book.folderId && (f.type === 'pdf' || f.extension === 'epub' || f.name.endsWith('.pdf')));
+    : allFiles.find(f => f.parentId === book.folderId && (
+        f.type === 'ebook' || 
+        f.type === 'pdf' || 
+        ['epub', 'pdf', 'mobi', 'azw', 'azw3'].includes((f.extension || '').toLowerCase()) || 
+        /\.(epub|pdf|mobi|azw3?)$/i.test(f.name || '')
+      ));
+
+  const isEpub = Boolean(
+    ebookFile && (
+      (ebookFile.extension || '').toLowerCase() === 'epub' ||
+      ebookFile.type === 'ebook' ||
+      /\.epub$/i.test(ebookFile.name || '') ||
+      Boolean(ebookFile.mimeType?.includes('epub'))
+    )
+  );
 
   const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
 
@@ -332,7 +346,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
     if (book.folderId) formData.append('parentId', book.folderId);
 
     try {
-      const res = await fetch('/api/files/upload', { method: 'POST', body: formData });
+      const res = await fetch(resolveApiUrl('/api/files/upload'), { method: 'POST', body: formData });
       if (res.ok) {
         const saved = await res.json();
         await onUpdateBook({
@@ -514,10 +528,10 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                 viewMode === 'ebook' ? 'bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
-              title="Modo Leitor PDF"
+              title={isEpub ? "Modo Leitor EPUB" : "Modo Leitor Digital"}
             >
               <BookOpen className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">PDF</span>
+              <span className="hidden md:inline">{isEpub ? 'EPUB' : 'Digital'}</span>
             </button>
           </div>
 
@@ -526,10 +540,10 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
               <button
                 onClick={() => pdfInputRef.current?.click()}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-50/90 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/60 text-xs font-bold hover:bg-purple-100 transition-colors shadow-sm"
-                title="Carregar arquivo PDF do livro"
+                title="Carregar arquivo digital do livro (EPUB / PDF)"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Anexar PDF</span>
+                <span className="hidden lg:inline">Anexar EPUB / PDF</span>
               </button>
               <input
                 type="file"
@@ -690,20 +704,20 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                   </div>
                   {ebookFile && (
                     <a
-                      href={`/api/stream/${ebookFile.id}`}
+                      href={resolveApiUrl(`/api/stream/${ebookFile.id}`)}
                       download={ebookFile.name}
                       className="flex items-center gap-1 px-3 py-1 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow transition-all shrink-0 active:scale-95"
                     >
-                      <Download className="w-3.5 h-3.5" /> <span>Baixar PDF</span>
+                      <Download className="w-3.5 h-3.5" /> <span>Baixar {isEpub ? 'EPUB' : (ebookFile.extension || 'PDF').toUpperCase()}</span>
                     </a>
                   )}
                 </div>
 
                 <div className="flex-1 bg-gray-200 dark:bg-gray-900 w-full h-full min-h-[400px] sm:min-h-[500px] relative overflow-hidden">
                   {ebookFile ? (
-                    ebookFile.extension === 'epub' || /\.epub$/i.test(ebookFile.name) ? (
+                    isEpub ? (
                       <EpubReader file={ebookFile} />
-                    ) : ['cbr', 'cbz'].includes(ebookFile.extension) || /\.(cbr|cbz)$/i.test(ebookFile.name) ? (
+                    ) : ['cbr', 'cbz'].includes((ebookFile.extension || '').toLowerCase()) || /\.(cbr|cbz)$/i.test(ebookFile.name || '') ? (
                       <ComicReader file={ebookFile} />
                     ) : (
                       <PdfReader file={ebookFile} />
@@ -712,7 +726,7 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                     <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center h-full">
                       <FileText className="w-16 h-16 text-gray-400 mb-3" />
                       <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300">Nenhum livro digital anexado</h4>
-                      <p className="text-xs text-gray-500 mb-4">Anexe um arquivo PDF, EPUB ou HQ (CBR/CBZ) para ler e ouvir ao mesmo tempo.</p>
+                      <p className="text-xs text-gray-500 mb-4">Anexe um arquivo EPUB, PDF ou HQ (CBR/CBZ) para ler e ouvir ao mesmo tempo.</p>
                       <button
                         onClick={() => pdfInputRef.current?.click()}
                         className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold"
@@ -738,20 +752,20 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                 </div>
                 {ebookFile && (
                   <a
-                    href={`/api/stream/${ebookFile.id}`}
+                    href={resolveApiUrl(`/api/stream/${ebookFile.id}`)}
                     download={ebookFile.name}
                     className="flex items-center gap-1 px-3 py-1 rounded-xl bg-purple-600 text-white font-bold text-xs shrink-0 active:scale-95"
                   >
-                    <Download className="w-3.5 h-3.5" /> Baixar {ebookFile.extension?.toUpperCase() || 'Arquivo'}
+                    <Download className="w-3.5 h-3.5" /> Baixar {isEpub ? 'EPUB' : (ebookFile.extension || 'Arquivo').toUpperCase()}
                   </a>
                 )}
               </div>
 
               <div className="flex-1 bg-gray-200 dark:bg-gray-900 w-full h-full min-h-[calc(100dvh-230px)] sm:min-h-[500px] overflow-hidden">
                 {ebookFile ? (
-                  ebookFile.extension === 'epub' || /\.epub$/i.test(ebookFile.name) ? (
+                  isEpub ? (
                     <EpubReader file={ebookFile} />
-                  ) : ['cbr', 'cbz'].includes(ebookFile.extension) || /\.(cbr|cbz)$/i.test(ebookFile.name) ? (
+                  ) : ['cbr', 'cbz'].includes((ebookFile.extension || '').toLowerCase()) || /\.(cbr|cbz)$/i.test(ebookFile.name || '') ? (
                     <ComicReader file={ebookFile} />
                   ) : (
                     <PdfReader file={ebookFile} />
@@ -759,12 +773,12 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                 ) : (
                   <div className="flex flex-col items-center justify-center p-8 sm:p-16 text-center h-full">
                     <FileText className="w-16 h-16 text-gray-400 mb-3" />
-                    <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300">Nenhum livro digital (PDF/EPUB/CBR) encontrado</h4>
+                    <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300">Nenhum livro digital (EPUB / PDF) encontrado</h4>
                     <button
                       onClick={() => pdfInputRef.current?.click()}
                       className="mt-4 px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold"
                     >
-                      Selecionar Arquivo PDF / EPUB / CBR
+                      Selecionar Arquivo EPUB / PDF
                     </button>
                   </div>
                 )}

@@ -83,9 +83,14 @@ export const BookModal: React.FC<BookModalProps> = ({
       if (f) setTitle(f.name.replace(/^📚\s*|^🎓\s*/, ''));
 
       const audioFiles = availableFiles.filter(file => file.parentId === selectedFolderId && file.type === 'audio');
-      const pdfFiles = availableFiles.filter(file => file.parentId === selectedFolderId && (file.type === 'pdf' || file.extension === 'epub'));
+      const ebookFiles = availableFiles.filter(file => file.parentId === selectedFolderId && (
+        file.type === 'ebook' || 
+        file.type === 'pdf' || 
+        ['epub', 'pdf', 'mobi', 'azw', 'azw3'].includes((file.extension || '').toLowerCase()) || 
+        /\.(epub|pdf|mobi|azw3?)$/i.test(file.name || '')
+      ));
       
-      const totalBytes = audioFiles.reduce((acc, file) => acc + file.size, 0) + pdfFiles.reduce((acc, file) => acc + file.size, 0);
+      const totalBytes = audioFiles.reduce((acc, file) => acc + file.size, 0) + ebookFiles.reduce((acc, file) => acc + file.size, 0);
       if (totalBytes > 0) {
         const mb = (totalBytes / (1024 * 1024)).toFixed(1);
         setFileSizeFormatted(`${mb} MB`);
@@ -96,6 +101,8 @@ export const BookModal: React.FC<BookModalProps> = ({
         const h = Math.floor(estimatedMinutes / 60);
         const m = estimatedMinutes % 60;
         setTotalDuration(h > 0 ? `${h}h ${m}m` : `${m} min`);
+      } else if (audioFiles.length === 0 && ebookFiles.length > 0) {
+        setVersion('Edição Digital');
       }
     }
   }, [selectedFolderId, availableFolders, availableFiles]);
@@ -180,7 +187,14 @@ export const BookModal: React.FC<BookModalProps> = ({
   };
 
   const audioCountInFolder = selectedFolderId ? availableFiles.filter(f => f.parentId === selectedFolderId && f.type === 'audio').length : 0;
-  const pdfCountInFolder = selectedFolderId ? availableFiles.filter(f => f.parentId === selectedFolderId && (f.type === 'pdf' || f.extension === 'epub')).length : 0;
+  const ebookFilesInFolder = selectedFolderId ? availableFiles.filter(f => f.parentId === selectedFolderId && (
+    f.type === 'ebook' || 
+    f.type === 'pdf' || 
+    ['epub', 'pdf', 'mobi', 'azw', 'azw3'].includes((f.extension || '').toLowerCase()) || 
+    /\.(epub|pdf|mobi|azw3?)$/i.test(f.name || '')
+  )) : [];
+  const epubCountInFolder = ebookFilesInFolder.filter(f => (f.extension || '').toLowerCase() === 'epub' || /\.epub$/i.test(f.name || '')).length;
+  const pdfCountInFolder = ebookFilesInFolder.filter(f => (f.extension || '').toLowerCase() === 'pdf' || /\.pdf$/i.test(f.name || '')).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
@@ -257,9 +271,9 @@ export const BookModal: React.FC<BookModalProps> = ({
               </select>
 
               {selectedFolderId && (
-                <div className="flex items-center gap-3 pt-1 text-[11px] text-purple-700 dark:text-purple-300">
-                  <span>🎧 {audioCountInFolder} arquivos de áudio detectados</span>
-                  <span>📄 {pdfCountInFolder} arquivo PDF detectado</span>
+                <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-purple-700 dark:text-purple-300">
+                  <span>🎧 {audioCountInFolder} arquivo(s) de áudio detectados</span>
+                  <span>📖 {ebookFilesInFolder.length} livro(s) digital(is) ({epubCountInFolder} EPUB, {pdfCountInFolder} PDF)</span>
                 </div>
               )}
             </div>

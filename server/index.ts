@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.12.0',
+    version: '1.13.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1628,9 +1628,14 @@ app.post('/api/books/from-folder', (req, res) => {
     if (audioFiles.length > 1) {
       audioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
     }
-    const pdfFiles = allFiles.filter(f => f.parentId === folderId && (f.type === 'pdf' || f.extension === 'epub'));
+    const ebookFiles = allFiles.filter(f => f.parentId === folderId && (
+      f.type === 'pdf' || 
+      f.type === 'ebook' || 
+      ['epub', 'pdf', 'mobi', 'azw', 'azw3'].includes((f.extension || '').toLowerCase()) || 
+      /\.(epub|pdf|mobi|azw3?)$/i.test(f.name || '')
+    ));
 
-    const totalBytes = audioFiles.reduce((acc, f) => acc + f.size, 0) + pdfFiles.reduce((acc, f) => acc + f.size, 0);
+    const totalBytes = audioFiles.reduce((acc, f) => acc + f.size, 0) + ebookFiles.reduce((acc, f) => acc + f.size, 0);
     const autoSizeFormatted = totalBytes > 0 
       ? (totalBytes / (1024 * 1024)).toFixed(1) + ' MB' 
       : '120 MB';
@@ -1651,9 +1656,9 @@ app.post('/api/books/from-folder', (req, res) => {
       id: 'book-' + Date.now(),
       title: title || rootFolder.name,
       author: author || 'Autor Desconhecido',
-      narrationType: narrationType || 'Humana',
+      narrationType: narrationType || (chapters.length === 0 && ebookFiles.length > 0 ? 'Digital' : 'Humana'),
       narrator: narrator || undefined,
-      version: version || 'Estúdio de áudio',
+      version: version || (chapters.length === 0 && ebookFiles.length > 0 ? 'Edição Digital' : 'Estúdio de áudio'),
       totalDuration: totalDuration || (chapters.length > 0 ? `${chapters.length * 25} min` : undefined),
       saga: saga || 'N/A',
       sagaOrder: sagaOrder !== undefined ? Number(sagaOrder) : undefined,
@@ -1666,8 +1671,8 @@ app.post('/api/books/from-folder', (req, res) => {
       coverImage: coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=60',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      format: chapters.length > 0 && pdfFiles.length > 0 ? 'bundle' : chapters.length > 0 ? 'audiobook' : 'ebook',
-      ebookFileId: pdfFiles[0]?.id || undefined,
+      format: chapters.length > 0 && ebookFiles.length > 0 ? 'bundle' : chapters.length > 0 ? 'audiobook' : 'ebook',
+      ebookFileId: ebookFiles[0]?.id || undefined,
       chapters
     });
 

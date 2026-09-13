@@ -762,7 +762,12 @@ class Database {
       if (!book.folderId) continue;
       
       const bookAudioFiles = files.filter(f => f.parentId === book.folderId && f.type === 'audio');
-      const bookPdfFiles = files.filter(f => f.parentId === book.folderId && (f.type === 'pdf' || f.extension === 'epub'));
+      const bookPdfFiles = files.filter(f => f.parentId === book.folderId && (
+        f.type === 'pdf' || 
+        f.type === 'ebook' || 
+        ['epub', 'pdf', 'mobi', 'azw', 'azw3'].includes((f.extension || '').toLowerCase()) || 
+        /\.(epub|pdf|mobi|azw3?)$/i.test(f.name || '')
+      ));
       
       const existingChapters = book.chapters || [];
 

@@ -16,6 +16,7 @@ import {
   List
 } from 'lucide-react';
 import { DriveItem } from '../types/index.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface EpubReaderProps {
   file: DriveItem;
@@ -26,6 +27,7 @@ export const EpubReader: React.FC<EpubReaderProps> = ({ file }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<EpubBook | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,10 +94,22 @@ export const EpubReader: React.FC<EpubReaderProps> = ({ file }) => {
     rendition.themes.select(themeName);
   }, []);
 
+  const nextPage = useCallback(() => {
+    if (renditionRef.current) {
+      renditionRef.current.next();
+    }
+  }, []);
+
+  const prevPage = useCallback(() => {
+    if (renditionRef.current) {
+      renditionRef.current.prev();
+    }
+  }, []);
+
   // Initialize ePub reader
   useEffect(() => {
     let isMounted = true;
-    const url = `/api/stream/${file.id}`;
+    const streamUrl = resolveApiUrl(`/api/stream/${file.id}`);
 
     async function initEpub() {
       setLoading(true);
@@ -105,7 +119,15 @@ export const EpubReader: React.FC<EpubReaderProps> = ({ file }) => {
         if (!viewerRef.current) return;
         viewerRef.current.innerHTML = '';
 
-        const book = ePub(url);
+        // Fetch binary data directly to ensure clean zip extraction in memory
+        const res = await fetch(streamUrl);
+        if (!res.ok) {
+          throw new Error(`Falha ao baixar arquivo EPUB (HTTP ${res.status})`);
+        }
+        const buffer = await res.arrayBuffer();
+        if (!isMounted) return;
+
+        const book = ePub(buffer);
         bookRef.current = book;
 
         const rendition = book.renderTo(viewerRef.current, {
@@ -119,7 +141,23 @@ export const EpubReader: React.FC<EpubReaderProps> = ({ file }) => {
         applyTheme(theme, rendition);
         rendition.themes.fontSize(`${fontSize}%`);
 
-        await rendition.display();
+        // Register keydown navigation inside the book iframe
+        rendition.hooks.content.register((contents: any) => {
+          const doc = contents.document;
+          if (doc) {
+            doc.addEventListener('keydown', (e: KeyboardEvent) => {
+              if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+                nextPage();
+              } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+                prevPage();
+              }
+            });
+          }
+        });
+
+        // Restore saved reading progress / CFI
+        const savedCfi = localStorage.getItem(`epub_cfi_${file.id}`);
+        await rendition.display(savedCfi || undefined);
 
         // Load Table of Contents
         const navigation = await book.loaded.navigation;
@@ -127,17 +165,37 @@ export const EpubReader: React.FC<EpubReaderProps> = ({ file }) => {
           setToc(navigation.toc);
         }
 
-        // Relocated event
+        // Relocated event: track and save reading progress
         rendition.on('relocated', (location: any) => {
           if (!isMounted) return;
           if (location && location.start) {
             setCurrentLocation(location.start.cfi);
+            try {
+              localStorage.setItem(`epub_cfi_${file.id}`, location.start.cfi);
+            } catch (e) {}
             const chapter = book.navigation.get(location.start.href);
             if (chapter) {
               setCurrentChapter(chapter.label || '');
             }
           }
         });
+
+        // Setup resize observer for responsive layout adaptivity
+        if (viewerRef.current) {
+          const observer = new ResizeObserver(() => {
+            if (renditionRef.current && viewerRef.current) {
+              try {
+                const w = viewerRef.current.clientWidth;
+                const h = viewerRef.current.clientHeight;
+                if (w > 0 && h > 0) {
+                  renditionRef.current.resize(w, h);
+                }
+              } catch (e) {}
+            }
+          });
+          observer.observe(viewerRef.current);
+          resizeObserverRef.current = observer;
+        }
 
         if (isMounted) setLoading(false);
       } catch (err: any) {
@@ -153,11 +211,16 @@ export const EpubReader: React.FC<EpubReaderProps> = ({ file }) => {
 
     return () => {
       isMounted = false;
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+      }
       if (bookRef.current) {
-        bookRef.current.destroy();
+        try {
+          bookRef.current.destroy();
+        } catch (e) {}
       }
     };
-  }, [file.id]);
+  }, [file.id, applyTheme, fontSize, theme, nextPage, prevPage]);
 
   // Update theme when changed
   useEffect(() => {
@@ -172,18 +235,6 @@ export const EpubReader: React.FC<EpubReaderProps> = ({ file }) => {
       renditionRef.current.themes.fontSize(`${fontSize}%`);
     }
   }, [fontSize]);
-
-  const nextPage = useCallback(() => {
-    if (renditionRef.current) {
-      renditionRef.current.next();
-    }
-  }, []);
-
-  const prevPage = useCallback(() => {
-    if (renditionRef.current) {
-      renditionRef.current.prev();
-    }
-  }, []);
 
   const goToChapter = (href: string) => {
     if (renditionRef.current) {
@@ -224,9 +275,9 @@ export const EpubReader: React.FC<EpubReaderProps> = ({ file }) => {
         <h3 className="text-base font-bold text-rose-400 mb-2">Erro ao abrir EPUB</h3>
         <p className="text-xs text-gray-300 max-w-md mb-6">{error}</p>
         <a
-          href={`/api/stream/${file.id}`}
+          href={resolveApiUrl(`/api/stream/${file.id}`)}
           download={file.name}
-          className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg"
+          className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-lg transition-colors"
         >
           Baixar Arquivo Completo
         </a>

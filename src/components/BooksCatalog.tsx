@@ -233,7 +233,20 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
 
     // 2. Format / Status filter
     if (filterType === 'audiobook' && !(book.format === 'audiobook' || (book.chapters && book.chapters.length > 0))) return false;
-    if (filterType === 'ebook' && !(book.format === 'ebook' || !!book.ebookFileId)) return false;
+    if (filterType === 'ebook') {
+      const hasDigital = Boolean(
+        book.format === 'ebook' || 
+        book.format === 'bundle' || 
+        book.ebookFileId || 
+        (book.folderId && allFiles.some(f => f.parentId === book.folderId && (
+          f.type === 'ebook' || 
+          f.type === 'pdf' || 
+          ['epub', 'pdf', 'mobi', 'azw', 'azw3'].includes((f.extension || '').toLowerCase()) || 
+          /\.(epub|pdf|mobi|azw3?)$/i.test(f.name || '')
+        )))
+      );
+      if (!hasDigital) return false;
+    }
     if (filterType === 'in-progress' && !isBookInProgress(book)) return false;
     if (filterType === 'completed' && !isBookCompleted(book)) return false;
 
@@ -254,7 +267,17 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
 
   const totalBooks = books.length;
   const audiobooksCount = books.filter(b => b.format === 'audiobook' || (b.chapters && b.chapters.length > 0)).length;
-  const ebooksCount = books.filter(b => b.format === 'ebook' || !!b.ebookFileId).length;
+  const ebooksCount = books.filter(b => 
+    b.format === 'ebook' || 
+    b.format === 'bundle' || 
+    !!b.ebookFileId || 
+    (b.folderId && allFiles.some(f => f.parentId === b.folderId && (
+      f.type === 'ebook' || 
+      f.type === 'pdf' || 
+      ['epub', 'pdf', 'mobi', 'azw', 'azw3'].includes((f.extension || '').toLowerCase()) || 
+      /\.(epub|pdf|mobi|azw3?)$/i.test(f.name || '')
+    )))
+  ).length;
   const inProgressCount = books.filter(isBookInProgress).length;
   const completedBooksCount = books.filter(isBookCompleted).length;
 
@@ -857,7 +880,7 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
               }`}
             >
               <BookOpen className="w-3.5 h-3.5" />
-              <span>Livros Digitais (PDF)</span>
+              <span>Livros Digitais (EPUB / PDF) ({ebooksCount})</span>
             </button>
 
             <button
@@ -1004,7 +1027,17 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
 
                 {/* Top Badges: Narration Type + Format */}
                 <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 z-10">
-                  {book.narrationType === 'Artificial' ? (
+                  {book.format === 'ebook' || (!book.chapters || book.chapters.length === 0) ? (
+                    <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950/80 backdrop-blur-md text-emerald-300 text-[10px] font-bold border border-emerald-500/40">
+                      <BookOpen className="w-3 h-3" />
+                      <span>E-Book Digital</span>
+                    </span>
+                  ) : book.format === 'bundle' ? (
+                    <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-950/80 backdrop-blur-md text-amber-300 text-[10px] font-bold border border-amber-500/40">
+                      <Layers className="w-3 h-3" />
+                      <span>Áudio + E-Book</span>
+                    </span>
+                  ) : book.narrationType === 'Artificial' ? (
                     <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-950/80 backdrop-blur-md text-indigo-300 text-[10px] font-bold border border-indigo-500/40">
                       <Bot className="w-3 h-3" />
                       <span>Voz IA</span>
