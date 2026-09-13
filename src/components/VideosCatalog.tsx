@@ -609,6 +609,14 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredSagas.map(saga => {
                 const percent = Math.round((saga.completedCount / Math.max(1, saga.movieCount)) * 100);
+                const chosenCover = saga.coverImage || saga.movies[0]?.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60';
+                
+                // Other movies to flank the chosen cover in the 3D card presentation
+                const otherMovies = saga.movies.filter(m => m.coverImage && m.coverImage !== chosenCover);
+                const pool = otherMovies.length > 0 ? otherMovies : saga.movies;
+                const leftMovie = (pool.length > 1 || otherMovies.length > 0) ? pool[0] : null;
+                const rightMovie = pool.length > 1 ? pool[1] : null;
+
                 return (
                   <div
                     key={saga.name}
@@ -619,26 +627,48 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                       onClick={() => setSelectedSagaName(saga.name)}
                       className="relative h-48 bg-slate-950 cursor-pointer overflow-hidden flex items-center justify-center"
                     >
+                      {/* Ambient background glow from chosen cover */}
+                      <div
+                        className="absolute inset-0 bg-cover bg-center opacity-25 blur-md scale-110 pointer-events-none transition-all duration-500"
+                        style={{
+                          backgroundImage: `url(${chosenCover})`
+                        }}
+                      />
+
                       {/* Poster collage */}
-                      <div className="absolute inset-0 flex items-center justify-center gap-2 p-3 opacity-90 group-hover:scale-105 transition-transform duration-500">
-                        {saga.movies.slice(0, 3).map((m, i) => (
-                          <div
-                            key={m.id}
-                            className={`relative aspect-[2/3] h-40 rounded-lg overflow-hidden shadow-2xl border border-white/10 ${
-                              i === 1 ? 'z-10 scale-105 ring-2 ring-red-500/50' : 'opacity-70'
-                            }`}
-                          >
+                      <div className="absolute inset-0 flex items-center justify-center gap-2 p-3 opacity-95 group-hover:scale-105 transition-transform duration-500">
+                        {leftMovie && (
+                          <div className="relative aspect-[2/3] h-36 rounded-lg overflow-hidden shadow-xl border border-white/10 opacity-70 scale-95 transition-all">
                             <img
-                              src={m.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
-                              alt={m.title}
+                              src={leftMovie.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                              alt={leftMovie.title}
                               className="w-full h-full object-cover"
                             />
                           </div>
-                        ))}
+                        )}
+
+                        {/* Center Spotlight: The Chosen Cover */}
+                        <div className="relative aspect-[2/3] h-40 rounded-lg overflow-hidden shadow-2xl border-2 border-red-500/80 z-10 scale-105 ring-2 ring-red-500/50 transition-all">
+                          <img
+                            src={chosenCover}
+                            alt={saga.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+
+                        {rightMovie && (
+                          <div className="relative aspect-[2/3] h-36 rounded-lg overflow-hidden shadow-xl border border-white/10 opacity-70 scale-95 transition-all">
+                            <img
+                              src={rightMovie.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                              alt={rightMovie.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
                       </div>
 
                       {/* Gradient overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent pointer-events-none" />
 
                       {/* Top Badges & Edit Cover Action */}
                       <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-20 pointer-events-none">
