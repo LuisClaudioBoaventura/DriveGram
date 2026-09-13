@@ -952,6 +952,7 @@ export function App() {
                 fs.refresh();
               }}
               onUpdateVideo={videos.updateVideo}
+              onUpdateSagaCover={videos.updateSagaCover}
             />
           ) : fs.activeTab === 'personal-videos' ? (
             /* Personal Videos & Media Catalog */

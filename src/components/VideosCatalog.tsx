@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Film, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, 
-  Clock, Video, Star, Download, Layers, Shuffle, ArrowLeft, ArrowUp, ArrowDown, ChevronRight
+  Clock, Video, Star, Download, Layers, Shuffle, ArrowLeft, ArrowUp, ArrowDown, ChevronRight,
+  ImageIcon
 } from 'lucide-react';
 import { MovieVideo, FolderItem, DriveItem, MovieSagaGroup } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { EditSagaCoverModal } from './EditSagaCoverModal.js';
 
 interface VideosCatalogProps {
   videos: MovieVideo[];
@@ -17,6 +19,7 @@ interface VideosCatalogProps {
   onEditVideo?: (video: MovieVideo) => void;
   onDeleteVideo?: (id: string) => void;
   onUpdateVideo?: (video: MovieVideo) => Promise<void>;
+  onUpdateSagaCover?: (sagaName: string, coverUrl: string) => Promise<void | boolean>;
 }
 
 export const VideosCatalog: React.FC<VideosCatalogProps> = ({
@@ -29,7 +32,8 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
   onOpenNewModal,
   onEditVideo,
   onDeleteVideo,
-  onUpdateVideo
+  onUpdateVideo,
+  onUpdateSagaCover
 }) => {
   const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,6 +41,7 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
   const [filterStatus, setFilterStatus] = useState<'all' | 'watching' | 'completed'>('all');
   const [viewMode, setViewMode] = useState<'movies' | 'sagas'>('movies');
   const [selectedSagaName, setSelectedSagaName] = useState<string | null>(null);
+  const [sagaToEditCover, setSagaToEditCover] = useState<MovieSagaGroup | null>(null);
 
   // Computed Sagas (Reactive from videos list)
   const computedSagas = useMemo<MovieSagaGroup[]>(() => {
@@ -356,12 +361,23 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
           <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 border border-red-500/30 p-5 sm:p-6 text-white shadow-xl relative overflow-hidden">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
               {/* Stacked or Single Poster */}
-              <div className="relative w-28 sm:w-36 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl border border-red-500/40 bg-black/60 shrink-0">
+              <div className="relative w-28 sm:w-36 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl border border-red-500/40 bg-black/60 shrink-0 group">
                 <img
                   src={activeSaga.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
                   alt={activeSaga.name}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
+                <button
+                  type="button"
+                  onClick={() => setSagaToEditCover(activeSaga)}
+                  className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white gap-1.5 transition-opacity"
+                  title="Alterar Capa da Saga"
+                >
+                  <div className="p-2 rounded-full bg-red-600 shadow-lg">
+                    <ImageIcon className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-bold">Alterar Capa</span>
+                </button>
               </div>
 
               <div className="flex-1 space-y-3 text-center sm:text-left">
@@ -420,6 +436,16 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                   >
                     <Shuffle className="w-4 h-4 text-amber-300" />
                     <span>Maratona Aleatória</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSagaToEditCover(activeSaga)}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold transition-all active:scale-95"
+                    title="Alterar Capa da Franquia"
+                  >
+                    <ImageIcon className="w-4 h-4 text-rose-300" />
+                    <span>Alterar Capa</span>
                   </button>
                 </div>
               </div>
@@ -614,14 +640,28 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                       {/* Gradient overlay */}
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
 
-                      {/* Top Badges */}
-                      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-20">
-                        <span className="px-2.5 py-0.5 rounded-lg bg-red-600/90 text-white text-[10px] font-black uppercase shadow backdrop-blur-sm">
-                          {saga.movieCount} Filmes
-                        </span>
-                        <span className="px-2 py-0.5 rounded-lg bg-black/60 text-gray-200 text-[10px] font-bold backdrop-blur-sm">
-                          {formatTotalDuration(saga.totalDurationSeconds)}
-                        </span>
+                      {/* Top Badges & Edit Cover Action */}
+                      <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-20 pointer-events-none">
+                        <div className="flex items-center gap-1.5 pointer-events-auto">
+                          <span className="px-2.5 py-0.5 rounded-lg bg-red-600/90 text-white text-[10px] font-black uppercase shadow backdrop-blur-sm">
+                            {saga.movieCount} Filmes
+                          </span>
+                          <span className="px-2 py-0.5 rounded-lg bg-black/60 text-gray-200 text-[10px] font-bold backdrop-blur-sm">
+                            {formatTotalDuration(saga.totalDurationSeconds)}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSagaToEditCover(saga);
+                          }}
+                          className="pointer-events-auto p-1.5 rounded-lg bg-black/70 hover:bg-red-600 text-white shadow backdrop-blur-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100"
+                          title="Alterar Capa da Saga"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
@@ -676,6 +716,15 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                           title="Modo Aleatório"
                         >
                           <Shuffle className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSagaToEditCover(saga)}
+                          className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                          title="Alterar Capa da Saga"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5" />
                         </button>
 
                         <button
@@ -944,6 +993,19 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
           file={downloadTargetFile}
           isOpen={!!downloadTargetFile}
           onClose={() => setDownloadTargetFile(null)}
+        />
+      )}
+
+      {sagaToEditCover && (
+        <EditSagaCoverModal
+          isOpen={!!sagaToEditCover}
+          onClose={() => setSagaToEditCover(null)}
+          saga={sagaToEditCover}
+          onSaveCover={async (sagaName, coverUrl) => {
+            if (onUpdateSagaCover) {
+              await onUpdateSagaCover(sagaName, coverUrl);
+            }
+          }}
         />
       )}
     </div>

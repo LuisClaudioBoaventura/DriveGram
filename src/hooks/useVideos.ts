@@ -14,6 +14,7 @@ export function useVideos() {
     'Vídeos Curtos & Clipes',
     'Outros'
   ]);
+  const [sagaCovers, setSagaCovers] = useState<Record<string, string>>({});
   const [activeVideo, setActiveVideo] = useState<MovieVideo | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -42,10 +43,25 @@ export function useVideos() {
     } catch (e) {}
   }, []);
 
+  const fetchSagaCovers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/videos/sagas/covers');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data === 'object') {
+          setSagaCovers(data);
+        }
+      }
+    } catch (e) {
+      console.warn('Backend unavailable for saga covers');
+    }
+  }, []);
+
   useEffect(() => {
     fetchVideos();
     fetchCategories();
-  }, [fetchVideos, fetchCategories]);
+    fetchSagaCovers();
+  }, [fetchVideos, fetchCategories, fetchSagaCovers]);
 
   const addCategory = async (category: string) => {
     const trimmed = category.trim();
@@ -254,7 +270,7 @@ export function useVideos() {
 
       result.push({
         name,
-        coverImage: sorted[0]?.coverImage,
+        coverImage: sagaCovers[name] || sorted[0]?.coverImage,
         movieCount: sorted.length,
         completedCount: sorted.filter(m => m.isCompleted).length,
         totalDurationSeconds: sorted.reduce((acc, m) => acc + (m.durationSeconds || 5400), 0),
@@ -263,12 +279,31 @@ export function useVideos() {
     }
 
     return result.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  }, [videos]);
+  }, [videos, sagaCovers]);
+
+  const updateSagaCover = async (sagaName: string, coverImage: string): Promise<boolean> => {
+    setSagaCovers(prev => ({ ...prev, [sagaName]: coverImage }));
+    try {
+      const res = await fetch(`/api/videos/sagas/${encodeURIComponent(sagaName)}/cover`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverImage })
+      });
+      if (res.ok) {
+        return true;
+      }
+    } catch (e) {
+      console.error('Error updating saga cover:', e);
+    }
+    return false;
+  };
 
   return {
     videos,
     categories,
     sagas,
+    sagaCovers,
+    updateSagaCover,
     activeVideo,
     loading,
     setActiveVideo,

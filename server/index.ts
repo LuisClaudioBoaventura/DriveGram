@@ -1974,6 +1974,24 @@ app.get('/api/videos/sagas', (_req, res) => {
   res.json(db.getMovieSagas());
 });
 
+app.get('/api/videos/sagas/covers', (_req, res) => {
+  res.json(db.getSagaCovers());
+});
+
+app.put('/api/videos/sagas/:name/cover', (req, res) => {
+  try {
+    const sagaName = decodeURIComponent(req.params.name);
+    const { coverImage } = req.body;
+    if (!coverImage || typeof coverImage !== 'string') {
+      return res.status(400).json({ error: 'coverImage é obrigatório' });
+    }
+    db.setSagaCover(sagaName, coverImage);
+    res.json({ success: true, name: sagaName, coverImage });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao salvar capa da saga' });
+  }
+});
+
 app.get('/api/videos/:id', (req, res) => {
   const video = db.getVideoById(req.params.id);
   if (!video) return res.status(404).json({ error: 'Vídeo/Filme não encontrado' });

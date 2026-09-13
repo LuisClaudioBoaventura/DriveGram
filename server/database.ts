@@ -49,6 +49,7 @@ export interface DatabaseSchema {
   comicCategories: string[];
   videos: MovieVideo[];
   videoCategories: string[];
+  sagaCovers?: Record<string, string>;
   personalVideos: PersonalVideo[];
   personalVideoCategories: string[];
   series: SeriesShow[];
@@ -113,6 +114,7 @@ const initialDemoData: DatabaseSchema = {
     'Vídeos Curtos & Clipes',
     'Outros'
   ],
+  sagaCovers: {},
   personalVideos: [],
   personalVideoCategories: [
     'Viagens',
@@ -283,6 +285,7 @@ class Database {
         if (!parsed.videoCategories || parsed.videoCategories.length === 0) {
           parsed.videoCategories = initialDemoData.videoCategories;
         }
+        if (!parsed.sagaCovers) parsed.sagaCovers = {};
         if (!parsed.personalVideos) parsed.personalVideos = [];
         if (!parsed.personalVideoCategories || parsed.personalVideoCategories.length === 0) {
           parsed.personalVideoCategories = initialDemoData.personalVideoCategories;
@@ -2351,7 +2354,8 @@ class Database {
       const movieCount = movies.length;
       const completedCount = movies.filter(m => m.isCompleted).length;
       const totalDurationSeconds = movies.reduce((acc, m) => acc + (m.durationSeconds || 5400), 0);
-      const coverImage = movies.find(m => m.coverImage)?.coverImage;
+      const customCover = this.data.sagaCovers?.[name];
+      const coverImage = customCover || movies.find(m => m.coverImage)?.coverImage;
 
       sagas.push({
         name,
@@ -2365,6 +2369,18 @@ class Database {
 
     sagas.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     return sagas;
+  }
+
+  public getSagaCovers(): Record<string, string> {
+    return this.data.sagaCovers || {};
+  }
+
+  public setSagaCover(name: string, coverImage: string): void {
+    if (!this.data.sagaCovers) {
+      this.data.sagaCovers = {};
+    }
+    this.data.sagaCovers[name.trim()] = coverImage.trim();
+    this.save(this.data);
   }
 
   public deleteVideo(id: string): boolean {
