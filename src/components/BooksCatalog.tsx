@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   BookOpen, 
   Headphones, 
@@ -22,15 +22,24 @@ import {
   HardDrive,
   RotateCcw,
   Bot,
-  Download
+  Download,
+  ChevronRight,
+  ArrowLeft,
+  ArrowUp,
+  ArrowDown,
+  CheckCircle2
 } from 'lucide-react';
-import { Book, DriveItem } from '../types/index.js';
+import { Book, DriveItem, BookSagaGroup } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
+import { EditBookSagaCoverModal } from './EditBookSagaCoverModal.js';
 
 interface BooksCatalogProps {
   books: Book[];
   allFiles?: DriveItem[];
+  sagas?: BookSagaGroup[];
+  onUpdateBookSagaCover?: (sagaName: string, coverImage: string) => Promise<boolean>;
+  onUpdateBook?: (book: Book) => Promise<void>;
   onSelectBook: (book: Book) => void;
   onNewBook: () => void;
   onDeleteBook: (bookId: string) => void;
@@ -43,6 +52,9 @@ interface BooksCatalogProps {
 export const BooksCatalog: React.FC<BooksCatalogProps> = ({
   books,
   allFiles = [],
+  sagas = [],
+  onUpdateBookSagaCover,
+  onUpdateBook,
   onSelectBook,
   onNewBook,
   onDeleteBook,
@@ -51,6 +63,9 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
   categories = [],
   onOpenCategoryManager
 }) => {
+  const [viewMode, setViewMode] = useState<'books' | 'sagas'>('books');
+  const [selectedSagaName, setSelectedSagaName] = useState<string | null>(null);
+  const [sagaToEditCover, setSagaToEditCover] = useState<BookSagaGroup | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'audiobook' | 'ebook' | 'in-progress' | 'completed'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedNarrationType, setSelectedNarrationType] = useState<string>('all');
@@ -92,6 +107,114 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
     setSelectedLanguage('all');
     setSelectedVersion('all');
     setSearchQuery('');
+  };
+
+  const computedSagas = useMemo(() => {
+    if (sagas && sagas.length > 0) return sagas;
+    const map = new Map<string, Book[]>();
+    for (const b of books) {
+      if (b.saga && b.saga.trim() && b.saga.trim() !== 'N/A') {
+        const key = b.saga.trim();
+        if (!map.has(key)) {
+          map.set(key, []);
+        }
+        map.get(key)!.push(b);
+      }
+    }
+    const res: BookSagaGroup[] = [];
+    for (const [name, sBooks] of map.entries()) {
+      const sorted = [...sBooks].sort((a, b) => {
+        if (a.sagaOrder !== undefined && b.sagaOrder !== undefined) return a.sagaOrder - b.sagaOrder;
+        if (a.sagaOrder !== undefined) return -1;
+        if (b.sagaOrder !== undefined) return 1;
+        return (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' });
+      });
+      const authorsSet = new Set<string>();
+      sorted.forEach(b => {
+        if (b.author && b.author.trim() && b.author !== 'Autor Desconhecido') authorsSet.add(b.author.trim());
+      });
+
+      let totalSeconds = 0;
+      let totalChaptersCount = 0;
+      sorted.forEach(b => {
+        totalChaptersCount += (b.chapters?.length || 0);
+        if (b.totalDuration) {
+          const matchHours = b.totalDuration.match(/(\d+)\s*h/);
+          const matchMins = b.totalDuration.match(/(\d+)\s*m/);
+          if (matchHours || matchMins) {
+            const h = matchHours ? parseInt(matchHours[1]) : 0;
+            const m = matchMins ? parseInt(matchMins[1]) : 0;
+            totalSeconds += (h * 3600 + m * 60);
+          }
+        }
+      });
+
+      let totalDurationText = '';
+      if (totalSeconds > 0) {
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        totalDurationText = h > 0 ? `${h}h ${m}m` : `${m} min`;
+      } else if (totalChaptersCount > 0) {
+        totalDurationText = `${totalChaptersCount} capítulos`;
+      }
+
+      res.push({
+        name,
+        coverImage: sorted[0]?.coverImage,
+        bookCount: sorted.length,
+        completedCount: sorted.filter(isBookCompleted).length,
+        totalDuration: totalDurationText || undefined,
+        totalDurationSeconds: totalSeconds,
+        authors: Array.from(authorsSet),
+        books: sorted
+      });
+    }
+    return res.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }, [books, sagas]);
+
+  const activeSaga = selectedSagaName 
+    ? computedSagas.find(s => s.name === selectedSagaName) || null 
+    : null;
+
+  const filteredSagas = useMemo(() => {
+    if (!searchQuery.trim()) return computedSagas;
+    const q = searchQuery.toLowerCase();
+    return computedSagas.filter(s => 
+      s.name.toLowerCase().includes(q) ||
+      s.authors.some(a => a.toLowerCase().includes(q)) ||
+      s.books.some(b => b.title.toLowerCase().includes(q))
+    );
+  }, [computedSagas, searchQuery]);
+
+  const handleMoveSagaBook = async (bookToMove: Book, direction: 'up' | 'down') => {
+    if (!activeSaga || !onUpdateBook) return;
+    const list = [...activeSaga.books];
+    const index = list.findIndex(b => b.id === bookToMove.id);
+    if (index < 0) return;
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= list.length) return;
+
+    const temp = list[index];
+    list[index] = list[targetIndex];
+    list[targetIndex] = temp;
+
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
+      const newOrder = i + 1;
+      if (b.sagaOrder !== newOrder) {
+        await onUpdateBook({
+          ...b,
+          sagaOrder: newOrder
+        });
+      }
+    }
+  };
+
+  const handleStartSagaMarathon = (sagaBooks: Book[]) => {
+    if (!sagaBooks || sagaBooks.length === 0) return;
+    const firstUnfinished = sagaBooks.find(b => !isBookCompleted(b)) || sagaBooks[0];
+    onSelectBook(firstUnfinished);
   };
 
   const filteredBooks = books.filter(book => {
@@ -207,8 +330,498 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
         </div>
       </div>
 
-      {/* Primary Filters & Search Bar */}
-      <div className="space-y-3 pb-2 border-b border-gray-200 dark:border-drive-darkBorder">
+      {/* View Mode Switcher: Livros & Audiolivros vs Sagas & Séries Literárias */}
+      {!selectedSagaName && (
+        <div className="flex items-center justify-between gap-3 bg-white dark:bg-drive-darkSurface p-2 rounded-2xl border border-gray-200 dark:border-drive-darkBorder shadow-sm">
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-xl w-full sm:w-auto">
+            <button
+              onClick={() => { setViewMode('books'); setSelectedSagaName(null); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                viewMode === 'books'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Todos os Livros ({books.length})</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('sagas')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                viewMode === 'sagas'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Sagas & Séries Literárias ({computedSagas.length})</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selectedSagaName && activeSaga ? (
+        /* SAGA DETAIL VIEW */
+        <div className="space-y-6 animate-fadeIn">
+          {/* Top Back Navigation & Position */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setSelectedSagaName(null)}
+              className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Voltar para Sagas & Séries Literárias</span>
+            </button>
+
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+              Série #{computedSagas.findIndex(s => s.name === activeSaga.name) + 1} de {computedSagas.length}
+            </span>
+          </div>
+
+          {/* Saga Hero Banner */}
+          <div className="rounded-3xl bg-gradient-to-r from-purple-950 via-indigo-950 to-slate-900 border border-purple-500/30 p-5 sm:p-6 text-white shadow-xl relative overflow-hidden">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+              {/* Stacked or Single Poster */}
+              <div className="relative w-28 sm:w-36 aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border-2 border-purple-500/40 bg-black/60 shrink-0 group">
+                <img
+                  src={activeSaga.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=60'}
+                  alt={activeSaga.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                {onUpdateBookSagaCover && (
+                  <button
+                    type="button"
+                    onClick={() => setSagaToEditCover(activeSaga)}
+                    className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white gap-1.5 transition-opacity"
+                    title="Alterar Capa da Saga Literária"
+                  >
+                    <div className="p-2 rounded-full bg-purple-600 shadow-lg">
+                      <ImageIcon className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-bold">Alterar Capa</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex-1 space-y-3 text-center sm:text-left">
+                <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[11px] font-bold uppercase tracking-wider border border-purple-500/30">
+                  <Layers className="w-3 h-3 text-purple-400" />
+                  <span>Franquia & Coleção Literária</span>
+                </div>
+
+                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  {activeSaga.name}
+                </h2>
+
+                {activeSaga.authors.length > 0 && (
+                  <p className="text-sm font-semibold text-purple-300">
+                    Por {activeSaga.authors.join(', ')}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 text-xs text-gray-300">
+                  <span className="flex items-center gap-1.5 font-bold">
+                    <BookOpen className="w-4 h-4 text-purple-400" />
+                    {activeSaga.bookCount} {activeSaga.bookCount === 1 ? 'livro' : 'livros/volumes'}
+                  </span>
+                  {activeSaga.totalDuration && (
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <Clock className="w-4 h-4 text-amber-400" />
+                      {activeSaga.totalDuration}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1.5 font-bold">
+                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    {activeSaga.completedCount} de {activeSaga.bookCount} concluídos
+                  </span>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="w-full max-w-md pt-1">
+                  <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-400 rounded-full transition-all duration-500"
+                      style={{
+                        width: `${Math.round((activeSaga.completedCount / Math.max(1, activeSaga.bookCount)) * 100)}%`
+                      }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1 font-medium">
+                    {Math.round((activeSaga.completedCount / Math.max(1, activeSaga.bookCount)) * 100)}% da série concluída
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="pt-2 flex flex-wrap items-center justify-center sm:justify-start gap-3">
+                  <button
+                    onClick={() => handleStartSagaMarathon(activeSaga.books)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition-all active:scale-95"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Continuar da Última Parada</span>
+                  </button>
+
+                  {onUpdateBookSagaCover && (
+                    <button
+                      type="button"
+                      onClick={() => setSagaToEditCover(activeSaga)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold transition-all active:scale-95"
+                      title="Alterar Capa da Coleção"
+                    >
+                      <ImageIcon className="w-4 h-4 text-purple-300" />
+                      <span>Alterar Capa</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Saga Books List */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <span>Volumes da Franquia em Ordem Sequencial</span>
+              </h3>
+              <span className="text-xs text-gray-500">
+                Use as setas ↑ ↓ para reorganizar a ordem de leitura
+              </span>
+            </div>
+
+            <div className="space-y-2.5">
+              {activeSaga.books.map((book, idx) => {
+                const isCompleted = isBookCompleted(book);
+                const hasProgress = isBookInProgress(book);
+
+                return (
+                  <div
+                    key={book.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:border-purple-500/50 hover:shadow-md transition-all group"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Order Number Badge */}
+                      <span className="w-7 h-7 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-black text-xs flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700">
+                        #{book.sagaOrder || idx + 1}
+                      </span>
+
+                      {/* Cover Thumbnail */}
+                      <div
+                        onClick={() => onSelectBook(book)}
+                        className="relative w-12 h-16 rounded-xl overflow-hidden shadow-sm bg-black/40 shrink-0 cursor-pointer"
+                      >
+                        <img
+                          src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=60'}
+                          alt={book.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                      </div>
+
+                      {/* Info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 text-[11px] text-gray-400 mb-0.5">
+                          {book.author && <span className="font-semibold text-purple-600 dark:text-purple-400">{book.author}</span>}
+                          {book.format && (
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-bold uppercase">
+                              {book.format === 'bundle' ? 'Audiobook + E-book' : book.format === 'audiobook' ? 'Audiolivro' : 'E-book'}
+                            </span>
+                          )}
+                        </div>
+
+                        <h4
+                          onClick={() => onSelectBook(book)}
+                          className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer transition-colors"
+                        >
+                          {book.title}
+                        </h4>
+
+                        <div className="mt-1 flex items-center gap-2">
+                          {isCompleted ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-500 font-bold">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Concluído
+                            </span>
+                          ) : hasProgress ? (
+                            <span className="text-[11px] text-amber-500 font-bold">
+                              Em andamento
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-gray-400">
+                              Não iniciado
+                            </span>
+                          )}
+                          {book.totalDuration && (
+                            <span className="text-[11px] text-gray-400 font-mono">
+                              • {book.totalDuration}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Order adjustment & actions */}
+                    <div className="flex items-center justify-end gap-1.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-800">
+                      {/* Move Up / Down Buttons */}
+                      <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-xl p-0.5">
+                        <button
+                          onClick={() => handleMoveSagaBook(book, 'up')}
+                          disabled={idx === 0}
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-purple-600 disabled:opacity-30 disabled:hover:text-gray-500 transition-colors"
+                          title="Mover para cima na ordem da saga"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleMoveSagaBook(book, 'down')}
+                          disabled={idx === activeSaga.books.length - 1}
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-purple-600 disabled:opacity-30 disabled:hover:text-gray-500 transition-colors"
+                          title="Mover para baixo na ordem da saga"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Open / Play Button */}
+                      <button
+                        onClick={() => onSelectBook(book)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-sm"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Ouvir / Ler</span>
+                      </button>
+
+                      {/* Edit Button */}
+                      {onEditBook && (
+                        <button
+                          onClick={() => onEditBook(book)}
+                          className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                          title="Editar Livro"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : viewMode === 'sagas' ? (
+        /* SAGAS GRID VIEW */
+        <div className="space-y-4">
+          {/* Saga Search Bar */}
+          <div className="flex items-center justify-between gap-3 bg-white dark:bg-drive-darkSurface p-3 rounded-2xl border border-gray-200 dark:border-drive-darkBorder shadow-sm">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar saga, série literária ou autor..."
+                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-transparent focus:border-purple-500 focus:outline-none"
+              />
+            </div>
+            <span className="text-xs text-gray-500 shrink-0 font-medium">
+              {filteredSagas.length} {filteredSagas.length === 1 ? 'franquia' : 'franquias literárias'}
+            </span>
+          </div>
+
+          {filteredSagas.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredSagas.map(saga => {
+                const percent = Math.round((saga.completedCount / Math.max(1, saga.bookCount)) * 100);
+                const chosenCover = saga.coverImage || saga.books[0]?.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=60';
+                
+                // Other books to flank the chosen cover in the 3D card presentation
+                const otherBooks = saga.books.filter(b => b.coverImage && b.coverImage !== chosenCover);
+                const pool = otherBooks.length > 0 ? otherBooks : saga.books;
+                const leftBook = (pool.length > 1 || otherBooks.length > 0) ? pool[0] : null;
+                const rightBook = pool.length > 1 ? pool[1] : null;
+
+                return (
+                  <div
+                    key={saga.name}
+                    className="flex flex-col bg-white dark:bg-drive-darkSurface rounded-2xl border border-gray-200 dark:border-drive-darkBorder hover:border-purple-500/50 hover:shadow-xl transition-all duration-300 overflow-hidden group"
+                  >
+                    {/* Header Image / Book Stack */}
+                    <div
+                      onClick={() => setSelectedSagaName(saga.name)}
+                      className="relative h-48 bg-slate-950 cursor-pointer overflow-hidden flex items-center justify-center"
+                    >
+                      {/* Ambient background glow from chosen cover */}
+                      <div
+                        className="absolute inset-0 bg-cover bg-center opacity-25 blur-md scale-110 pointer-events-none transition-all duration-500"
+                        style={{
+                          backgroundImage: `url(${chosenCover})`
+                        }}
+                      />
+
+                      {/* Poster collage */}
+                      <div className="absolute inset-0 flex items-center justify-center gap-2 p-3 opacity-95 group-hover:scale-105 transition-transform duration-500">
+                        {leftBook && (
+                          <div className="relative aspect-[2/3] h-36 rounded-lg overflow-hidden shadow-xl border border-white/10 opacity-70 scale-95 transition-all">
+                            <img
+                              src={leftBook.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=60'}
+                              alt={leftBook.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+
+                        {/* Center Spotlight: The Chosen Cover */}
+                        <div className="relative aspect-[2/3] h-40 rounded-lg overflow-hidden shadow-2xl border-2 border-purple-500/80 z-10 scale-105 ring-2 ring-purple-500/50 transition-all">
+                          <img
+                            src={chosenCover}
+                            alt={saga.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+
+                        {rightBook && (
+                          <div className="relative aspect-[2/3] h-36 rounded-lg overflow-hidden shadow-xl border border-white/10 opacity-70 scale-95 transition-all">
+                            <img
+                              src={rightBook.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=60'}
+                              alt={rightBook.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Gradient overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent pointer-events-none" />
+
+                      {/* Top Badges & Edit Cover Action */}
+                      <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-20 pointer-events-none">
+                        <div className="flex items-center gap-1.5 pointer-events-auto">
+                          <span className="px-2.5 py-0.5 rounded-lg bg-purple-600/90 text-white text-[10px] font-black uppercase shadow backdrop-blur-sm">
+                            {saga.bookCount} {saga.bookCount === 1 ? 'Volume' : 'Volumes'}
+                          </span>
+                          {saga.totalDuration && (
+                            <span className="px-2 py-0.5 rounded-lg bg-black/60 text-gray-200 text-[10px] font-bold backdrop-blur-sm">
+                              {saga.totalDuration}
+                            </span>
+                          )}
+                        </div>
+
+                        {onUpdateBookSagaCover && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSagaToEditCover(saga);
+                            }}
+                            className="pointer-events-auto p-1.5 rounded-lg bg-black/70 hover:bg-purple-600 text-white shadow backdrop-blur-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100"
+                            title="Alterar Capa da Franquia Literária"
+                          >
+                            <ImageIcon className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                      <div>
+                        <h3
+                          onClick={() => setSelectedSagaName(saga.name)}
+                          className="font-black text-sm sm:text-base text-gray-900 dark:text-gray-100 hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer transition-colors truncate"
+                          title={saga.name}
+                        >
+                          {saga.name}
+                        </h3>
+
+                        {saga.authors.length > 0 && (
+                          <p className="text-[11px] font-medium text-purple-600 dark:text-purple-400 truncate mt-0.5">
+                            Por {saga.authors.join(', ')}
+                          </p>
+                        )}
+
+                        <p className="text-[11px] text-gray-400 mt-1 line-clamp-1">
+                          {saga.books.map(b => b.title).join(' • ')}
+                        </p>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] font-bold">
+                          <span className="text-gray-500">Progresso</span>
+                          <span className={percent === 100 ? 'text-emerald-500' : 'text-gray-700 dark:text-gray-300'}>
+                            {saga.completedCount}/{saga.bookCount} concluídos ({percent}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              percent === 100 ? 'bg-emerald-500' : 'bg-purple-600'
+                            }`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="pt-2 flex items-center gap-2 border-t border-gray-100 dark:border-gray-800">
+                        <button
+                          onClick={() => handleStartSagaMarathon(saga.books)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
+                          title="Continuar da última parada ou primeiro volume não lido"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Continuar</span>
+                        </button>
+
+                        {onUpdateBookSagaCover && (
+                          <button
+                            type="button"
+                            onClick={() => setSagaToEditCover(saga)}
+                            className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                            title="Alterar Capa da Coleção"
+                          >
+                            <ImageIcon className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => setSelectedSagaName(saga.name)}
+                          className="flex items-center gap-1 py-2 px-3 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold transition-colors"
+                        >
+                          <span>Ver</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center p-16 text-center bg-white dark:bg-drive-darkSurface rounded-3xl border border-dashed border-gray-300 dark:border-gray-800 space-y-3">
+              <div className="w-16 h-16 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                <Layers className="w-8 h-8" />
+              </div>
+              <h4 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                Nenhuma Saga ou Série Literária Encontrada
+              </h4>
+              <p className="text-xs text-gray-500 max-w-md">
+                Para agrupar livros em uma franquia contínua (ex: Harry Potter, Duna, O Senhor dos Anéis), edite um livro existente ou cadastre um novo e preencha o campo <strong>"Saga / Franquia Literária"</strong>.
+              </p>
+              <button
+                onClick={onNewBook}
+                className="px-5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/25 transition-all"
+              >
+                Adicionar Livro a uma Saga
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Regular Books Catalog */
+        <>
+          {/* Primary Filters & Search Bar */}
+          <div className="space-y-3 pb-2 border-b border-gray-200 dark:border-drive-darkBorder">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
           {/* Format Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto w-full lg:w-auto pb-1">
@@ -606,11 +1219,25 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
           )}
         </div>
       )}
+        </>
+      )}
+
       {downloadTargetFile && (
         <VideoDownloadModal
           file={downloadTargetFile}
           isOpen={!!downloadTargetFile}
           onClose={() => setDownloadTargetFile(null)}
+        />
+      )}
+
+      {sagaToEditCover && onUpdateBookSagaCover && (
+        <EditBookSagaCoverModal
+          isOpen={!!sagaToEditCover}
+          onClose={() => setSagaToEditCover(null)}
+          saga={sagaToEditCover}
+          onSaveCover={async (sagaName, newCover) => {
+            await onUpdateBookSagaCover(sagaName, newCover);
+          }}
         />
       )}
     </div>

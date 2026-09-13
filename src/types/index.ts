@@ -118,7 +118,8 @@ export interface Book {
   narrator?: string;
   version?: string; // 'Estúdio de áudio', 'Storytel', 'Audible', etc.
   totalDuration?: string; // Tempo total do áudio
-  saga?: string; // 'N/A' ou número/nome dentro da saga (ex: '#1', 'Livro 2')
+  saga?: string; // Nome da saga / série literária (ex: "Harry Potter", "O Senhor dos Anéis")
+  sagaOrder?: number; // Posição/volume dentro da saga (ex: 1, 2, 3...)
   fileSizeFormatted?: string; // Tamanho do arquivo (ex: '450 MB')
   category?: string;
   genre?: string; // Gênero (ex: Ficção, Desenvolvimento Pessoal, Fantasia, Negócios)
@@ -134,6 +135,17 @@ export interface Book {
   isCompleted?: boolean;
   lastPlayedChapterId?: string;
   lastPositionSeconds?: number;
+}
+
+export interface BookSagaGroup {
+  name: string;
+  coverImage?: string;
+  bookCount: number;
+  completedCount: number;
+  totalDuration?: string;
+  totalDurationSeconds?: number;
+  authors: string[];
+  books: Book[];
 }
 
 export interface Course {

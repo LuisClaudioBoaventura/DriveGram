@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Book, BookChapter } from '../types/index.js';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Book, BookChapter, BookSagaGroup } from '../types/index.js';
 
 export function sortChaptersNumerically(chapters: BookChapter[]): BookChapter[] {
   if (!chapters || chapters.length <= 1) return chapters || [];
@@ -15,6 +15,7 @@ export function sortChaptersNumerically(chapters: BookChapter[]): BookChapter[] 
 
 export function useBooks() {
   const [books, setBooks] = useState<Book[]>([]);
+  const [bookSagaCovers, setBookSagaCovers] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<string[]>([
     'Desenvolvimento Pessoal',
     'Negócios & Carreira',
@@ -75,10 +76,21 @@ export function useBooks() {
     } catch (e) {}
   }, []);
 
+  const fetchSagaCovers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/books/sagas/covers');
+      if (res.ok) {
+        const data = await res.json();
+        setBookSagaCovers(data || {});
+      }
+    } catch (e) {}
+  }, []);
+
   useEffect(() => {
     fetchBooks();
     fetchCategories();
-  }, [fetchBooks, fetchCategories]);
+    fetchSagaCovers();
+  }, [fetchBooks, fetchCategories, fetchSagaCovers]);
 
   const addCategory = async (category: string) => {
     const trimmed = category.trim();
@@ -580,8 +592,97 @@ export function useBooks() {
     } catch (e) {}
   };
 
+  const sagas = useMemo(() => {
+    const map = new Map<string, Book[]>();
+    for (const b of books) {
+      if (b.saga && b.saga.trim() && b.saga.trim() !== 'N/A') {
+        const key = b.saga.trim();
+        if (!map.has(key)) {
+          map.set(key, []);
+        }
+        map.get(key)!.push(b);
+      }
+    }
+
+    const result: BookSagaGroup[] = [];
+    for (const [name, sBooks] of map.entries()) {
+      const sorted = [...sBooks].sort((a, b) => {
+        if (a.sagaOrder !== undefined && b.sagaOrder !== undefined) {
+          return a.sagaOrder - b.sagaOrder;
+        }
+        if (a.sagaOrder !== undefined) return -1;
+        if (b.sagaOrder !== undefined) return 1;
+        return (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      const authorsSet = new Set<string>();
+      sorted.forEach(b => {
+        if (b.author && b.author.trim() && b.author !== 'Autor Desconhecido') {
+          authorsSet.add(b.author.trim());
+        }
+      });
+
+      let totalSeconds = 0;
+      let totalChaptersCount = 0;
+      sorted.forEach(b => {
+        totalChaptersCount += (b.chapters?.length || 0);
+        if (b.totalDuration) {
+          const matchHours = b.totalDuration.match(/(\d+)\s*h/);
+          const matchMins = b.totalDuration.match(/(\d+)\s*m/);
+          if (matchHours || matchMins) {
+            const h = matchHours ? parseInt(matchHours[1]) : 0;
+            const m = matchMins ? parseInt(matchMins[1]) : 0;
+            totalSeconds += (h * 3600 + m * 60);
+          }
+        }
+      });
+
+      let totalDurationText = '';
+      if (totalSeconds > 0) {
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        totalDurationText = h > 0 ? `${h}h ${m}m` : `${m} min`;
+      } else if (totalChaptersCount > 0) {
+        totalDurationText = `${totalChaptersCount} capítulos`;
+      }
+
+      result.push({
+        name,
+        coverImage: bookSagaCovers[name] || sorted[0]?.coverImage,
+        bookCount: sorted.length,
+        completedCount: sorted.filter(b => b.isCompleted || (b.chapters && b.chapters.length > 0 && b.chapters.every(c => c.isCompleted))).length,
+        totalDuration: totalDurationText || undefined,
+        totalDurationSeconds: totalSeconds,
+        authors: Array.from(authorsSet),
+        books: sorted
+      });
+    }
+
+    return result.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }, [books, bookSagaCovers]);
+
+  const updateBookSagaCover = async (sagaName: string, coverImage: string): Promise<boolean> => {
+    setBookSagaCovers(prev => ({ ...prev, [sagaName]: coverImage }));
+    try {
+      const res = await fetch(`/api/books/sagas/${encodeURIComponent(sagaName)}/cover`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverImage })
+      });
+      if (res.ok) {
+        return true;
+      }
+    } catch (e) {
+      console.error('Error updating book saga cover:', e);
+    }
+    return false;
+  };
+
   return {
     books,
+    sagas,
+    bookSagaCovers,
+    updateBookSagaCover,
     categories,
     addCategory,
     updateCategory,

@@ -10,6 +10,7 @@ import {
   Lesson, 
   Book, 
   BookChapter, 
+  BookSagaGroup,
   ComicBook, 
   ComicIssue, 
   MovieVideo,
@@ -45,6 +46,7 @@ export interface DatabaseSchema {
   courses: Course[];
   books: Book[];
   bookCategories: string[];
+  bookSagaCovers?: Record<string, string>;
   comics: ComicBook[];
   comicCategories: string[];
   videos: MovieVideo[];
@@ -90,6 +92,7 @@ const initialDemoData: DatabaseSchema = {
     'Biografia & História',
     'Fantasia & Sci-Fi'
   ],
+  bookSagaCovers: {},
   comics: [],
   comicCategories: [
     'Super-Heróis',
@@ -2099,6 +2102,66 @@ class Database {
     this.data.books = this.data.books.filter(b => b.id !== id);
     this.save(this.data);
     return true;
+  }
+
+  public getBookSagas(): BookSagaGroup[] {
+    const books = this.getBooks();
+    const map = new Map<string, Book[]>();
+
+    for (const b of books) {
+      if (b.saga && b.saga.trim() && b.saga.trim() !== 'N/A') {
+        const key = b.saga.trim();
+        if (!map.has(key)) {
+          map.set(key, []);
+        }
+        map.get(key)!.push(b);
+      }
+    }
+
+    const covers = this.getBookSagaCovers();
+    const sagas: BookSagaGroup[] = [];
+
+    for (const [name, sBooks] of map.entries()) {
+      const sorted = [...sBooks].sort((a, b) => {
+        if (a.sagaOrder !== undefined && b.sagaOrder !== undefined) {
+          return a.sagaOrder - b.sagaOrder;
+        }
+        if (a.sagaOrder !== undefined) return -1;
+        if (b.sagaOrder !== undefined) return 1;
+        return (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      const authorsSet = new Set<string>();
+      sorted.forEach(b => {
+        if (b.author && b.author.trim() && b.author !== 'Autor Desconhecido') {
+          authorsSet.add(b.author.trim());
+        }
+      });
+
+      sagas.push({
+        name,
+        coverImage: covers[name] || sorted[0]?.coverImage,
+        bookCount: sorted.length,
+        completedCount: sorted.filter(b => b.isCompleted || (b.chapters && b.chapters.length > 0 && b.chapters.every(c => c.isCompleted))).length,
+        authors: Array.from(authorsSet),
+        books: sorted
+      });
+    }
+
+    sagas.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    return sagas;
+  }
+
+  public getBookSagaCovers(): Record<string, string> {
+    return this.data.bookSagaCovers || {};
+  }
+
+  public setBookSagaCover(name: string, coverImage: string): void {
+    if (!this.data.bookSagaCovers) {
+      this.data.bookSagaCovers = {};
+    }
+    this.data.bookSagaCovers[name.trim()] = coverImage.trim();
+    this.save(this.data);
   }
 
   // ---------------- BOOK CATEGORIES CRUD ----------------

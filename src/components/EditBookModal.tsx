@@ -24,6 +24,8 @@ interface EditBookModalProps {
   book: Book | null;
   onSave: (updatedBook: Book) => Promise<void>;
   categories: string[];
+  books?: Book[];
+  existingSagas?: string[];
   onOpenCategoryManager?: () => void;
 }
 
@@ -33,6 +35,8 @@ export const EditBookModal: React.FC<EditBookModalProps> = ({
   book,
   onSave,
   categories,
+  books = [],
+  existingSagas = [],
   onOpenCategoryManager
 }) => {
   const [title, setTitle] = useState('');
@@ -41,7 +45,8 @@ export const EditBookModal: React.FC<EditBookModalProps> = ({
   const [narrator, setNarrator] = useState('');
   const [version, setVersion] = useState('Estúdio de áudio');
   const [totalDuration, setTotalDuration] = useState('');
-  const [saga, setSaga] = useState('N/A');
+  const [saga, setSaga] = useState('');
+  const [sagaOrder, setSagaOrder] = useState<string>('');
   const [fileSizeFormatted, setFileSizeFormatted] = useState('');
   const [category, setCategory] = useState('Desenvolvimento Pessoal');
   const [genre, setGenre] = useState('');
@@ -58,7 +63,8 @@ export const EditBookModal: React.FC<EditBookModalProps> = ({
       setNarrator(book.narrator || '');
       setVersion(book.version || 'Estúdio de áudio');
       setTotalDuration(book.totalDuration || '');
-      setSaga(book.saga || 'N/A');
+      setSaga(book.saga && book.saga !== 'N/A' ? book.saga : '');
+      setSagaOrder(book.sagaOrder !== undefined ? String(book.sagaOrder) : '');
       setFileSizeFormatted(book.fileSizeFormatted || '');
       setCategory(book.category || categories[0] || 'Desenvolvimento Pessoal');
       setGenre(book.genre || '');
@@ -70,9 +76,32 @@ export const EditBookModal: React.FC<EditBookModalProps> = ({
 
   if (!isOpen || !book) return null;
 
+  const uniqueSagas = Array.from(
+    new Set([
+      ...existingSagas,
+      ...books.map(b => b.saga?.trim()).filter(Boolean)
+    ])
+  ).filter(s => s && (s as string).toLowerCase() !== 'n/a') as string[];
+
+  const handleSagaChange = (val: string) => {
+    setSaga(val);
+    const trimmed = val.trim();
+    if (trimmed && trimmed.toLowerCase() !== 'n/a' && !sagaOrder) {
+      const sagaBooks = books.filter(b => b.id !== book.id && b.saga && b.saga.trim().toLowerCase() === trimmed.toLowerCase());
+      if (sagaBooks.length > 0) {
+        const maxOrder = Math.max(0, ...sagaBooks.map(b => b.sagaOrder || 0));
+        setSagaOrder(String(maxOrder + 1));
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
+
+    const parsedOrder = saga.trim() && saga.trim().toLowerCase() !== 'n/a' && sagaOrder.trim()
+      ? parseInt(sagaOrder.trim(), 10)
+      : undefined;
 
     await onSave({
       ...book,
@@ -82,7 +111,8 @@ export const EditBookModal: React.FC<EditBookModalProps> = ({
       narrator: narrator.trim() || undefined,
       version: version.trim() || 'Estúdio de áudio',
       totalDuration: totalDuration.trim() || undefined,
-      saga: saga.trim() || 'N/A',
+      saga: saga.trim() && saga.trim().toLowerCase() !== 'n/a' ? saga.trim() : undefined,
+      sagaOrder: parsedOrder,
       fileSizeFormatted: fileSizeFormatted.trim() || undefined,
       category: category || categories[0] || 'Desenvolvimento Pessoal',
       genre: genre.trim() || 'Geral',
@@ -239,18 +269,39 @@ export const EditBookModal: React.FC<EditBookModalProps> = ({
             </div>
           </div>
 
-          {/* Saga & Tamanho */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Saga, Ordem & Tamanho */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                Saga / Série (Opcional)
+                Saga / Franquia Literária
               </label>
               <input
                 type="text"
                 value={saga}
-                onChange={(e) => setSaga(e.target.value)}
-                placeholder="Ex: N/A, Vol. 1, Livro #2..."
+                onChange={(e) => handleSagaChange(e.target.value)}
+                placeholder="Ex: Harry Potter, Duna..."
+                list="edit-book-modal-saga-suggestions"
                 className="w-full px-3.5 py-2 text-xs rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <datalist id="edit-book-modal-saga-suggestions">
+                {uniqueSagas.map(s => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                Volume / Ordem
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={sagaOrder}
+                onChange={(e) => setSagaOrder(e.target.value)}
+                placeholder="Ex: 1, 2, 3..."
+                disabled={!saga.trim() || saga.trim().toLowerCase() === 'n/a'}
+                className="w-full px-3.5 py-2 text-xs rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-40"
               />
             </div>
 

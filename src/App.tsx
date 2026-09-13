@@ -896,8 +896,11 @@ export function App() {
             /* Books & Audiobooks Catalog */
             <BooksCatalog
               books={books.books}
+              sagas={books.sagas}
               allFiles={fs.allFiles}
               categories={books.categories}
+              onUpdateBookSagaCover={books.updateBookSagaCover}
+              onUpdateBook={books.updateBook}
               onSelectBook={(b) => {
                 books.selectBook(b);
                 setSelectedBookForView(b);
@@ -1324,6 +1327,8 @@ export function App() {
         }}
         availableFolders={fs.allFolders}
         availableFiles={fs.allFiles}
+        books={books.books}
+        existingSagas={books.sagas.map(s => s.name)}
         categories={books.categories}
         onOpenCategoryManager={() => setIsCategoryManagerOpen(true)}
       />
@@ -1333,6 +1338,8 @@ export function App() {
         isOpen={editingBook !== null}
         onClose={() => setEditingBook(null)}
         book={editingBook}
+        books={books.books}
+        existingSagas={books.sagas.map(s => s.name)}
         categories={books.categories}
         onSave={async (updated) => {
           await books.updateBook(updated);

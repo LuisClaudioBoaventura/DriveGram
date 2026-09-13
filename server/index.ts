@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.11.0',
+    version: '1.12.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1569,6 +1569,23 @@ app.get('/api/books', (req, res) => {
   res.json(db.getBooks());
 });
 
+app.get('/api/books/sagas', (req, res) => {
+  res.json(db.getBookSagas());
+});
+
+app.get('/api/books/sagas/covers', (req, res) => {
+  res.json(db.getBookSagaCovers());
+});
+
+app.put('/api/books/sagas/:name/cover', (req, res) => {
+  const { coverImage } = req.body;
+  if (!coverImage || typeof coverImage !== 'string') {
+    return res.status(400).json({ error: 'coverImage é obrigatório' });
+  }
+  db.setBookSagaCover(req.params.name, coverImage);
+  res.json({ success: true, name: req.params.name, coverImage });
+});
+
 app.get('/api/books/:id', (req, res) => {
   const book = db.getBookById(req.params.id);
   if (!book) return res.status(404).json({ error: 'Livro não encontrado' });
@@ -1591,6 +1608,7 @@ app.post('/api/books/from-folder', (req, res) => {
       version, 
       totalDuration, 
       saga, 
+      sagaOrder,
       fileSizeFormatted, 
       category, 
       genre, 
@@ -1638,6 +1656,7 @@ app.post('/api/books/from-folder', (req, res) => {
       version: version || 'Estúdio de áudio',
       totalDuration: totalDuration || (chapters.length > 0 ? `${chapters.length * 25} min` : undefined),
       saga: saga || 'N/A',
+      sagaOrder: sagaOrder !== undefined ? Number(sagaOrder) : undefined,
       fileSizeFormatted: fileSizeFormatted || autoSizeFormatted,
       category: category || 'Desenvolvimento Pessoal',
       genre: genre || 'Geral',
