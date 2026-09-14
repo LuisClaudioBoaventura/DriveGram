@@ -1088,11 +1088,11 @@ class TelegramService {
 
       try {
         const messages = await this.client!.getMessages('me', { ids: [messageId] });
-        if (!messages || messages.length === 0 || !messages[0].media) {
-          throw new Error('Mensagem de mídia não encontrada no Telegram');
+        const msg = (messages && messages.length > 0) ? messages[0] : null;
+        if (!msg || !msg.media) {
+          throw new Error(`Mensagem de mídia #${messageId} não encontrada no Telegram`);
         }
 
-        const msg = messages[0];
         const media = msg.media as any;
 
         // Helper to broadcast progress to all listeners for this download
@@ -1327,11 +1327,12 @@ class TelegramService {
 
     try {
       const messages = await client.getMessages('me', { ids: [messageId] });
-      if (!messages || messages.length === 0 || !messages[0].media) {
+      const msg = (messages && messages.length > 0) ? messages[0] : null;
+      if (!msg || !msg.media) {
         return null;
       }
 
-      const buffer = await client.downloadMedia(messages[0]) as Buffer;
+      const buffer = await client.downloadMedia(msg) as Buffer;
       return buffer || null;
     } catch (e: any) {
       console.error(`[DriveGram] Error fetching media in-memory for message ${messageId}:`, e);
@@ -1348,7 +1349,8 @@ class TelegramService {
     end: number,
     fileSize: number,
     mimeType: string,
-    res: any
+    res: any,
+    chatId: string | number = 'me'
   ): Promise<boolean> {
     const client = await this.ensureClient();
     if (!client || !this.authState.isConnected) return false;
@@ -1374,12 +1376,14 @@ class TelegramService {
         }
       } else {
         // Cache miss → fetch from Telegram and populate cache
-        const messages = await client.getMessages('me', { ids: [messageId] });
-        if (!messages || messages.length === 0 || !messages[0].media) {
+        const targetChat = chatId || 'me';
+        const messages = await client.getMessages(targetChat, { ids: [messageId] });
+        const msg = (messages && messages.length > 0) ? messages[0] : null;
+        if (!msg || !msg.media) {
+          console.warn(`[DriveGram Direct Stream] Mensagem #${messageId} não encontrada ou sem mídia no chat "${targetChat}".`);
           return false;
         }
 
-        const msg = messages[0];
         const media = msg.media as any;
 
         if (media?.document || media?.className === 'MessageMediaDocument') {

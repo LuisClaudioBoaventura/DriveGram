@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.15.2',
+    version: '1.15.3',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1133,14 +1133,67 @@ app.get('/api/stream/:id', async (req, res) => {
         }
       }
 
-      const streamed = await telegramService.streamMediaDirect(
+      let streamed = await telegramService.streamMediaDirect(
         file.telegramMeta.messageId,
         start,
         end,
         fileSize,
         mimeType,
-        res
+        res,
+        file.telegramMeta.chatId || 'me'
       );
+
+      // Auto-healing: If direct streaming failed and headers weren't sent, attempt auto-locating the message in Telegram
+      if (!streamed && !res.headersSent) {
+        try {
+          const client = await telegramService.ensureClient();
+          if (client) {
+            const chat = file.telegramMeta.chatId || 'me';
+            // 1. Check adjacent IDs (e.g. messageId + 1, messageId - 1)
+            const candidateIds = [file.telegramMeta.messageId + 1, file.telegramMeta.messageId - 1];
+            let recoveredMsgId: number | null = null;
+            for (const candId of candidateIds) {
+              if (candId > 0) {
+                const checkMsgs = await client.getMessages(chat, { ids: [candId] });
+                if (checkMsgs && checkMsgs[0] && checkMsgs[0].media) {
+                  recoveredMsgId = candId;
+                  break;
+                }
+              }
+            }
+
+            // 2. If not found in adjacent, search by clean filename
+            if (!recoveredMsgId) {
+              const searchName = file.name.replace(/\.[^.]+$/, '').trim();
+              const searchMsgs = await client.getMessages(chat, { search: searchName, limit: 5 });
+              for (const m of searchMsgs || []) {
+                if (m && m.media) {
+                  recoveredMsgId = m.id;
+                  break;
+                }
+              }
+            }
+
+            if (recoveredMsgId && recoveredMsgId !== file.telegramMeta.messageId) {
+              console.log(`[DriveGram Stream Auto-Heal] Arquivo "${file.name}" atualizado de msgId ${file.telegramMeta.messageId} para msgId ${recoveredMsgId}`);
+              file.telegramMeta.messageId = recoveredMsgId;
+              db.updateFile(file.id, { telegramMeta: file.telegramMeta });
+              // Retry stream with recovered ID
+              streamed = await telegramService.streamMediaDirect(
+                recoveredMsgId,
+                start,
+                end,
+                fileSize,
+                mimeType,
+                res,
+                chat
+              );
+            }
+          }
+        } catch (healErr: any) {
+          console.warn('[DriveGram Stream Auto-Heal] Erro ao tentar auto-recuperar ID da mensagem:', healErr?.message);
+        }
+      }
 
       if (streamed) return;
       if (res.headersSent || res.writableEnded) {
