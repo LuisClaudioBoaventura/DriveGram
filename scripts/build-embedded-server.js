@@ -185,6 +185,13 @@ for (const targetDir of targetDirs) {
     console.log('[build-embedded] Copied unrar.wasm to:', targetDir);
   }
 
+  // Copy cast_channel.proto for Google Cast / Chromecast V2 protocol
+  const castProtoSrc = path.join(rootDir, 'node_modules', 'castv2', 'lib', 'cast_channel.proto');
+  if (fs.existsSync(castProtoSrc)) {
+    fs.copyFileSync(castProtoSrc, path.join(targetDir, 'cast_channel.proto'));
+    console.log('[build-embedded] Copied cast_channel.proto to:', targetDir);
+  }
+
   console.log('[build-embedded] Deployed to:', targetDir);
 }
 

@@ -3,6 +3,18 @@ import http from 'http';
 import dgram from 'dgram';
 import net from 'net';
 import { execSync } from 'child_process';
+import { createRequire } from 'module';
+
+const req = createRequire(import.meta.url);
+let CastV2Client: any = null;
+let DefaultMediaReceiver: any = null;
+try {
+  const castLib = req('castv2-client');
+  CastV2Client = castLib.Client;
+  DefaultMediaReceiver = castLib.DefaultMediaReceiver;
+} catch (e) {
+  console.warn('[CastService] castv2-client não carregado:', e);
+}
 
 export interface CastDevice {
   id: string;
@@ -21,6 +33,9 @@ export class CastService {
   private devices: Map<string, CastDevice> = new Map();
   private isScanning = false;
   private manualDevices: Map<string, CastDevice> = new Map();
+  private activeCastClient: any = null;
+  private activeCastPlayer: any = null;
+  private activeCastDeviceId: string | null = null;
 
   constructor() {
     this.detectLocalInterfaces();
@@ -571,7 +586,9 @@ export class CastService {
 
     // Ensure mediaUrl uses actual LAN IP so TV can stream it across Wi-Fi
     let lanMediaUrl = mediaUrl;
-    if (lanMediaUrl.includes('localhost') || lanMediaUrl.includes('127.0.0.1')) {
+    if (lanMediaUrl.startsWith('/')) {
+      lanMediaUrl = `http://${localIp}:5000${lanMediaUrl}`;
+    } else if (lanMediaUrl.includes('localhost') || lanMediaUrl.includes('127.0.0.1')) {
       lanMediaUrl = lanMediaUrl.replace(/localhost|127\.0\.0\.1/, localIp);
     }
 
@@ -646,18 +663,105 @@ export class CastService {
       } catch (e) {}
     }
 
-    // 3. Google Cast / Chromecast DIAL integration
-    if (device.type === 'chromecast') {
+    // 3. Google Cast / Chromecast V2 native integration (port 8009 TLS)
+    if (device.type === 'chromecast' && CastV2Client && DefaultMediaReceiver) {
       try {
-        const dialUrl = `http://${device.ip}:8008/apps/DefaultMediaReceiver`;
-        await fetch(dialUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `v=${encodeURIComponent(lanMediaUrl)}`,
-          signal: AbortSignal.timeout(2000)
-        }).catch(() => {});
-      } catch {}
-      successMessage = `Transmissão preparada para Google TV / Chromecast ("${device.name}")`;
+        if (this.activeCastClient) {
+          try { this.activeCastClient.close(); } catch {}
+          this.activeCastClient = null;
+          this.activeCastPlayer = null;
+          this.activeCastDeviceId = null;
+        }
+
+        const client = new CastV2Client();
+        const connectPromise = new Promise<{ success: boolean; message: string }>((resolve) => {
+          const timeoutTimer = setTimeout(() => {
+            try { client.close(); } catch {}
+            resolve({ success: false, message: 'Tempo limite ao conectar com a TV via Google Cast' });
+          }, 8000);
+
+          client.connect(device.ip, () => {
+            console.log(`[CastService] Conectado ao Google TV (${device.ip}:8009). Iniciando DefaultMediaReceiver...`);
+            client.launch(DefaultMediaReceiver, (err: any, player: any) => {
+              if (err) {
+                clearTimeout(timeoutTimer);
+                try { client.close(); } catch {}
+                console.warn('[CastService] Erro ao iniciar DefaultMediaReceiver:', err);
+                return resolve({ success: false, message: `Falha ao iniciar player na TV: ${err?.message || err}` });
+              }
+
+              this.activeCastClient = client;
+              this.activeCastPlayer = player;
+              this.activeCastDeviceId = device.id;
+
+              // Detect MIME type
+              let mimeType = 'video/mp4';
+              const cleanUrlLower = lanMediaUrl.toLowerCase().split('?')[0];
+              if (cleanUrlLower.endsWith('.webm')) mimeType = 'video/webm';
+              else if (cleanUrlLower.endsWith('.mp3')) mimeType = 'audio/mp3';
+              else if (cleanUrlLower.endsWith('.flac')) mimeType = 'audio/flac';
+              else if (cleanUrlLower.endsWith('.m4a')) mimeType = 'audio/mp4';
+
+              const mediaPayload = {
+                contentId: lanMediaUrl,
+                contentType: mimeType,
+                streamType: 'BUFFERED',
+                metadata: {
+                  type: 0,
+                  metadataType: 0,
+                  title: title || 'DriveGram Vídeo'
+                }
+              };
+
+              console.log(`[CastService] Carregando mídia na TV (${lanMediaUrl})...`);
+              player.load(mediaPayload, { autoplay: true }, (errLoad: any, status: any) => {
+                clearTimeout(timeoutTimer);
+                if (errLoad) {
+                  console.warn('[CastService] Erro ao carregar mídia no player:', errLoad);
+                  return resolve({ success: false, message: `Erro ao reproduzir vídeo na TV: ${errLoad?.message || errLoad}` });
+                }
+
+                console.log('[CastService] Mídia iniciada com sucesso na TV!', status?.playerState);
+
+                player.on('status', (st: any) => {
+                  if (st) {
+                    this.updateSessionState('drivegram-tv', {
+                      currentTime: st.currentTime || 0,
+                      duration: st.media?.duration || 0,
+                      isPlaying: st.playerState === 'PLAYING',
+                      title: title || 'DriveGram Vídeo',
+                      mediaUrl: lanMediaUrl
+                    });
+                  }
+                });
+
+                resolve({
+                  success: true,
+                  message: `Reproduzindo "${title || 'Vídeo'}" diretamente na "${device.name}"`
+                });
+              });
+            });
+          });
+
+          client.on('error', (err: any) => {
+            console.warn('[CastService] CastV2 client error:', err?.message || err);
+            if (this.activeCastDeviceId === device.id) {
+              this.activeCastClient = null;
+              this.activeCastPlayer = null;
+              this.activeCastDeviceId = null;
+            }
+          });
+        });
+
+        const castResult = await connectPromise;
+        if (castResult.success) {
+          successMessage = castResult.message;
+        } else {
+          console.warn('[CastService]', castResult.message);
+        }
+      } catch (err: any) {
+        console.warn('[CastService] Erro no fluxo CastV2:', err);
+      }
     }
 
     // 4. Mobile / Connected devices
@@ -674,7 +778,7 @@ export class CastService {
   }
 
   /**
-   * Send remote control playback command to DLNA / Roku device
+   * Send remote control playback command to DLNA / Roku / Chromecast device
    */
   public async controlDevice(
     deviceId: string,
@@ -684,6 +788,47 @@ export class CastService {
     const device = this.devices.get(deviceId);
     if (!device) {
       return { success: false, message: 'Dispositivo não encontrado' };
+    }
+
+    // 0. Google Cast V2 active player control
+    if (this.activeCastPlayer && (this.activeCastDeviceId === deviceId || device.type === 'chromecast')) {
+      try {
+        if (action === 'play') {
+          this.activeCastPlayer.play(() => {});
+          return { success: true, message: 'Comando Play enviado à TV' };
+        } else if (action === 'pause') {
+          this.activeCastPlayer.pause(() => {});
+          return { success: true, message: 'Comando Pause enviado à TV' };
+        } else if (action === 'stop') {
+          this.activeCastPlayer.stop(() => {
+            try { this.activeCastClient?.close(); } catch {}
+            this.activeCastClient = null;
+            this.activeCastPlayer = null;
+            this.activeCastDeviceId = null;
+          });
+          return { success: true, message: 'Reprodução parada na TV' };
+        } else if (action === 'seek' && typeof params?.time === 'number') {
+          this.activeCastPlayer.seek(params.time, () => {});
+          return { success: true, message: `Avançado para ${Math.round(params.time)}s` };
+        } else if (action === 'volume' && typeof params?.volume === 'number') {
+          this.activeCastClient?.setVolume({ level: params.volume }, () => {});
+          return { success: true, message: `Volume ajustado para ${Math.round(params.volume * 100)}%` };
+        } else if (action === 'forward') {
+          this.activeCastPlayer.getStatus((_err: any, st: any) => {
+            const cur = st?.currentTime || 0;
+            this.activeCastPlayer.seek(cur + 10, () => {});
+          });
+          return { success: true, message: 'Avançado 10 segundos' };
+        } else if (action === 'rewind') {
+          this.activeCastPlayer.getStatus((_err: any, st: any) => {
+            const cur = st?.currentTime || 0;
+            this.activeCastPlayer.seek(Math.max(0, cur - 10), () => {});
+          });
+          return { success: true, message: 'Retrocedido 10 segundos' };
+        }
+      } catch (e: any) {
+        console.warn('[CastService] Erro ao enviar comando CastV2:', e);
+      }
     }
 
     if (device.type === 'roku') {
