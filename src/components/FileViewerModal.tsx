@@ -25,7 +25,8 @@ import {
   Upload,
   CloudUpload,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Cast
 } from 'lucide-react';
 import { DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
@@ -34,6 +35,7 @@ import { EpubReader } from './EpubReader.js';
 import { PdfReader } from './PdfReader.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { GenerateMarkersModal } from './GenerateMarkersModal.js';
+import { CastModal } from './CastModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 
 interface SubtitleCue {
@@ -108,6 +110,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
   const [isVideoDownloadModalOpen, setIsVideoDownloadModalOpen] = useState(false);
   const [isGenerateMarkersModalOpen, setIsGenerateMarkersModalOpen] = useState(false);
+  const [isCastModalOpen, setIsCastModalOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -351,6 +354,17 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               >
                 <BookmarkPlus className="w-4 h-4" />
                 <span>Timestamps & Legendas</span>
+              </button>
+            )}
+
+            {(file.type === 'video' || file.type === 'audio') && (
+              <button
+                onClick={() => setIsCastModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all bg-sky-950/40 hover:bg-sky-900/60 text-sky-300 border-sky-800/60 hover:border-sky-500 shadow-sm active:scale-95"
+                title="Transmitir para Smart TV / Chromecast"
+              >
+                <Cast className="w-3.5 h-3.5 text-sky-400" />
+                <span className="hidden sm:inline">Transmitir</span>
               </button>
             )}
 
@@ -689,6 +703,17 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           videoDuration={videoRef.current?.duration}
           onSeek={(seconds) => handleSeek(seconds)}
           onSaveTimestamps={handleSaveGeneratedFileTimestamps}
+        />
+      )}
+
+      {/* Cast & Smart TV Modal */}
+      {(file.type === 'video' || file.type === 'audio') && (
+        <CastModal
+          isOpen={isCastModalOpen}
+          onClose={() => setIsCastModalOpen(false)}
+          mediaUrl={resolveApiUrl(`/api/stream/${file.id}`)}
+          title={file.name}
+          videoElementRef={videoRef}
         />
       )}
     </div>

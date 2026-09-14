@@ -48,6 +48,7 @@ import {
 import { Course, Lesson, CourseModule, DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { GenerateMarkersModal } from './GenerateMarkersModal.js';
+import { CastModal } from './CastModal.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 interface CourseViewProps {
@@ -109,15 +110,6 @@ function parseSubtitleContent(content: string): SubtitleCue[] {
     }
   }
   return cues;
-}
-
-interface CastDevice {
-  id: string;
-  name: string;
-  ip: string;
-  type: 'chromecast' | 'smart_tv_samsung' | 'smart_tv_lg' | 'roku' | 'dlna' | 'generic';
-  model?: string;
-  status: 'online' | 'ready';
 }
 
 export const CourseView: React.FC<CourseViewProps> = ({
@@ -228,16 +220,6 @@ export const CourseView: React.FC<CourseViewProps> = ({
 
   // Video Transmission & Cast state
   const [isCastModalOpen, setIsCastModalOpen] = useState(false);
-  const [copiedStreamUrl, setCopiedStreamUrl] = useState(false);
-  const [copiedTvUrl, setCopiedTvUrl] = useState(false);
-  const [castDevices, setCastDevices] = useState<CastDevice[]>([]);
-  const [isScanningCast, setIsScanningCast] = useState(false);
-  const [activeCastingDevice, setActiveCastingDevice] = useState<CastDevice | null>(null);
-  const [castFeedback, setCastFeedback] = useState<string | null>(null);
-  const [networkLanIp, setNetworkLanIp] = useState<string>('');
-  const [manualIpInput, setManualIpInput] = useState<string>('');
-  const [isAddingManual, setIsAddingManual] = useState<boolean>(false);
-  const [tvPlayerUrl, setTvPlayerUrl] = useState<string>('');
 
   const activeMediaFile = activeLesson?.fileId
     ? allFiles.find(f => f.id === activeLesson.fileId)
@@ -245,115 +227,8 @@ export const CourseView: React.FC<CourseViewProps> = ({
 
   const streamFileId = activeMediaFile?.id || activeLesson?.fileId;
 
-  const streamUrl = streamFileId
-    ? `/api/stream/${streamFileId}`
-    : '';
-
-  const lanStreamUrl = networkLanIp && streamFileId
-    ? `${networkLanIp}/api/stream/${streamFileId}`
-    : streamUrl;
-
-  const defaultTvUrl = networkLanIp && streamFileId
-    ? `${networkLanIp}/tv?fileId=${streamFileId}&title=${encodeURIComponent(activeLesson?.title || course.title)}`
-    : '';
-
-  const fetchNetworkDevices = async () => {
-    setIsScanningCast(true);
-    setCastFeedback(null);
-    try {
-      const [devRes, ipRes] = await Promise.all([
-        fetch(resolveApiUrl('/api/cast/devices')),
-        fetch(resolveApiUrl('/api/cast/network-ip'))
-      ]);
-      if (devRes.ok) {
-        const data = await devRes.json();
-        setCastDevices(data);
-      }
-      if (ipRes.ok) {
-        const ipData = await ipRes.json();
-        setNetworkLanIp(ipData.baseUrl);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsScanningCast(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isCastModalOpen) {
-      fetchNetworkDevices();
-    }
-  }, [isCastModalOpen]);
-
-  const handleCastToDevice = async (device: CastDevice) => {
-    setActiveCastingDevice(device);
-    setCastFeedback(`Conectando a "${device.name}" (${device.ip})...`);
-
-    // Try native remote playback in browser if supported
-    try {
-      if ((videoRef.current as any).remote?.prompt) {
-        (videoRef.current as any).remote.prompt().catch(() => {});
-      }
-    } catch (e) {}
-
-    try {
-      const res = await fetch(resolveApiUrl('/api/cast/play'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deviceId: device.id,
-          mediaUrl: lanStreamUrl,
-          title: activeLesson?.title || course.title
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCastFeedback(`✅ ${data.message}`);
-        if (data.tvPlayerUrl) {
-          setTvPlayerUrl(data.tvPlayerUrl);
-        }
-      }
-    } catch (err) {
-      setCastFeedback(`Transmissão enviada para o aparelho ${device.name}`);
-    }
-  };
-
-  const handleAddManualDevice = async () => {
-    if (!manualIpInput.trim()) return;
-    setIsAddingManual(true);
-    try {
-      const res = await fetch(resolveApiUrl('/api/cast/add-device'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip: manualIpInput.trim() })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setManualIpInput('');
-        await fetchNetworkDevices();
-        if (data.device) {
-          handleCastToDevice(data.device);
-        }
-      }
-    } catch (e) {
-      console.warn('Erro ao adicionar aparelho por IP:', e);
-    } finally {
-      setIsAddingManual(false);
-    }
-  };
-
-  const handleTriggerCast = async () => {
+  const handleTriggerCast = () => {
     setIsCastModalOpen(true);
-    if (videoRef.current) {
-      try {
-        if ((videoRef.current as any).remote?.prompt) {
-          (videoRef.current as any).remote.prompt().catch(() => {});
-        } else if ((videoRef.current as any).webkitShowPlaybackTargetPicker) {
-          (videoRef.current as any).webkitShowPlaybackTargetPicker();
-        }
-      } catch (e) {}
-    }
   };
 
   const handleTogglePiP = async () => {
@@ -391,14 +266,6 @@ export const CourseView: React.FC<CourseViewProps> = ({
       videoEl.removeEventListener('enterpictureinpicture', handleEnterPiP);
     };
   }, [activeLesson?.id, onEnterPiP, onLeavePiP, onRestoreToTab]);
-
-  const handleCopyStreamUrl = () => {
-    const urlToCopy = lanStreamUrl || streamUrl;
-    if (!urlToCopy) return;
-    navigator.clipboard.writeText(urlToCopy);
-    setCopiedStreamUrl(true);
-    setTimeout(() => setCopiedStreamUrl(false), 2500);
-  };
 
   // Sync lesson notes, subtitles and auto-resume position when active lesson changes
   useEffect(() => {
@@ -2049,237 +1916,14 @@ export const CourseView: React.FC<CourseViewProps> = ({
       )}
 
       {/* Modal: Video Transmission Studio (Cast & Stream Multi-Device) */}
-      {isCastModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-          <div className="relative w-full max-w-2xl rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl overflow-hidden text-gray-800 dark:text-gray-100 flex flex-col max-h-[90vh]">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-drive-darkBorder bg-gray-50/50 dark:bg-drive-darkBg/50 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-2xl bg-sky-100 dark:bg-sky-950 text-sky-600 dark:text-sky-400">
-                  <Cast className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold">Central de Transmissão para Aparelhos</h3>
-                  <p className="text-[11px] text-gray-500 truncate max-w-sm">
-                    {activeLesson?.title || 'Escolha a Smart TV ou receptor para transmitir a aula'}
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setIsCastModalOpen(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-5 overflow-y-auto flex-1">
-              {/* Device Selector on Local Network */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-bold text-gray-800 dark:text-gray-200">
-                    <Radio className={`w-4 h-4 ${isScanningCast ? 'text-sky-500 animate-spin' : 'text-sky-500'}`} />
-                    <span>Aparelhos Detectados na Rede Wi-Fi ({castDevices.length})</span>
-                  </div>
-                  <button
-                    onClick={fetchNetworkDevices}
-                    disabled={isScanningCast}
-                    className="flex items-center gap-1 text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:underline disabled:opacity-50"
-                  >
-                    <span>{isScanningCast ? 'Buscando...' : 'Escanear Rede'}</span>
-                  </button>
-                </div>
-
-                {/* Device List Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {castDevices.map((device) => {
-                    const isSelected = activeCastingDevice?.id === device.id;
-                    return (
-                      <div
-                        key={device.id}
-                        onClick={() => handleCastToDevice(device)}
-                        className={`p-3.5 rounded-2xl border cursor-pointer flex items-center justify-between transition-all group ${
-                          isSelected
-                            ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-500 shadow-md ring-2 ring-sky-500/20'
-                            : 'bg-gray-50/70 dark:bg-drive-darkBg/60 border-gray-200 dark:border-drive-darkBorder hover:border-sky-300 dark:hover:border-sky-700 hover:bg-white dark:hover:bg-drive-darkSurface'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          <div className={`p-2.5 rounded-xl ${isSelected ? 'bg-sky-600 text-white' : 'bg-gray-200 dark:bg-drive-darkHover text-gray-600 dark:text-gray-300'}`}>
-                            <Tv className="w-4 h-4" />
-                          </div>
-                          <div className="overflow-hidden">
-                            <span className="font-bold text-xs text-gray-900 dark:text-gray-100 truncate block">
-                              {device.name}
-                            </span>
-                            <span className="text-[10px] text-gray-500 font-mono block">
-                              IP: {device.ip}
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCastToDevice(device);
-                          }}
-                          className={`px-3 py-1.5 rounded-xl text-[11px] font-bold shrink-0 transition-all ${
-                            isSelected
-                              ? 'bg-sky-600 text-white shadow-sm'
-                              : 'bg-white dark:bg-drive-darkHover text-sky-600 dark:text-sky-400 border border-gray-200 dark:border-drive-darkBorder group-hover:bg-sky-600 group-hover:text-white'
-                          }`}
-                        >
-                          {isSelected ? 'Transmitindo' : 'Transmitir'}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Manual TV IP Adder */}
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="text"
-                    placeholder="Adicionar TV por IP (ex: 192.168.0.50)..."
-                    value={manualIpInput}
-                    onChange={(e) => setManualIpInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddManualDevice(); }}
-                    className="flex-1 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder text-xs text-gray-800 dark:text-gray-200 focus:outline-none focus:border-sky-500"
-                  />
-                  <button
-                    onClick={handleAddManualDevice}
-                    disabled={isAddingManual || !manualIpInput.trim()}
-                    className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all disabled:opacity-50 shrink-0"
-                  >
-                    {isAddingManual ? 'Conectando...' : '+ Conectar IP'}
-                  </button>
-                </div>
-
-                {/* Feedback Alert */}
-                {castFeedback && (
-                  <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-xs font-semibold text-sky-800 dark:text-sky-200 flex items-center justify-between animate-in fade-in">
-                    <span>{castFeedback}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Native Cast & Picture-in-Picture Quick Tools */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-100 dark:border-drive-darkBorder">
-                {/* Native Browser Cast Prompt */}
-                <button
-                  onClick={handleTriggerCast}
-                  className="p-3.5 rounded-2xl border border-gray-200 dark:border-drive-darkBorder bg-gray-50/50 dark:bg-drive-darkBg/40 hover:border-sky-400 flex items-center gap-3 text-left transition-colors"
-                >
-                  <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
-                    <Cast className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-xs text-gray-900 dark:text-gray-100 block">
-                      Chromecast / AirPlay Nativo
-                    </span>
-                    <span className="text-[10px] text-gray-500">
-                      Abrir diálogo do navegador
-                    </span>
-                  </div>
-                </button>
-
-                {/* Picture in Picture */}
-                <button
-                  onClick={() => {
-                    setIsCastModalOpen(false);
-                    handleTogglePiP();
-                  }}
-                  className="p-3.5 rounded-2xl border border-gray-200 dark:border-drive-darkBorder bg-gray-50/50 dark:bg-drive-darkBg/40 hover:border-purple-400 flex items-center gap-3 text-left transition-colors"
-                >
-                  <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                    <Airplay className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-xs text-gray-900 dark:text-gray-100 block">
-                      Janela Flutuante (PiP)
-                    </span>
-                    <span className="text-[10px] text-gray-500">
-                      Mini-player suspenso na tela
-                    </span>
-                  </div>
-                </button>
-              </div>
-
-              {/* Direct Wi-Fi LAN Stream Link (for TV Browsers / VLC / Kodi) */}
-              <div className="p-4 rounded-2xl border border-gray-200 dark:border-drive-darkBorder bg-gray-50/50 dark:bg-drive-darkBg/40 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-gray-800 dark:text-gray-200">
-                  <ExternalLink className="w-4 h-4 text-emerald-500" />
-                  <span>Link de Streaming da Rede Local (IP do Computador)</span>
-                </div>
-                <p className="text-[11px] text-gray-500">
-                  Abra este endereço no navegador da sua Smart TV, celular ou aplicativo como VLC / Kodi na mesma rede Wi-Fi:
-                </p>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={lanStreamUrl || 'Carregando stream...'}
-                    className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder text-[11px] font-mono text-gray-700 dark:text-gray-300 focus:outline-none select-all"
-                  />
-                  <button
-                    onClick={handleCopyStreamUrl}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow shrink-0 transition-all active:scale-95"
-                  >
-                    {copiedStreamUrl ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedStreamUrl ? 'Copiado!' : 'Copiar'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Web TV Player Link for Smart TV Browser */}
-              {(tvPlayerUrl || defaultTvUrl) && (
-                <div className="p-4 rounded-2xl border border-sky-200 dark:border-sky-800/60 bg-sky-50/50 dark:bg-sky-950/30 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-bold text-sky-900 dark:text-sky-200">
-                      <Tv className="w-4 h-4 text-sky-500" />
-                      <span>DriveGram TV Player (Para Navegador da Smart TV)</span>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    Abra este endereço na sua TV (Samsung, LG, Android TV) para assistir em tela cheia com controle remoto:
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={tvPlayerUrl || defaultTvUrl}
-                      className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder text-[11px] font-mono text-gray-700 dark:text-gray-300 focus:outline-none select-all"
-                    />
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(tvPlayerUrl || defaultTvUrl);
-                        setCopiedTvUrl(true);
-                        setTimeout(() => setCopiedTvUrl(false), 2000);
-                      }}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow shrink-0 transition-all active:scale-95"
-                    >
-                      {copiedTvUrl ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedTvUrl ? 'Copiado!' : 'Copiar Link TV'}</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between px-6 py-3.5 border-t border-gray-100 dark:border-drive-darkBorder bg-gray-50/50 dark:bg-drive-darkBg/50 shrink-0">
-              <span className="text-[11px] text-gray-400">
-                Certifique-se de que a Smart TV está conectada na mesma rede Wi-Fi.
-              </span>
-              <button
-                onClick={() => setIsCastModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-drive-darkHover text-gray-700 dark:text-gray-200 text-xs font-semibold"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CastModal
+        isOpen={isCastModalOpen}
+        onClose={() => setIsCastModalOpen(false)}
+        mediaUrl={streamFileId ? resolveApiUrl(`/api/stream/${streamFileId}`) : ''}
+        title={activeLesson?.title || course.title}
+        videoElementRef={videoRef}
+        onEnterPiP={handleTogglePiP}
+      />
 
       {/* Video Download & Cache Progress Modal */}
       {courseDownloadFile && (

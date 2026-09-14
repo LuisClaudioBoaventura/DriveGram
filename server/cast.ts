@@ -442,6 +442,200 @@ export class CastService {
       tvPlayerUrl
     };
   }
+
+  /**
+   * Send remote control playback command to DLNA / Roku device
+   */
+  public async controlDevice(
+    deviceId: string,
+    action: 'play' | 'pause' | 'stop' | 'seek' | 'volume' | 'forward' | 'rewind',
+    params?: { time?: number; volume?: number }
+  ): Promise<{ success: boolean; message: string }> {
+    const device = this.devices.get(deviceId);
+    if (!device) {
+      return { success: false, message: 'Dispositivo não encontrado' };
+    }
+
+    if (device.type === 'roku') {
+      let key = 'Play';
+      if (action === 'pause' || action === 'play') key = 'Play';
+      else if (action === 'stop') key = 'Back';
+      else if (action === 'forward') key = 'Fwd';
+      else if (action === 'rewind') key = 'Rev';
+      else if (action === 'volume') {
+        key = (params?.volume ?? 1) > 0.5 ? 'VolumeUp' : 'VolumeDown';
+      }
+
+      try {
+        await fetch(`http://${device.ip}:8060/keypress/${key}`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(2000)
+        }).catch(() => {});
+        return { success: true, message: `Comando ${key} enviado ao Roku` };
+      } catch (e) {
+        return { success: false, message: 'Falha ao enviar comando ao Roku' };
+      }
+    }
+
+    if (device.type === 'dlna' || device.type === 'smart_tv_samsung' || device.type === 'smart_tv_lg' || device.avTransportUrl) {
+      const targetUrl = device.avTransportUrl || `http://${device.ip}:${device.port || 7678}/smp_4_`;
+      let soapAction = '';
+      let bodyInner = '';
+
+      if (action === 'play') {
+        soapAction = 'Play';
+        bodyInner = `<u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Speed>1</Speed></u:Play>`;
+      } else if (action === 'pause') {
+        soapAction = 'Pause';
+        bodyInner = `<u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Pause>`;
+      } else if (action === 'stop') {
+        soapAction = 'Stop';
+        bodyInner = `<u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Stop>`;
+      } else if (action === 'seek' && typeof params?.time === 'number') {
+        soapAction = 'Seek';
+        const formatted = formatSecondsToUpnpTime(params.time);
+        bodyInner = `<u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Unit>REL_TIME</Unit><Target>${formatted}</Target></u:Seek>`;
+      }
+
+      if (soapAction && bodyInner) {
+        const envelope = `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>${bodyInner}</s:Body>
+</s:Envelope>`;
+        try {
+          await fetch(targetUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/xml; charset="utf-8"',
+              'SOAPAction': `"urn:schemas-upnp-org:service:AVTransport:1#${soapAction}"`
+            },
+            body: envelope,
+            signal: AbortSignal.timeout(2000)
+          }).catch(() => {});
+          return { success: true, message: `Comando ${soapAction} enviado à TV DLNA` };
+        } catch (e) {
+          return { success: false, message: `Erro ao enviar comando DLNA: ${e}` };
+        }
+      }
+    }
+
+    return { success: true, message: `Comando ${action} processado` };
+  }
+
+  // ---------------- INTERACTIVE WEB TV SESSIONS (SSE) ----------------
+  private tvSessions: Map<string, TvSession> = new Map();
+
+  public getOrCreateSession(sessionId = 'default'): TvSession {
+    let session = this.tvSessions.get(sessionId);
+    if (!session) {
+      session = {
+        id: sessionId,
+        connectedAt: Date.now(),
+        lastPing: Date.now(),
+        state: {
+          currentTime: 0,
+          duration: 0,
+          isPlaying: false,
+          volume: 1,
+          updatedAt: Date.now()
+        },
+        listeners: new Set()
+      };
+      this.tvSessions.set(sessionId, session);
+    }
+    return session;
+  }
+
+  public sendSessionCommand(sessionId: string, command: any): boolean {
+    const session = this.getOrCreateSession(sessionId);
+    if (session.listeners.size === 0) {
+      return false;
+    }
+    for (const listener of session.listeners) {
+      try {
+        listener('command', command);
+      } catch {}
+    }
+    return true;
+  }
+
+  public updateSessionState(sessionId: string, patch: Partial<TvSessionState>): void {
+    const session = this.getOrCreateSession(sessionId);
+    session.lastPing = Date.now();
+    session.state = {
+      ...session.state,
+      ...patch,
+      updatedAt: Date.now()
+    };
+    for (const listener of session.listeners) {
+      try {
+        listener('state', session.state);
+      } catch {}
+    }
+  }
+
+  public getSessionState(sessionId = 'default'): TvSessionState {
+    const session = this.getOrCreateSession(sessionId);
+    return session.state;
+  }
+
+  public addSessionListener(sessionId: string, listener: (event: string, data: any) => void): () => void {
+    const session = this.getOrCreateSession(sessionId);
+    session.listeners.add(listener);
+    return () => {
+      session.listeners.delete(listener);
+    };
+  }
+
+  // ---------------- SCREEN MIRRORING SIGNALING (WEBRTC) ----------------
+  private mirrorSignals: Map<string, Array<{ type: string; payload: any; timestamp: number }>> = new Map();
+
+  public pushMirrorSignal(roomId: string, type: string, payload: any): void {
+    if (!this.mirrorSignals.has(roomId)) {
+      this.mirrorSignals.set(roomId, []);
+    }
+    const list = this.mirrorSignals.get(roomId)!;
+    list.push({ type, payload, timestamp: Date.now() });
+    // Keep last 50 signals
+    if (list.length > 50) {
+      list.splice(0, list.length - 50);
+    }
+  }
+
+  public getMirrorSignals(roomId: string, since = 0): Array<{ type: string; payload: any; timestamp: number }> {
+    const list = this.mirrorSignals.get(roomId) || [];
+    return list.filter(item => item.timestamp > since);
+  }
+
+  public clearMirrorSignals(roomId: string): void {
+    this.mirrorSignals.delete(roomId);
+  }
+}
+
+function formatSecondsToUpnpTime(totalSec: number): string {
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = Math.floor(totalSec % 60);
+  const pad = (n: number) => (n < 10 ? '0' + n : '' + n);
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+export interface TvSessionState {
+  currentTime: number;
+  duration: number;
+  isPlaying: boolean;
+  volume: number;
+  title?: string;
+  mediaUrl?: string;
+  updatedAt: number;
+}
+
+export interface TvSession {
+  id: string;
+  connectedAt: number;
+  lastPing: number;
+  state: TvSessionState;
+  listeners: Set<(event: string, data: any) => void>;
 }
 
 export const castService = new CastService();

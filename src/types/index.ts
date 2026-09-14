@@ -542,3 +542,27 @@ export interface SavedAuditResult {
   message: string;
 }
 
+export interface CastDevice {
+  id: string;
+  name: string;
+  ip: string;
+  port?: number;
+  type: 'chromecast' | 'smart_tv_samsung' | 'smart_tv_lg' | 'roku' | 'dlna' | 'generic';
+  model?: string;
+  status: 'online' | 'ready';
+  avTransportUrl?: string;
+  locationUrl?: string;
+  isManual?: boolean;
+}
+
+export interface CastPlaybackState {
+  currentTime: number;
+  duration: number;
+  isPlaying: boolean;
+  volume: number;
+  title?: string;
+  mediaUrl?: string;
+  updatedAt: number;
+}
+
+

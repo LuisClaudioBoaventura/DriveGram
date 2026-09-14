@@ -26,11 +26,13 @@ import {
   Plus,
   X,
   Camera,
-  Check
+  Check,
+  Cast
 } from 'lucide-react';
 import { AdultVideo, AdultPerformer, DriveItem } from '../types/index.js';
 import { PerformerDetailModal } from './PerformerDetailModal.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { CastModal } from './CastModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
 import { captureVideoMidFrame } from '../utils/videoFrameCapture.js';
@@ -83,6 +85,7 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
   const [selectedPerformerForDetail, setSelectedPerformerForDetail] = useState<AdultPerformer | null>(null);
   const [justCapturedCover, setJustCapturedCover] = useState<boolean>(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
+  const [isCastModalOpen, setIsCastModalOpen] = useState<boolean>(false);
 
   const [localPerformers, setLocalPerformers] = useState<string[]>(() => {
     return video.performers ? video.performers.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -286,6 +289,17 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border border-gray-900">
                 {playlist.length}
               </span>
+            </button>
+          )}
+
+          {/* Cast to Smart TV */}
+          {(videoFile || video.fileId) && (
+            <button
+              onClick={() => setIsCastModalOpen(true)}
+              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-sky-400 hover:text-sky-300 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95"
+              title="Transmitir para Smart TV / Cast"
+            >
+              <Cast className="w-4 h-4" />
             </button>
           )}
 
@@ -697,6 +711,17 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
           isOpen={isDownloadModalOpen}
           onClose={() => setIsDownloadModalOpen(false)}
           customTitle={video.title}
+        />
+      )}
+
+      {/* Cast & Smart TV Modal */}
+      {(videoFile || video.fileId) && (
+        <CastModal
+          isOpen={isCastModalOpen}
+          onClose={() => setIsCastModalOpen(false)}
+          mediaUrl={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
+          title={video.title}
+          videoElementRef={videoRef}
         />
       )}
     </div>

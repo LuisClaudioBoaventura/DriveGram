@@ -37,10 +37,12 @@ import {
   ArrowUpDown,
   ChevronDown,
   RotateCcw,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Cast
 } from 'lucide-react';
 import { SeriesShow, SeriesEpisode, DriveItem } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
+import { CastModal } from './CastModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
 
@@ -101,6 +103,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
   // UI Modes & Controls
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [isShuffle, setIsShuffle] = useState<boolean>(false);
+  const [isCastModalOpen, setIsCastModalOpen] = useState(false);
   const [isAutoPlayNext, setIsAutoPlayNext] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
@@ -548,6 +551,18 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
             >
               <Airplay className="w-3.5 h-3.5 text-red-400" />
               <span className="hidden sm:inline">Picture-in-Picture</span>
+            </button>
+          )}
+
+          {/* Cast to Smart TV Button */}
+          {playingEpisode && (
+            <button
+              onClick={() => setIsCastModalOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border-sky-500/40 shadow-xs active:scale-95"
+              title="Transmitir Episódio para Smart TV / Chromecast"
+            >
+              <Cast className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">Transmitir</span>
             </button>
           )}
 
@@ -1315,6 +1330,18 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
           file={downloadTargetFile}
           isOpen={!!downloadTargetFile}
           onClose={() => setDownloadTargetFile(null)}
+        />
+      )}
+
+      {/* Cast & Smart TV Modal */}
+      {playingEpisode && (playingFile || playingEpisode.fileId) && (
+        <CastModal
+          isOpen={isCastModalOpen}
+          onClose={() => setIsCastModalOpen(false)}
+          mediaUrl={resolveApiUrl(`/api/stream/${playingFile?.id || playingEpisode.fileId}`)}
+          title={`${series.title} - ${playingEpisode.title}`}
+          videoElementRef={videoRef}
+          onEnterPiP={handleEnterPiP}
         />
       )}
     </div>

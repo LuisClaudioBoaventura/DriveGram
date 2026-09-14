@@ -2,11 +2,12 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { 
   ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, 
   Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2, Sparkles,
-  SkipBack, SkipForward, Shuffle, Repeat, List, X, Search
+  SkipBack, SkipForward, Shuffle, Repeat, List, X, Search, Cast
 } from 'lucide-react';
 import { MovieVideo, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { GenerateMarkersModal } from './GenerateMarkersModal.js';
+import { CastModal } from './CastModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
 
@@ -52,6 +53,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [showSubMenu, setShowSubMenu] = useState(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [isGenerateMarkersModalOpen, setIsGenerateMarkersModalOpen] = useState(false);
+  const [isCastModalOpen, setIsCastModalOpen] = useState(false);
 
   const videoFile = (video.fileId ? allFiles.find(f => f.id === video.fileId) : null) ||
     (video.folderId ? allFiles.find(f => f.parentId === video.folderId && !f.isTrash && (f.type === 'video' || (f.mimeType && f.mimeType.startsWith('video/')) || ['mp4', 'mkv', 'webm', 'mov', 'avi'].includes((f.extension || '').toLowerCase()))) : null);
@@ -531,6 +533,16 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               title="Janela Flutuante (Picture-in-Picture) - Assista enquanto navega"
             >
               <Airplay className="w-4 h-4" />
+            </button>
+
+            {/* Cast to Smart TV */}
+            <button
+              onClick={() => setIsCastModalOpen(true)}
+              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-sky-400 hover:text-sky-300 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0 flex items-center gap-1.5"
+              title="Transmitir para Smart TV / Chromecast"
+            >
+              <Cast className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs font-semibold">Transmitir</span>
             </button>
 
             {onOpenEditModal && (
@@ -1097,6 +1109,27 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               })}
           </div>
         </div>
+      )}
+
+      {/* Cast & Smart TV Modal */}
+      {(videoFile || video.fileId) && (
+        <CastModal
+          isOpen={isCastModalOpen}
+          onClose={() => setIsCastModalOpen(false)}
+          mediaUrl={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
+          title={video.titlePt || video.title}
+          subUrl={selectedSubId !== 'none' ? subtitles.find(s => s.id === selectedSubId)?.url : undefined}
+          videoElementRef={videoRef}
+          onEnterPiP={async () => {
+            try {
+              if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+              } else if (videoRef.current?.requestPictureInPicture) {
+                await videoRef.current.requestPictureInPicture();
+              }
+            } catch (e) {}
+          }}
+        />
       )}
     </div>
   );

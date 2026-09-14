@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.14.0',
+    version: '1.15.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -481,6 +481,15 @@ app.post('/api/cast/play', async (req, res) => {
   res.json(result);
 });
 
+app.post('/api/cast/control', async (req, res) => {
+  const { deviceId, action, params } = req.body;
+  if (!deviceId || !action) {
+    return res.status(400).json({ error: 'deviceId e action são obrigatórios' });
+  }
+  const result = await castService.controlDevice(deviceId, action, params);
+  res.json(result);
+});
+
 app.post('/api/cast/add-device', (req, res) => {
   const { ip, name } = req.body;
   if (!ip || typeof ip !== 'string') {
@@ -488,6 +497,71 @@ app.post('/api/cast/add-device', (req, res) => {
   }
   const device = castService.addManualDevice(ip, name);
   res.json({ success: true, device });
+});
+
+// TV Interactive Session Endpoints (SSE & Remote Commands)
+app.get('/api/cast/session/:sessionId/events', (req, res) => {
+  const { sessionId } = req.params;
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  const session = castService.getOrCreateSession(sessionId);
+  res.write(`data: ${JSON.stringify({ type: 'init', state: session.state })}\n\n`);
+
+  const unsubscribe = castService.addSessionListener(sessionId, (event, data) => {
+    try {
+      res.write(`data: ${JSON.stringify({ type: event, ...data })}\n\n`);
+    } catch {}
+  });
+
+  const keepAliveInterval = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch {}
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(keepAliveInterval);
+    unsubscribe();
+  });
+});
+
+app.post('/api/cast/session/:sessionId/command', (req, res) => {
+  const { sessionId } = req.params;
+  const command = req.body;
+  const delivered = castService.sendSessionCommand(sessionId, command);
+  res.json({ success: true, delivered });
+});
+
+app.post('/api/cast/session/:sessionId/state', (req, res) => {
+  const { sessionId } = req.params;
+  castService.updateSessionState(sessionId, req.body);
+  res.json({ success: true });
+});
+
+app.get('/api/cast/session/:sessionId/state', (req, res) => {
+  const { sessionId } = req.params;
+  const state = castService.getSessionState(sessionId);
+  res.json(state);
+});
+
+// Screen Mirroring WebRTC Signaling
+app.post('/api/cast/mirror/signal', (req, res) => {
+  const { roomId = 'default', type, payload } = req.body;
+  if (!type || !payload) {
+    return res.status(400).json({ error: 'type e payload são obrigatórios' });
+  }
+  castService.pushMirrorSignal(roomId, type, payload);
+  res.json({ success: true });
+});
+
+app.get('/api/cast/mirror/signal', (req, res) => {
+  const roomId = (req.query.roomId as string) || 'default';
+  const since = Number(req.query.since) || 0;
+  const signals = castService.getMirrorSignals(roomId, since);
+  res.json({ signals, timestamp: Date.now() });
 });
 
 app.delete('/api/files/:id', async (req, res) => {
@@ -4769,43 +4843,288 @@ function purgeExpiredCacheRoutine() {
 app.get('/tv', (req, res) => {
   const mediaUrl = (req.query.url as string) || (req.query.fileId ? `/api/stream/${req.query.fileId}` : '');
   const title = (req.query.title as string) || 'DriveGram TV Player';
+  const subUrl = (req.query.subUrl as string) || '';
+  const sessionId = (req.query.session as string) || 'default';
+
   res.send(`<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${title} - DriveGram TV</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #07090e; color: #fff; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; user-select: none; }
+    .header { position: absolute; top: 0; left: 0; right: 0; padding: 24px 36px; background: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent); z-index: 20; display: flex; align-items: center; justify-content: space-between; transition: opacity 0.4s; }
+    .header.hidden { opacity: 0; pointer-events: none; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #0ea5e9, #38bdf8); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; color: #fff; box-shadow: 0 0 15px rgba(56,189,248,0.5); }
+    .title { font-size: 20px; font-weight: 700; color: #f8fafc; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
+    .badge { font-size: 12px; font-weight: 600; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 5px 14px; border-radius: 20px; display: flex; align-items: center; gap: 6px; }
+    .badge-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    .player-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; background: #000; width: 100%; height: 100%; }
+    video { width: 100%; height: 100%; object-fit: contain; outline: none; }
+    ::cue { background: rgba(0, 0, 0, 0.75); color: #fff; font-size: 24px; font-family: system-ui, sans-serif; text-shadow: 0 2px 4px #000; border-radius: 4px; padding: 2px 8px; }
+    .osd { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.85); background: rgba(15, 23, 42, 0.88); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 24px; padding: 24px 36px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; z-index: 30; opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
+    .osd.visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    .osd-icon { font-size: 42px; color: #38bdf8; }
+    .osd-text { font-size: 18px; font-weight: 700; color: #fff; }
+    .standby { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle at center, #0f172a 0%, #030712 100%); z-index: 15; text-align: center; padding: 32px; }
+    .standby.hidden { display: none; }
+    .standby-logo { width: 80px; height: 80px; background: linear-gradient(135deg, #0284c7, #38bdf8); border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 38px; color: #fff; margin-bottom: 24px; box-shadow: 0 0 40px rgba(56,189,248,0.4); }
+    .standby-title { font-size: 32px; font-weight: 800; color: #f8fafc; margin-bottom: 12px; }
+    .standby-desc { font-size: 16px; color: #94a3b8; max-width: 540px; line-height: 1.6; margin-bottom: 28px; }
+    .standby-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; padding: 8px 20px; border-radius: 30px; font-size: 14px; font-weight: 600; }
+    .footer { position: absolute; bottom: 20px; left: 36px; right: 36px; display: flex; align-items: center; justify-content: space-between; color: rgba(255,255,255,0.5); font-size: 13px; z-index: 20; text-shadow: 0 1px 3px #000; transition: opacity 0.4s; }
+    .footer.hidden { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div class="header" id="tvHeader">
+    <div class="brand">
+      <div class="brand-icon">D</div>
+      <div class="title" id="mediaTitle">${title}</div>
+    </div>
+    <div class="badge">
+      <div class="badge-dot"></div>
+      <span>DriveGram TV Player</span>
+    </div>
+  </div>
+
+  <div class="player-container">
+    <div class="standby ${mediaUrl ? 'hidden' : ''}" id="standbyScreen">
+      <div class="standby-logo">📺</div>
+      <h1 class="standby-title">DriveGram TV Player Pronto</h1>
+      <p class="standby-desc">Abra o DriveGram no seu computador ou celular, escolha um vídeo e clique em <b>Transmitir</b> para assistir diretamente aqui.</p>
+      <div class="standby-badge">
+        <div class="badge-dot"></div>
+        <span>Sessão: ${sessionId} (Conectado à Rede Local)</span>
+      </div>
+    </div>
+
+    <video id="tvVideo" controls autoplay playsinline ${mediaUrl ? `src="${mediaUrl}"` : ''}>
+      ${subUrl ? `<track src="${subUrl}" default label="Legenda" kind="subtitles" srclang="pt">` : ''}
+    </video>
+
+    <div class="osd" id="osd">
+      <div class="osd-icon" id="osdIcon">▶</div>
+      <div class="osd-text" id="osdText">Reproduzindo</div>
+    </div>
+  </div>
+
+  <div class="footer" id="tvFooter">
+    <span>Controle remoto da Smart TV: <b>OK/Espaço</b> para pausar • <b>Setas ◄ ►</b> para avançar ou voltar 10s</span>
+    <span id="sessionTag">Sessão: ${sessionId}</span>
+  </div>
+
+  <script>
+    const v = document.getElementById('tvVideo');
+    const osd = document.getElementById('osd');
+    const osdIcon = document.getElementById('osdIcon');
+    const osdText = document.getElementById('osdText');
+    const header = document.getElementById('tvHeader');
+    const footer = document.getElementById('tvFooter');
+    const standby = document.getElementById('standbyScreen');
+    const titleEl = document.getElementById('mediaTitle');
+    const sessionId = '${sessionId}';
+
+    let osdTimer = null;
+    function showOsd(icon, text) {
+      osdIcon.textContent = icon;
+      osdText.textContent = text;
+      osd.classList.add('visible');
+      clearTimeout(osdTimer);
+      osdTimer = setTimeout(() => osd.classList.remove('visible'), 1600);
+    }
+
+    let hideTimer = null;
+    function showControls() {
+      header.classList.remove('hidden');
+      footer.classList.remove('hidden');
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        if (!v.paused) {
+          header.classList.add('hidden');
+          footer.classList.add('hidden');
+        }
+      }, 4000);
+    }
+    window.addEventListener('mousemove', showControls);
+    v.addEventListener('play', () => { showControls(); showOsd('▶', 'Reproduzindo'); });
+    v.addEventListener('pause', () => { showControls(); showOsd('⏸', 'Pausado'); });
+
+    // Keyboard & Remote Control Handler
+    window.addEventListener('keydown', (e) => {
+      showControls();
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        if (v.paused) v.play(); else v.pause();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        v.currentTime += 10;
+        showOsd('⏩', '+10s');
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        v.currentTime = Math.max(0, v.currentTime - 10);
+        showOsd('⏪', '-10s');
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        v.volume = Math.min(1, v.volume + 0.1);
+        showOsd('🔊', Math.round(v.volume * 100) + '%');
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        v.volume = Math.max(0, v.volume - 0.1);
+        showOsd('🔉', Math.round(v.volume * 100) + '%');
+      }
+    });
+
+    // ---------------- SSE LIVE REMOTE COMMANDS FROM DRIVEGRAM ----------------
+    try {
+      const evtSource = new EventSource('/api/cast/session/' + encodeURIComponent(sessionId) + '/events');
+      evtSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'command') {
+            if (data.action === 'play') {
+              v.play();
+            } else if (data.action === 'pause') {
+              v.pause();
+            } else if (data.action === 'seek' && typeof data.time === 'number') {
+              v.currentTime = data.time;
+              showOsd('⏩', Math.round(data.time) + 's');
+            } else if (data.action === 'forward') {
+              v.currentTime += (data.offset || 10);
+              showOsd('⏩', '+' + (data.offset || 10) + 's');
+            } else if (data.action === 'rewind') {
+              v.currentTime = Math.max(0, v.currentTime - (data.offset || 10));
+              showOsd('⏪', '-' + (data.offset || 10) + 's');
+            } else if (data.action === 'volume' && typeof data.volume === 'number') {
+              v.volume = Math.max(0, Math.min(1, data.volume));
+              showOsd('🔊', Math.round(v.volume * 100) + '%');
+            } else if (data.action === 'load' && data.mediaUrl) {
+              standby.classList.add('hidden');
+              v.src = data.mediaUrl;
+              if (data.title) titleEl.textContent = data.title;
+              v.play().catch(() => {});
+              showOsd('📺', data.title || 'Iniciando');
+            } else if (data.action === 'stop') {
+              v.pause();
+              v.removeAttribute('src');
+              standby.classList.remove('hidden');
+              showOsd('⏹', 'Transmissão Parada');
+            }
+          }
+        } catch (err) {}
+      };
+    } catch (e) {}
+
+    // Periodic state reporting to DriveGram app
+    setInterval(() => {
+      if (v.src && !isNaN(v.duration)) {
+        fetch('/api/cast/session/' + encodeURIComponent(sessionId) + '/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            currentTime: v.currentTime,
+            duration: v.duration,
+            isPlaying: !v.paused,
+            volume: v.volume,
+            title: titleEl.textContent
+          })
+        }).catch(() => {});
+      }
+    }, 1500);
+  </script>
+</body>
+</html>`);
+});
+
+// ---------------- SCREEN MIRRORING RECEIVER ROUTE (WEBRTC) ----------------
+app.get('/tv/mirror', (req, res) => {
+  const roomId = (req.query.room as string) || 'default';
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Espelhamento de Tela - DriveGram TV</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #000; color: #fff; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-    .header { position: absolute; top: 0; left: 0; right: 0; padding: 20px 30px; background: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent); z-index: 10; display: flex; align-items: center; justify-content: space-between; transition: opacity 0.3s; }
-    .title { font-size: 22px; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.9); }
-    .badge { font-size: 13px; background: rgba(56, 189, 248, 0.2); border: 1px solid #38bdf8; color: #38bdf8; padding: 4px 12px; border-radius: 20px; }
-    .player-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; background: #000; }
+    .header { position: absolute; top: 0; left: 0; right: 0; padding: 20px 30px; background: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent); z-index: 20; display: flex; align-items: center; justify-content: space-between; }
+    .badge { font-size: 13px; background: rgba(56, 189, 248, 0.2); border: 1px solid #38bdf8; color: #38bdf8; padding: 5px 14px; border-radius: 20px; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 10px #22c55e; }
+    .container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; background: #000; width: 100%; height: 100%; }
     video { width: 100%; height: 100%; object-fit: contain; }
-    .footer { position: absolute; bottom: 20px; left: 30px; color: rgba(255,255,255,0.6); font-size: 13px; z-index: 10; text-shadow: 0 1px 2px #000; }
+    .status-msg { position: absolute; font-size: 18px; color: #94a3b8; text-align: center; }
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="title">${title}</div>
-    <div class="badge">DriveGram TV Player</div>
+    <div style="font-size: 20px; font-weight: bold; color: #38bdf8;">DriveGram Screen Mirror</div>
+    <div class="badge"><div class="dot"></div><span>Espelhamento Ao Vivo (Sala: ${roomId})</span></div>
   </div>
-  <div class="player-container">
-    <video id="tvVideo" controls autoplay playsinline src="${mediaUrl}"></video>
+  <div class="container">
+    <div class="status-msg" id="statusMsg">Aguardando início do espelhamento de tela no DriveGram...</div>
+    <video id="mirrorVideo" autoplay playsinline></video>
   </div>
-  <div class="footer">Use o controle remoto da Smart TV para pausar, avançar ou retroceder.</div>
   <script>
-    const v = document.getElementById('tvVideo');
-    window.addEventListener('keydown', (e) => {
-      if (e.key === ' ' || e.key === 'Enter') {
-        if (v.paused) v.play(); else v.pause();
-      } else if (e.key === 'ArrowRight') {
-        v.currentTime += 10;
-      } else if (e.key === 'ArrowLeft') {
-        v.currentTime -= 10;
-      }
-    });
+    const videoEl = document.getElementById('mirrorVideo');
+    const statusMsg = document.getElementById('statusMsg');
+    const roomId = '${roomId}';
+    let pc = null;
+    let lastTimestamp = 0;
+
+    async function initReceiver() {
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      pc.ontrack = (event) => {
+        statusMsg.style.display = 'none';
+        videoEl.srcObject = event.streams[0];
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          fetch('/api/cast/mirror/signal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId, type: 'receiver-candidate', payload: event.candidate })
+          }).catch(() => {});
+        }
+      };
+
+      // Poll signals from sender
+      setInterval(async () => {
+        try {
+          const res = await fetch('/api/cast/mirror/signal?roomId=' + encodeURIComponent(roomId) + '&since=' + lastTimestamp);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.timestamp) lastTimestamp = data.timestamp;
+            for (const sig of data.signals) {
+              if (sig.type === 'offer') {
+                await pc.setRemoteDescription(new RTCSessionDescription(sig.payload));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                await fetch('/api/cast/mirror/signal', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ roomId, type: 'answer', payload: answer })
+                });
+                statusMsg.textContent = 'Conectado! Recebendo transmissão da tela...';
+              } else if (sig.type === 'sender-candidate' && sig.payload) {
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(sig.payload));
+                } catch (e) {}
+              }
+            }
+          }
+        } catch (e) {}
+      }, 1000);
+    }
+
+    initReceiver();
   </script>
 </body>
 </html>`);
