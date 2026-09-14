@@ -12,7 +12,8 @@ import {
   RotateCcw,
   Zap,
   Flame,
-  Bookmark
+  Bookmark,
+  RefreshCw
 } from 'lucide-react';
 import { ComicBook } from '../types/index.js';
 
@@ -24,6 +25,8 @@ interface ComicsCatalogProps {
   onEditComic?: (comic: ComicBook) => void;
   onToggleComicCompletion?: (comicId: string) => void;
   categories?: string[];
+  onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalComics: number } | void>;
+  onShowToast?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
@@ -33,12 +36,15 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
   onDeleteComic,
   onEditComic,
   onToggleComicCompletion,
-  categories = []
+  categories = [],
+  onSyncRootFolder,
+  onShowToast
 }) => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'reading' | 'completed'>('all');
   const [selectedPublisher, setSelectedPublisher] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Extract unique publishers from comics
   const publishers = Array.from(new Set(comics.map(c => c.publisher).filter(Boolean))) as string[];
@@ -94,6 +100,27 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
     return true;
   });
 
+  const handleSync = async () => {
+    if (!onSyncRootFolder || isSyncing) return;
+    setIsSyncing(true);
+    onShowToast?.('⚡ Varrendo pasta HQs e Mangás e sincronizando com o catálogo...', 'info');
+    try {
+      const res = await onSyncRootFolder();
+      if (res && res.importedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.importedCount} novas HQs/Mangás importados!`, 'success');
+      } else if (res && res.updatedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.updatedCount} obras atualizadas!`, 'success');
+      } else {
+        onShowToast?.('✅ Catálogo já está 100% atualizado com o Drive!', 'success');
+      }
+    } catch (err: any) {
+      console.error('Erro ao sincronizar pastas de HQs e Mangás:', err);
+      onShowToast?.('Erro ao sincronizar pastas de HQs e Mangás.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="w-full max-w-full overflow-x-hidden flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-3 sm:p-6 space-y-6">
       {/* Standardized Hero Banner */}
@@ -134,6 +161,18 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
               <Plus className="w-4 h-4 text-pink-600" />
               <span>Nova HQ / Mangá</span>
             </button>
+
+            {onSyncRootFolder && (
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-pink-600/30 hover:bg-pink-600/50 border border-pink-400/40 text-pink-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                title="Escanear e sincronizar pastas da biblioteca HQs e Mangás automaticamente"
+              >
+                <RefreshCw className={`w-4 h-4 text-pink-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+              </button>
+            )}
           </div>
         </div>
 

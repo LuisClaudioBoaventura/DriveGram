@@ -250,9 +250,9 @@ export function App() {
   }, [tg.authState.isConnected, tg.loading]);
 
   // Toast notification state
-  const [toast, setToast] = useState<{ id: number; message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ id: number; message: string; type: 'success' | 'info' | 'warning' | 'error' } | null>(null);
 
-  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+  const showToast = (message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
     const id = Date.now();
     setToast({ id, message, type });
     setTimeout(() => {
@@ -891,6 +891,12 @@ export function App() {
                 courses.deleteCourse(id);
                 fs.refresh();
               }}
+              onSyncRootFolder={async () => {
+                const res = await courses.syncFromDriveRoot();
+                fs.refresh();
+                return res;
+              }}
+              onShowToast={showToast}
             />
           ) : fs.activeTab === 'books' ? (
             /* Books & Audiobooks Catalog */
@@ -913,6 +919,12 @@ export function App() {
               onEditBook={(book) => setEditingBook(book)}
               onToggleBookCompletion={books.toggleBookCompletion}
               onOpenCategoryManager={() => setIsCategoryManagerOpen(true)}
+              onSyncRootFolder={async () => {
+                const res = await books.syncFromDriveRoot();
+                fs.refresh();
+                return res;
+              }}
+              onShowToast={showToast}
             />
           ) : fs.activeTab === 'comics' ? (
             /* Comics & Mangas Catalog */
@@ -932,6 +944,12 @@ export function App() {
               }}
               onEditComic={(comic) => setEditingComic(comic)}
               onToggleComicCompletion={comics.toggleComicCompletion}
+              onSyncRootFolder={async () => {
+                const res = await comics.syncFromDriveRoot();
+                fs.refresh();
+                return res;
+              }}
+              onShowToast={showToast}
             />
           ) : fs.activeTab === 'videos' ? (
             /* Videos & Movies Catalog */
@@ -956,6 +974,12 @@ export function App() {
               }}
               onUpdateVideo={videos.updateVideo}
               onUpdateSagaCover={videos.updateSagaCover}
+              onSyncRootFolder={async () => {
+                const res = await videos.syncFromDriveRoot();
+                fs.refresh();
+                return res;
+              }}
+              onShowToast={showToast}
             />
           ) : fs.activeTab === 'personal-videos' ? (
             /* Personal Videos & Media Catalog */
@@ -975,6 +999,12 @@ export function App() {
                 fs.refresh();
               }}
               onToggleFavorite={personalVideos.toggleFavorite}
+              onSyncRootFolder={async () => {
+                const res = await personalVideos.syncFromDriveRoot();
+                fs.refresh();
+                return res;
+              }}
+              onShowToast={showToast}
             />
           ) : fs.activeTab === 'series' ? (
             /* Series & Animes Catalog */
@@ -1002,6 +1032,12 @@ export function App() {
                 fs.refresh();
                 return res;
               }}
+              onSyncRootFolder={async () => {
+                const res = await series.syncFromDriveRoot();
+                fs.refresh();
+                return res;
+              }}
+              onShowToast={showToast}
             />
           ) : fs.activeTab === 'podcasts' ? (
             /* Music & Podcasts Catalog */
@@ -1029,6 +1065,12 @@ export function App() {
                 fs.refresh();
               }}
               onRefreshPodcasts={audioShows.refreshAllPodcasts}
+              onSyncRootFolder={async () => {
+                const res = await audioShows.syncFromDriveRoot();
+                fs.refresh();
+                return res;
+              }}
+              onShowToast={showToast}
             />
           ) : fs.activeTab === 'adult' ? (
             /* Adult +18 Content Catalog / Lock Screen */
@@ -1849,6 +1891,7 @@ export function App() {
         <div className="fixed bottom-toast-safe left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl bg-gray-950/95 text-white shadow-2xl backdrop-blur-md border border-gray-700/80 text-xs font-semibold animate-in fade-in slide-in-from-bottom-4 duration-200 pointer-events-auto select-none max-w-md w-[calc(100vw-2rem)] sm:w-auto">
           <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
             toast.type === 'error' ? 'bg-rose-500 shadow-rose-500/50 shadow-md' :
+            toast.type === 'warning' ? 'bg-amber-400 shadow-amber-400/50 shadow-md' :
             toast.type === 'info' ? 'bg-sky-400 shadow-sky-400/50 shadow-md' :
             'bg-emerald-400 shadow-emerald-400/50 shadow-md animate-pulse'
           }`} />

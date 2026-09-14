@@ -27,7 +27,8 @@ import {
   ArrowLeft,
   ArrowUp,
   ArrowDown,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react';
 import { Book, DriveItem, BookSagaGroup } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
@@ -47,6 +48,8 @@ interface BooksCatalogProps {
   onToggleBookCompletion?: (bookId: string) => void;
   categories?: string[];
   onOpenCategoryManager?: () => void;
+  onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalBooks: number } | void>;
+  onShowToast?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 export const BooksCatalog: React.FC<BooksCatalogProps> = ({
@@ -61,7 +64,9 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
   onEditBook,
   onToggleBookCompletion,
   categories = [],
-  onOpenCategoryManager
+  onOpenCategoryManager,
+  onSyncRootFolder,
+  onShowToast
 }) => {
   const [viewMode, setViewMode] = useState<'books' | 'sagas'>('books');
   const [selectedSagaName, setSelectedSagaName] = useState<string | null>(null);
@@ -73,6 +78,7 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
   const [selectedVersion, setSelectedVersion] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Helper functions for completion and progress status
   const isBookCompleted = (book: Book) => {
@@ -211,6 +217,28 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
     }
   };
 
+  const handleSync = async () => {
+    if (!onSyncRootFolder || isSyncing) return;
+    setIsSyncing(true);
+    try {
+      if (onShowToast) onShowToast('⚡ Varrendo pasta Livros e Audiolivros e sincronizando...', 'info');
+      const res = await onSyncRootFolder();
+      if (res && typeof res === 'object') {
+        if (res.importedCount > 0) {
+          if (onShowToast) onShowToast(`✨ Sincronização concluída: ${res.importedCount} novos livros importados!`, 'success');
+        } else if (res.updatedCount > 0) {
+          if (onShowToast) onShowToast(`✨ Sincronização concluída: ${res.updatedCount} livros atualizados com novos capítulos!`, 'success');
+        } else {
+          if (onShowToast) onShowToast('✅ Catálogo de livros já está 100% atualizado com o Drive!', 'info');
+        }
+      }
+    } catch (_) {
+      if (onShowToast) onShowToast('Erro ao sincronizar pastas de livros.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleStartSagaMarathon = (sagaBooks: Book[]) => {
     if (!sagaBooks || sagaBooks.length === 0) return;
     const firstUnfinished = sagaBooks.find(b => !isBookCompleted(b)) || sagaBooks[0];
@@ -320,6 +348,18 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
               >
                 <FolderKanban className="w-4 h-4 text-purple-400" />
                 <span>Gerenciar Categorias</span>
+              </button>
+            )}
+
+            {onSyncRootFolder && (
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-400/40 text-purple-100 hover:text-white text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                title="Detectar e sincronizar todas as pastas de livros e audiolivros no Drive automaticamente"
+              >
+                <RefreshCw className={`w-4 h-4 text-purple-300 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
               </button>
             )}
           </div>

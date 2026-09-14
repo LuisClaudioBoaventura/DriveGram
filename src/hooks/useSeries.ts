@@ -314,6 +314,38 @@ export function useSeries() {
     return { success: false, totalNewEpisodes: 0, refreshedCount: 0 };
   };
 
+  const syncFromDriveRoot = async (): Promise<{ importedCount: number; updatedCount: number; totalSeries: number }> => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/series/sync-root', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.series)) {
+          setSeriesList(data.series);
+          if (activeSeries) {
+            const refreshedActive = data.series.find((s: SeriesShow) => s.id === activeSeries.id);
+            if (refreshedActive) setActiveSeries(refreshedActive);
+          }
+        } else {
+          await fetchSeries();
+        }
+        return {
+          importedCount: data.importedCount || 0,
+          updatedCount: data.updatedCount || 0,
+          totalSeries: data.totalSeries || 0
+        };
+      }
+    } catch (e) {
+      console.error('Error syncing series from root folder:', e);
+    } finally {
+      setLoading(false);
+    }
+    return { importedCount: 0, updatedCount: 0, totalSeries: seriesList.length };
+  };
+
   return {
     seriesList,
     categories,
@@ -325,6 +357,7 @@ export function useSeries() {
     fetchSeries,
     createSeries,
     createSeriesFromFolder,
+    syncFromDriveRoot,
     updateSeries,
     deleteSeries,
     deleteEpisode,

@@ -223,6 +223,34 @@ export function usePersonalVideos() {
     }
   }, []);
 
+  const syncFromDriveRoot = async (): Promise<{ importedCount: number; updatedCount: number; totalPersonalVideos: number }> => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/personal-videos/sync-root', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.videos)) {
+          setPersonalVideos(data.videos);
+        } else {
+          await fetchVideos();
+        }
+        return {
+          importedCount: data.importedCount || 0,
+          updatedCount: data.updatedCount || 0,
+          totalPersonalVideos: data.totalPersonalVideos ?? data.totalVideos ?? 0
+        };
+      }
+    } catch (e) {
+      console.error('Error syncing personal videos from root folder:', e);
+    } finally {
+      setLoading(false);
+    }
+    return { importedCount: 0, updatedCount: 0, totalPersonalVideos: personalVideos.length };
+  };
+
   return {
     personalVideos,
     categories,
@@ -235,6 +263,7 @@ export function usePersonalVideos() {
     deleteCategory,
     createPersonalVideo,
     createPersonalVideoFromFolder,
+    syncFromDriveRoot,
     updatePersonalVideo,
     deletePersonalVideo,
     toggleFavorite,

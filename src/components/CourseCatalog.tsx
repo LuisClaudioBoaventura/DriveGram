@@ -12,7 +12,8 @@ import {
   Search,
   Filter,
   Film,
-  Youtube
+  Youtube,
+  RefreshCw
 } from 'lucide-react';
 import { Course } from '../types/index.js';
 
@@ -22,6 +23,8 @@ interface CourseCatalogProps {
   onNewCourse: () => void;
   onDeleteCourse: (id: string) => void;
   onOpenYouTubeModal?: () => void;
+  onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalCourses: number } | void>;
+  onShowToast?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 export const CourseCatalog: React.FC<CourseCatalogProps> = ({
@@ -29,10 +32,13 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
   onSelectCourse,
   onNewCourse,
   onDeleteCourse,
-  onOpenYouTubeModal
+  onOpenYouTubeModal,
+  onSyncRootFolder,
+  onShowToast
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const categories = Array.from(new Set(courses.map(c => c.category).filter(Boolean))) as string[];
 
@@ -40,6 +46,28 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
   const totalLessons = courses.reduce((acc, c) => acc + c.modules.reduce((mAcc, m) => mAcc + m.lessons.length, 0), 0);
   const totalCompletedLessons = courses.reduce((acc, c) => acc + c.modules.reduce((mAcc, m) => mAcc + m.lessons.filter(l => l.isCompleted).length, 0), 0);
   const overallProgress = totalLessons > 0 ? Math.round((totalCompletedLessons / totalLessons) * 100) : 0;
+
+  const handleSync = async () => {
+    if (!onSyncRootFolder || isSyncing) return;
+    setIsSyncing(true);
+    try {
+      if (onShowToast) onShowToast('⚡ Varrendo pasta Cursos e Treinamentos e sincronizando...', 'info');
+      const res = await onSyncRootFolder();
+      if (res && typeof res === 'object') {
+        if (res.importedCount > 0) {
+          if (onShowToast) onShowToast(`✨ Sincronização concluída: ${res.importedCount} novos cursos importados!`, 'success');
+        } else if (res.updatedCount > 0) {
+          if (onShowToast) onShowToast(`✨ Sincronização concluída: ${res.updatedCount} cursos atualizados com novas aulas!`, 'success');
+        } else {
+          if (onShowToast) onShowToast('✅ Catálogo de cursos já está 100% atualizado com o Drive!', 'info');
+        }
+      }
+    } catch (_) {
+      if (onShowToast) onShowToast('Erro ao sincronizar pastas de cursos.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const filteredCourses = courses.filter(course => {
     const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -89,6 +117,18 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
               >
                 <Youtube className="w-4 h-4" />
                 <span>Importar do YouTube</span>
+              </button>
+            )}
+
+            {onSyncRootFolder && (
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-blue-100 hover:text-white text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                title="Detectar e sincronizar todas as pastas e cursos no Drive automaticamente"
+              >
+                <RefreshCw className={`w-4 h-4 text-blue-300 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
               </button>
             )}
           </div>

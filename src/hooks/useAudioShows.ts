@@ -788,6 +788,38 @@ export function useAudioShows() {
     }
   }, [activeShow, updateAudioShow]);
 
+  const syncFromDriveRoot = async (): Promise<{ importedCount: number; updatedCount: number; totalShows: number }> => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/audio-shows/sync-root', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.shows)) {
+          setAudioShows(data.shows);
+          if (activeShow) {
+            const refreshedActive = data.shows.find((s: AudioShow) => s.id === activeShow.id);
+            if (refreshedActive) setActiveShow(refreshedActive);
+          }
+        } else {
+          await fetchAudioShows();
+        }
+        return {
+          importedCount: data.importedCount || 0,
+          updatedCount: data.updatedCount || 0,
+          totalShows: data.totalShows || 0
+        };
+      }
+    } catch (e) {
+      console.error('Error syncing audio shows from root folder:', e);
+    } finally {
+      setLoading(false);
+    }
+    return { importedCount: 0, updatedCount: 0, totalShows: audioShows.length };
+  };
+
   return {
     audioShows,
     categories,
@@ -829,6 +861,7 @@ export function useAudioShows() {
     fetchAudioShows,
     createAudioShow,
     createAudioShowFromFolder,
+    syncFromDriveRoot,
     importPodcast,
     updateAudioShow,
     deleteAudioShow,

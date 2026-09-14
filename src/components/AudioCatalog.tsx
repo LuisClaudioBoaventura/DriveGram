@@ -43,6 +43,8 @@ interface AudioCatalogProps {
   onDeleteShow?: (id: string) => void;
   onRefreshPodcasts?: () => Promise<{ success: boolean; totalNewEpisodes: number; refreshedCount: number }>;
   onOpenYouTubeModal?: () => void;
+  onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalShows: number } | void>;
+  onShowToast?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
   // Propriedades do player ativo
   activeShow?: AudioShow | null;
   activeTrack?: AudioTrack | null;
@@ -152,6 +154,8 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   onDeleteShow,
   onRefreshPodcasts,
   onOpenYouTubeModal,
+  onSyncRootFolder,
+  onShowToast,
   activeShow,
   activeTrack,
   activeTrackIndex = 0,
@@ -164,11 +168,33 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
   const [selectedType, setSelectedType] = useState<'all' | 'music_album' | 'podcast' | 'playlist'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isRefreshingPodcasts, setIsRefreshingPodcasts] = useState(false);
+  const [isSyncingRoot, setIsSyncingRoot] = useState(false);
   const [backingUpTrackIds, setBackingUpTrackIds] = useState<string[]>([]);
   const [syncFeedbackMessage, setSyncFeedbackMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
   const recentScrollRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const hasAutoSyncedRef = useRef(false);
+
+  const handleSyncRoot = async () => {
+    if (!onSyncRootFolder || isSyncingRoot) return;
+    setIsSyncingRoot(true);
+    onShowToast?.('⚡ Varrendo pasta Músicas e Podcasts e sincronizando com o catálogo...', 'info');
+    try {
+      const res = await onSyncRootFolder();
+      if (res && res.importedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.importedCount} novas coleções importadas!`, 'success');
+      } else if (res && res.updatedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.updatedCount} coleções atualizadas!`, 'success');
+      } else {
+        onShowToast?.('✅ Catálogo já está 100% atualizado com o Drive!', 'success');
+      }
+    } catch (err: any) {
+      console.error('Erro ao sincronizar pastas de áudio:', err);
+      onShowToast?.('Erro ao sincronizar pastas de Músicas e Podcasts.', 'error');
+    } finally {
+      setIsSyncingRoot(false);
+    }
+  };
 
   // Helper para verificar se um episódio dos cards é o que está em reprodução ativa
   const isEpisodeActive = (item: RecentEpisodeItem) => {
@@ -543,6 +569,18 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
                     <Plus className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Novo</span>
                   </button>
+
+                  {onSyncRootFolder && (
+                    <button
+                      onClick={handleSyncRoot}
+                      disabled={isSyncingRoot}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-400/40 text-emerald-100 hover:text-white text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+                      title="Escanear e sincronizar pastas da biblioteca Músicas e Podcasts automaticamente"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 text-emerald-300 ${isSyncingRoot ? 'animate-spin' : ''}`} />
+                      <span>{isSyncingRoot ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -602,6 +640,18 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
                 <Plus className="w-4 h-4 text-emerald-600" />
                 <span>Adicionar Álbum / Podcast</span>
               </button>
+
+              {onSyncRootFolder && (
+                <button
+                  onClick={handleSyncRoot}
+                  disabled={isSyncingRoot}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-400/40 text-emerald-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                  title="Escanear e sincronizar pastas da biblioteca Músicas e Podcasts automaticamente"
+                >
+                  <RefreshCw className={`w-4 h-4 text-emerald-200 ${isSyncingRoot ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingRoot ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                </button>
+              )}
 
               {onOpenYouTubeModal && (
                 <button
@@ -1053,12 +1103,24 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
           <p className="text-xs text-gray-500 max-w-md">
             Adicione podcasts via busca online, feed RSS ou vincule pastas de áudio do seu Drive.
           </p>
-          <button
-            onClick={onOpenNewModal}
-            className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all"
-          >
-            Adicionar Primeiro Álbum / Podcast
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={onOpenNewModal}
+              className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all"
+            >
+              Adicionar Primeiro Álbum / Podcast
+            </button>
+            {onSyncRootFolder && (
+              <button
+                onClick={handleSyncRoot}
+                disabled={isSyncingRoot}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-700 text-xs font-bold transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 text-emerald-500 ${isSyncingRoot ? 'animate-spin' : ''}`} />
+                <span>{isSyncingRoot ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

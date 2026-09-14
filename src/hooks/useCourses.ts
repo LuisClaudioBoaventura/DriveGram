@@ -241,6 +241,37 @@ export function useCourses() {
     } catch (e) {}
   };
 
+  const syncFromDriveRoot = async (): Promise<{ importedCount: number; updatedCount: number; totalCourses: number }> => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/courses/sync-root', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.courses)) {
+          setCourses(data.courses);
+          if (!activeCourse && data.courses.length > 0) {
+            setActiveCourse(data.courses[0]);
+          }
+        } else {
+          await fetchCourses();
+        }
+        return {
+          importedCount: data.importedCount || 0,
+          updatedCount: data.updatedCount || 0,
+          totalCourses: data.totalCourses || 0
+        };
+      }
+    } catch (e) {
+      console.error('Error syncing courses from root folder:', e);
+    } finally {
+      setLoading(false);
+    }
+    return { importedCount: 0, updatedCount: 0, totalCourses: courses.length };
+  };
+
   return {
     courses,
     activeCourse,
@@ -258,6 +289,7 @@ export function useCourses() {
     updateCourse,
     createCourse,
     createCourseFromFolder,
+    syncFromDriveRoot,
     deleteCourse,
     refreshCourses: fetchCourses
   };

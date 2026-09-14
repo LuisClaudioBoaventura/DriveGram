@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Film, Play, Search, Plus, Sparkles, Filter, Edit3, Trash2, CheckCircle2, 
   Clock, Video, Star, Download, Layers, Shuffle, ArrowLeft, ArrowUp, ArrowDown, ChevronRight,
-  ImageIcon
+  ImageIcon, RefreshCw
 } from 'lucide-react';
 import { MovieVideo, FolderItem, DriveItem, MovieSagaGroup } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
@@ -20,6 +20,8 @@ interface VideosCatalogProps {
   onDeleteVideo?: (id: string) => void;
   onUpdateVideo?: (video: MovieVideo) => Promise<void>;
   onUpdateSagaCover?: (sagaName: string, coverUrl: string) => Promise<void | boolean>;
+  onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalVideos: number } | void>;
+  onShowToast?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 export const VideosCatalog: React.FC<VideosCatalogProps> = ({
@@ -33,7 +35,9 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
   onEditVideo,
   onDeleteVideo,
   onUpdateVideo,
-  onUpdateSagaCover
+  onUpdateSagaCover,
+  onSyncRootFolder,
+  onShowToast
 }) => {
   const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,6 +46,28 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
   const [viewMode, setViewMode] = useState<'movies' | 'sagas'>('movies');
   const [selectedSagaName, setSelectedSagaName] = useState<string | null>(null);
   const [sagaToEditCover, setSagaToEditCover] = useState<MovieSagaGroup | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (!onSyncRootFolder || isSyncing) return;
+    setIsSyncing(true);
+    onShowToast?.('⚡ Varrendo pasta Filmes & Cinema e sincronizando com o catálogo...', 'info');
+    try {
+      const res = await onSyncRootFolder();
+      if (res && res.importedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.importedCount} novos filmes importados!`, 'success');
+      } else if (res && res.updatedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.updatedCount} filmes atualizados!`, 'success');
+      } else {
+        onShowToast?.('✅ Catálogo já está 100% atualizado com o Drive!', 'success');
+      }
+    } catch (err: any) {
+      console.error('Erro ao sincronizar pastas de filmes:', err);
+      onShowToast?.('Erro ao sincronizar pastas de Filmes & Cinema.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Computed Sagas (Reactive from videos list)
   const computedSagas = useMemo<MovieSagaGroup[]>(() => {
@@ -257,6 +283,18 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                     <Plus className="w-4 h-4" />
                     <span>Adicionar Filme</span>
                   </button>
+
+                  {onSyncRootFolder && (
+                    <button
+                      onClick={handleSync}
+                      disabled={isSyncing}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-600/30 hover:bg-red-600/50 border border-red-400/40 text-red-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                      title="Escanear e sincronizar pastas da biblioteca Filmes & Cinema automaticamente"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-red-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -283,6 +321,18 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                   <Plus className="w-4 h-4 text-red-600" />
                   <span>Adicionar Filme / Vídeo</span>
                 </button>
+
+                {onSyncRootFolder && (
+                  <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-600/30 hover:bg-red-600/50 border border-red-400/40 text-red-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                    title="Escanear e sincronizar pastas da biblioteca Filmes & Cinema automaticamente"
+                  >
+                    <RefreshCw className={`w-4 h-4 text-red-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1007,12 +1057,24 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
               <p className="text-xs text-gray-500 max-w-md">
                 Adicione filmes ou vídeos vinculando pastas com arquivos .mp4, .mkv do seu Drive.
               </p>
-              <button
-                onClick={onOpenNewModal}
-                className="px-5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-500/25 transition-all"
-              >
-                Adicionar Primeiro Vídeo
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={onOpenNewModal}
+                  className="px-5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-500/25 transition-all"
+                >
+                  Adicionar Primeiro Vídeo
+                </button>
+                {onSyncRootFolder && (
+                  <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-700 text-xs font-bold transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 text-red-500 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </>

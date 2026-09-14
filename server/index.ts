@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.13.0',
+    version: '1.14.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1683,6 +1683,16 @@ app.post('/api/books/from-folder', (req, res) => {
   }
 });
 
+app.post('/api/books/sync-root', (_req, res) => {
+  try {
+    const result = db.syncBooksFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing books from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar pastas de livros e audiolivros' });
+  }
+});
+
 app.put('/api/books/:id', (req, res) => {
   const updated = db.saveBook({ ...req.body, id: req.params.id });
   res.json(updated);
@@ -1956,6 +1966,16 @@ app.post('/api/comics/from-folder', (req, res) => {
   }
 });
 
+app.post('/api/comics/sync-root', (_req, res) => {
+  try {
+    const result = db.syncComicsFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing comics from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar pastas de quadrinhos e mangás' });
+  }
+});
+
 app.put('/api/comics/:id', (req, res) => {
   const updated = db.saveComic({ ...req.body, id: req.params.id });
   res.json(updated);
@@ -2072,6 +2092,16 @@ app.post('/api/videos/from-folder', (req, res) => {
   } catch (e: any) {
     console.error('Error creating video from folder:', e);
     res.status(500).json({ error: e.message || 'Erro ao criar vídeo da pasta' });
+  }
+});
+
+app.post('/api/videos/sync-root', (_req, res) => {
+  try {
+    const result = db.syncVideosFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing videos from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar filmes e vídeos do Drive' });
   }
 });
 
@@ -2226,6 +2256,16 @@ app.post('/api/personal-videos/from-folder', (req, res) => {
   }
 });
 
+app.post('/api/personal-videos/sync-root', (_req, res) => {
+  try {
+    const result = db.syncPersonalVideosFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing personal videos from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar vídeos pessoais do Drive' });
+  }
+});
+
 app.put('/api/personal-videos/:id', (req, res) => {
   const updated = db.savePersonalVideo({ ...req.body, id: req.params.id });
   res.json(updated);
@@ -2301,6 +2341,16 @@ app.post('/api/series/from-folder', (req, res) => {
   } catch (e: any) {
     console.error('Error creating series from folder:', e);
     res.status(500).json({ error: e.message || 'Erro ao criar série da pasta' });
+  }
+});
+
+app.post('/api/series/sync-root', (_req, res) => {
+  try {
+    const result = db.syncSeriesFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing series from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar séries e animes do Drive' });
   }
 });
 
@@ -2579,6 +2629,16 @@ app.post('/api/audio-shows/from-folder', (req, res) => {
   } catch (e: any) {
     console.error('Error creating audio show from folder:', e);
     res.status(500).json({ error: e.message || 'Erro ao criar álbum/podcast da pasta' });
+  }
+});
+
+app.post('/api/audio-shows/sync-root', (_req, res) => {
+  try {
+    const result = db.syncAudioShowsFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing audio shows from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar músicas e álbuns do Drive' });
   }
 });
 
@@ -4113,6 +4173,16 @@ app.post('/api/courses/from-folder', (req, res) => {
   });
 
   res.status(201).json(newCourse);
+});
+
+app.post('/api/courses/sync-root', (_req, res) => {
+  try {
+    const result = db.syncCoursesFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing courses from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar cursos e treinamentos' });
+  }
 });
 
 app.put('/api/courses/:id', (req, res) => {

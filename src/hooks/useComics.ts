@@ -270,6 +270,34 @@ export function useComics() {
     await updateComic(updatedComic);
   };
 
+  const syncFromDriveRoot = async (): Promise<{ importedCount: number; updatedCount: number; totalComics: number }> => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/comics/sync-root', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.comics)) {
+          setComics(data.comics);
+        } else {
+          await fetchComics();
+        }
+        return {
+          importedCount: data.importedCount || 0,
+          updatedCount: data.updatedCount || 0,
+          totalComics: data.totalComics || 0
+        };
+      }
+    } catch (e) {
+      console.error('Error syncing comics from root folder:', e);
+    } finally {
+      setLoading(false);
+    }
+    return { importedCount: 0, updatedCount: 0, totalComics: comics.length };
+  };
+
   return {
     comics,
     categories,
@@ -281,6 +309,7 @@ export function useComics() {
     fetchComics,
     createComic,
     createComicFromFolder,
+    syncFromDriveRoot,
     updateComic,
     deleteComic,
     toggleIssueCompletion,

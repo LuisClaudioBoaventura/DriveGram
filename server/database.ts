@@ -885,6 +885,37 @@ class Database {
     }
   }
 
+  // ---------------- AUTO-SYNC VÍDEOS & MÍDIAS PESSOAIS ----------------
+  public syncPersonalVideosWithFolderStructure() {
+    if (!this.data.personalVideos) this.data.personalVideos = [];
+    const videos = this.data.personalVideos;
+    const files = this.data.files.filter(f => !f.isTrash);
+
+    for (let video of videos) {
+      if (video.fileId) {
+        const file = files.find(f => f.id === video.fileId);
+        if (file) {
+          if (!video.title) video.title = file.name.replace(/\.[^/.]+$/, "");
+          if (file.timestamps && file.timestamps.length > 0 && (!video.timestamps || video.timestamps.length === 0)) {
+            video.timestamps = file.timestamps;
+          }
+          if (file.subtitles && file.subtitles.length > 0 && (!video.subtitles || video.subtitles.length === 0)) {
+            video.subtitles = file.subtitles;
+          }
+        }
+      } else if (video.folderId) {
+        const videoFiles = files.filter(f => f.parentId === video.folderId && f.type === 'video');
+        if (videoFiles.length > 0) {
+          const primary = videoFiles[0];
+          video.fileId = primary.id;
+          if (primary.timestamps) video.timestamps = primary.timestamps;
+          if (primary.subtitles) video.subtitles = primary.subtitles;
+        }
+      }
+      video.updatedAt = new Date().toISOString();
+    }
+  }
+
   // ---------------- AUTO-SYNC SÉRIES & TV SHOWS ----------------
   public syncSeriesWithFolderStructure() {
     if (!this.data.series) this.data.series = [];
@@ -1204,6 +1235,7 @@ class Database {
     this.syncBooksWithFolderStructure();
     this.syncComicsWithFolderStructure();
     this.syncVideosWithFolderStructure();
+    this.syncPersonalVideosWithFolderStructure();
     this.syncSeriesWithFolderStructure();
     this.syncAudioShowsWithFolderStructure();
     this.syncAdultVideosWithFolderStructure();
@@ -3450,6 +3482,854 @@ class Database {
       updatedCount,
       totalVideos: this.data.adultVideos.length,
       videos: this.data.adultVideos
+    };
+  }
+
+  // ---------------- GENERAL HELPERS FOR LIBRARY ROOT SYNC ----------------
+  public findFolderImageCover(folderId: string): string | undefined {
+    const files = (this.data.files || []).filter(f => !f.isTrash);
+    const folderImages = files.filter(f => 
+      f.parentId === folderId &&
+      (f.type === 'image' || ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes((f.extension || '').toLowerCase()))
+    );
+    if (folderImages.length === 0) return undefined;
+
+    const priority = folderImages.find(img => {
+      const ln = img.name.toLowerCase();
+      return ln.includes('cover') || ln.includes('poster') || ln.includes('folder') || ln.includes('thumb') || ln.includes('capa');
+    });
+    const selected = priority || folderImages[0];
+    return `/api/files/${selected.id}/stream`;
+  }
+
+  private findLibraryRootFolders(aliases: string[]): FolderItem[] {
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const norm = (str: string) => (str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+    const normAliases = aliases.map(a => norm(a));
+    return allFolders.filter(f => {
+      const n = norm(f.name);
+      return normAliases.some(alias => n === alias || n.includes(alias) || alias.includes(n));
+    });
+  }
+
+  private collectDescendantFolderIds(rootFolderIds: string[]): Set<string> {
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allIds = new Set<string>(rootFolderIds);
+    const queue = [...rootFolderIds];
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      const children = allFolders.filter(f => f.parentId === curr);
+      for (const child of children) {
+        if (!allIds.has(child.id)) {
+          allIds.add(child.id);
+          queue.push(child.id);
+        }
+      }
+    }
+    return allIds;
+  }
+
+  // ---------------- SYNC COURSES FROM ROOT FOLDER ----------------
+  public syncCoursesFromRootFolder(): {
+    importedCount: number;
+    updatedCount: number;
+    totalCourses: number;
+    courses: Course[];
+  } {
+    if (!this.data.courses) this.data.courses = [];
+    const rootAliases = ['cursos e treinamentos', 'cursos & treinamentos', 'cursos e estudos', 'cursos & estudos', 'treinamentos', 'cursos'];
+    const rootFolders = this.findLibraryRootFolders(rootAliases);
+
+    if (rootFolders.length === 0) {
+      return {
+        importedCount: 0,
+        updatedCount: 0,
+        totalCourses: this.data.courses.length,
+        courses: this.data.courses
+      };
+    }
+
+    const rootFolderIds = new Set(rootFolders.map(r => r.id));
+    const allCourseFolderIds = this.collectDescendantFolderIds(Array.from(rootFolderIds));
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allFiles = (this.data.files || []).filter(f => !f.isTrash);
+    const videoExts = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv'];
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    const prevLessonCounts = new Map<string, number>();
+    for (const c of this.data.courses) {
+      const count = (c.modules || []).reduce((acc, m) => acc + (m.lessons || []).length, 0);
+      prevLessonCounts.set(c.id, count);
+    }
+
+    const candidateFolders = allFolders.filter(f => 
+      allCourseFolderIds.has(f.id) && !rootFolderIds.has(f.id)
+    );
+
+    for (const folder of candidateFolders) {
+      const parentIsCourse = this.data.courses.some(c => c.folderId === folder.parentId);
+      if (parentIsCourse) {
+        continue;
+      }
+
+      const existingCourse = this.data.courses.find(c => c.folderId === folder.id);
+      if (existingCourse) {
+        continue;
+      }
+
+      const subFolders = allFolders
+        .filter(f => f.parentId === folder.id)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+      let modules: CourseModule[] = [];
+
+      if (subFolders.length > 0) {
+        modules = subFolders.map((sub, idx) => {
+          const subFiles = allFiles
+            .filter(f => f.parentId === sub.id && (f.type === 'video' || videoExts.includes((f.extension || '').toLowerCase())))
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+          const lessons: Lesson[] = subFiles.map((file, lIdx) => ({
+            id: 'lesson-' + Date.now() + '-' + idx + '-' + lIdx,
+            title: file.name.replace(/\.[^/.]+$/, ""),
+            duration: '15:00',
+            fileId: file.id,
+            order: lIdx + 1,
+            isCompleted: false,
+            timestamps: file.timestamps || [],
+            subtitles: file.subtitles || []
+          }));
+          return {
+            id: 'mod-' + Date.now() + '-' + idx,
+            title: sub.name,
+            order: idx + 1,
+            lessons
+          };
+        }).filter(m => m.lessons.length > 0);
+      }
+
+      if (modules.length === 0) {
+        const rootVideos = allFiles
+          .filter(f => f.parentId === folder.id && (f.type === 'video' || videoExts.includes((f.extension || '').toLowerCase())))
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+        if (rootVideos.length > 0) {
+          modules = [
+            {
+              id: 'mod-' + Date.now() + '-1',
+              title: folder.name,
+              order: 1,
+              lessons: rootVideos.map((file, lIdx) => ({
+                id: 'lesson-' + Date.now() + '-1-' + lIdx,
+                title: file.name.replace(/\.[^/.]+$/, ""),
+                duration: '15:00',
+                fileId: file.id,
+                order: lIdx + 1,
+                isCompleted: false,
+                timestamps: file.timestamps || [],
+                subtitles: file.subtitles || []
+              }))
+            }
+          ];
+        }
+      }
+
+      const totalLessonsInModules = modules.reduce((acc, m) => acc + m.lessons.length, 0);
+      if (totalLessonsInModules > 0) {
+        const parentFolder = allFolders.find(f => f.id === folder.parentId);
+        const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Geral';
+        const cover = this.findFolderImageCover(folder.id) || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60';
+        const cleanTitle = folder.name.replace(/^[🎓📚💻🎥🎬\s]+/, '').trim();
+
+        const newCourse: Course = {
+          id: 'course-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+          title: cleanTitle || folder.name,
+          description: folder.description || '',
+          coverImage: cover,
+          category,
+          folderId: folder.id,
+          modules,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        this.data.courses.push(newCourse);
+        importedCount++;
+      }
+    }
+
+    this.syncCoursesWithFolderStructure();
+
+    for (const c of this.data.courses) {
+      const prev = prevLessonCounts.get(c.id);
+      if (prev !== undefined) {
+        const curr = (c.modules || []).reduce((acc, m) => acc + (m.lessons || []).length, 0);
+        if (curr !== prev) {
+          updatedCount++;
+        }
+      }
+    }
+
+    this.save(this.data);
+
+    return {
+      importedCount,
+      updatedCount,
+      totalCourses: this.data.courses.length,
+      courses: this.data.courses
+    };
+  }
+
+  // ---------------- SYNC BOOKS FROM ROOT FOLDER ----------------
+  public syncBooksFromRootFolder(): {
+    importedCount: number;
+    updatedCount: number;
+    totalBooks: number;
+    books: Book[];
+  } {
+    if (!this.data.books) this.data.books = [];
+    const rootAliases = ['livros e audiolivros', 'livros & audiolivros', 'livros', 'audiolivros', 'ebooks'];
+    const rootFolders = this.findLibraryRootFolders(rootAliases);
+
+    if (rootFolders.length === 0) {
+      return {
+        importedCount: 0,
+        updatedCount: 0,
+        totalBooks: this.data.books.length,
+        books: this.data.books
+      };
+    }
+
+    const rootFolderIds = new Set(rootFolders.map(r => r.id));
+    const allBookFolderIds = this.collectDescendantFolderIds(Array.from(rootFolderIds));
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allFiles = (this.data.files || []).filter(f => !f.isTrash);
+    const audioExts = ['mp3', 'm4a', 'flac', 'wav', 'ogg', 'aac', 'opus'];
+    const ebookExts = ['epub', 'pdf', 'mobi', 'azw', 'azw3'];
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    const prevChapterCounts = new Map<string, number>();
+    for (const b of this.data.books) {
+      prevChapterCounts.set(b.id, (b.chapters || []).length);
+    }
+
+    const candidateFolders = allFolders.filter(f => 
+      allBookFolderIds.has(f.id) && !rootFolderIds.has(f.id)
+    );
+
+    for (const folder of candidateFolders) {
+      const existingBook = this.data.books.find(b => b.folderId === folder.id);
+      if (existingBook) {
+        continue;
+      }
+
+      const audioFiles = allFiles.filter(f => 
+        f.parentId === folder.id && (f.type === 'audio' || audioExts.includes((f.extension || '').toLowerCase()))
+      ).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+      const ebookFiles = allFiles.filter(f => 
+        f.parentId === folder.id && (
+          f.type === 'pdf' || 
+          f.type === 'ebook' || 
+          ebookExts.includes((f.extension || '').toLowerCase()) || 
+          /\.(epub|pdf|mobi|azw3?)$/i.test(f.name || '')
+        )
+      );
+
+      if (audioFiles.length === 0 && ebookFiles.length === 0) {
+        continue;
+      }
+
+      let parsedTitle = folder.name.replace(/^[📚📖🎧\s]+/, '').trim();
+      let parsedAuthor = 'Autor Desconhecido';
+      if (parsedTitle.includes(' - ')) {
+        const parts = parsedTitle.split(' - ');
+        parsedAuthor = parts[0].trim();
+        parsedTitle = parts.slice(1).join(' - ').trim();
+      }
+
+      const totalBytes = audioFiles.reduce((acc, f) => acc + f.size, 0) + ebookFiles.reduce((acc, f) => acc + f.size, 0);
+      const autoSizeFormatted = totalBytes > 0 
+        ? (totalBytes / (1024 * 1024)).toFixed(1) + ' MB' 
+        : '120 MB';
+
+      const chapters: BookChapter[] = audioFiles.map((audio, idx) => ({
+        id: 'chap-' + Date.now() + '-' + idx,
+        title: audio.name.replace(/\.[^/.]+$/, ""),
+        duration: '25:00',
+        fileId: audio.id,
+        order: idx + 1,
+        isCompleted: false,
+        lastPositionSeconds: 0,
+        timestamps: audio.timestamps || [],
+        notes: ''
+      }));
+
+      const parentFolder = allFolders.find(f => f.id === folder.parentId);
+      const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Desenvolvimento Pessoal';
+      const cover = this.findFolderImageCover(folder.id) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=60';
+
+      const newBook: Book = {
+        id: 'book-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        title: parsedTitle || folder.name,
+        author: parsedAuthor,
+        narrationType: chapters.length === 0 && ebookFiles.length > 0 ? 'Digital' : 'Humana',
+        version: chapters.length === 0 && ebookFiles.length > 0 ? 'Edição Digital' : 'Estúdio de áudio',
+        totalDuration: chapters.length > 0 ? `${chapters.length * 25} min` : undefined,
+        saga: 'N/A',
+        fileSizeFormatted: autoSizeFormatted,
+        category,
+        genre: 'Geral',
+        language: 'Português',
+        description: folder.description || '',
+        folderId: folder.id,
+        coverImage: cover,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        format: chapters.length > 0 && ebookFiles.length > 0 ? 'bundle' : chapters.length > 0 ? 'audiobook' : 'ebook',
+        ebookFileId: ebookFiles[0]?.id || undefined,
+        chapters
+      };
+
+      this.data.books.push(newBook);
+      importedCount++;
+    }
+
+    this.syncBooksWithFolderStructure();
+
+    for (const b of this.data.books) {
+      const prev = prevChapterCounts.get(b.id);
+      if (prev !== undefined) {
+        const curr = (b.chapters || []).length;
+        if (curr !== prev) {
+          updatedCount++;
+        }
+      }
+    }
+
+    this.save(this.data);
+
+    return {
+      importedCount,
+      updatedCount,
+      totalBooks: this.data.books.length,
+      books: this.data.books
+    };
+  }
+
+  // ---------------- SYNC COMICS FROM ROOT FOLDER ----------------
+  public syncComicsFromRootFolder(): {
+    importedCount: number;
+    updatedCount: number;
+    totalComics: number;
+    comics: ComicBook[];
+  } {
+    if (!this.data.comics) this.data.comics = [];
+    const rootAliases = ["hq's", 'hqs', 'hqs e mangás', 'hqs & mangas', 'quadrinhos', 'mangás', 'mangas'];
+    const rootFolders = this.findLibraryRootFolders(rootAliases);
+
+    if (rootFolders.length === 0) {
+      return {
+        importedCount: 0,
+        updatedCount: 0,
+        totalComics: this.data.comics.length,
+        comics: this.data.comics
+      };
+    }
+
+    const rootFolderIds = new Set(rootFolders.map(r => r.id));
+    const allComicFolderIds = this.collectDescendantFolderIds(Array.from(rootFolderIds));
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allFiles = (this.data.files || []).filter(f => !f.isTrash);
+    const comicExts = ['cbr', 'cbz', 'pdf', 'zip', 'epub'];
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    const prevIssueCounts = new Map<string, number>();
+    for (const c of this.data.comics) {
+      prevIssueCounts.set(c.id, (c.issues || []).length);
+    }
+
+    const candidateFolders = allFolders.filter(f => 
+      allComicFolderIds.has(f.id) && !rootFolderIds.has(f.id)
+    );
+
+    for (const folder of candidateFolders) {
+      const existing = this.data.comics.find(c => c.folderId === folder.id);
+      if (existing) {
+        continue;
+      }
+
+      const comicFiles = allFiles.filter(f => 
+        f.parentId === folder.id &&
+        (f.type === 'comic' || f.type === 'ebook' || comicExts.includes((f.extension || '').toLowerCase()) || /\.(cbr|cbz|pdf|epub)$/i.test(f.name))
+      ).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+      if (comicFiles.length === 0) {
+        continue;
+      }
+
+      const issues: ComicIssue[] = comicFiles.map((file, idx) => ({
+        id: 'issue-' + Date.now() + '-' + idx,
+        title: file.name.replace(/\.[^/.]+$/, ""),
+        issueNumber: idx + 1,
+        fileId: file.id,
+        order: idx + 1,
+        isCompleted: false,
+        currentPage: 0
+      }));
+
+      const parentFolder = allFolders.find(f => f.id === folder.parentId);
+      const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Super-Heróis';
+      const cover = this.findFolderImageCover(folder.id) || 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=800&auto=format&fit=crop&q=60';
+      const cleanTitle = folder.name.replace(/^[💥🦸‍♂️📚\s]+/, '').trim();
+
+      const newComic: ComicBook = {
+        id: 'comic-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        title: cleanTitle || folder.name,
+        description: folder.description || '',
+        category,
+        publisher: 'Indie / Autoral',
+        author: '',
+        artist: '',
+        folderId: folder.id,
+        coverImage: cover,
+        status: 'reading',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        issues
+      };
+
+      this.data.comics.push(newComic);
+      importedCount++;
+    }
+
+    this.syncComicsWithFolderStructure();
+
+    for (const c of this.data.comics) {
+      const prev = prevIssueCounts.get(c.id);
+      if (prev !== undefined) {
+        const curr = (c.issues || []).length;
+        if (curr !== prev) {
+          updatedCount++;
+        }
+      }
+    }
+
+    this.save(this.data);
+
+    return {
+      importedCount,
+      updatedCount,
+      totalComics: this.data.comics.length,
+      comics: this.data.comics
+    };
+  }
+
+  // ---------------- SYNC VIDEOS FROM ROOT FOLDER ----------------
+  public syncVideosFromRootFolder(): {
+    importedCount: number;
+    updatedCount: number;
+    totalVideos: number;
+    videos: MovieVideo[];
+  } {
+    if (!this.data.videos) this.data.videos = [];
+    const rootAliases = ['filmes', 'filme', 'cinema', 'movies', 'filmes e cinema', 'filmes & cinema', 'longas', 'filmes e videos', 'filmes e vídeos'];
+    const rootFolders = this.findLibraryRootFolders(rootAliases);
+
+    if (rootFolders.length === 0) {
+      return {
+        importedCount: 0,
+        updatedCount: 0,
+        totalVideos: this.data.videos.length,
+        videos: this.data.videos
+      };
+    }
+
+    const rootFolderIds = new Set(rootFolders.map(r => r.id));
+    const allVideoFolderIds = this.collectDescendantFolderIds(Array.from(rootFolderIds));
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allFiles = (this.data.files || []).filter(f => !f.isTrash);
+    const videoExts = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv'];
+
+    const movieFiles = allFiles.filter(f => 
+      allVideoFolderIds.has(f.parentId || '') &&
+      (f.type === 'video' || videoExts.includes((f.extension || '').toLowerCase()))
+    );
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    for (const file of movieFiles) {
+      let existing = this.data.videos.find(v => v.fileId === file.id);
+
+      if (existing) {
+        if (file.parentId && existing.folderId !== file.parentId) {
+          existing.folderId = file.parentId;
+          existing.updatedAt = new Date().toISOString();
+          updatedCount++;
+        }
+        if ((!existing.subtitles || existing.subtitles.length === 0) && file.subtitles && file.subtitles.length > 0) {
+          existing.subtitles = file.subtitles;
+          existing.updatedAt = new Date().toISOString();
+          updatedCount++;
+        }
+        continue;
+      }
+
+      const parentFolder = allFolders.find(f => f.id === file.parentId);
+      const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/^[🎬🎥🎞️📽️\s]+/, '').trim();
+      
+      const yearMatch = file.name.match(/(?:[\[\(\.\s_-])(19\d\d|20\d\d)(?:[\]\)\.\s_-]|$)/);
+      const year = yearMatch ? parseInt(yearMatch[1], 10) : undefined;
+
+      let cleanTitle = cleanFileName
+        .replace(/(?:[\[\(\.\s_-])(19\d\d|20\d\d)(?:[\]\)\.\s_-].*)?$/, '')
+        .replace(/(?:1080p|720p|4k|2160p|bluray|bdrip|web-dl|webrip|x264|x265|hevc|aac|dts).*/i, '')
+        .replace(/[\._]/g, ' ')
+        .trim();
+
+      if (!cleanTitle) cleanTitle = cleanFileName;
+
+      const folderCover = file.parentId ? this.findFolderImageCover(file.parentId) : undefined;
+      const defaultCover = folderCover || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60';
+      const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Filmes';
+
+      const newVideo: MovieVideo = {
+        id: 'movie-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        title: cleanTitle,
+        titlePt: cleanTitle,
+        description: parentFolder?.description || '',
+        coverImage: defaultCover,
+        category,
+        year,
+        folderId: file.parentId || rootFolders[0].id,
+        fileId: file.id,
+        timestamps: file.timestamps || [],
+        subtitles: file.subtitles || [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      this.data.videos.push(newVideo);
+      importedCount++;
+    }
+
+    this.syncVideosWithFolderStructure();
+    this.save(this.data);
+
+    return {
+      importedCount,
+      updatedCount,
+      totalVideos: this.data.videos.length,
+      videos: this.data.videos
+    };
+  }
+
+  // ---------------- SYNC PERSONAL VIDEOS FROM ROOT FOLDER ----------------
+  public syncPersonalVideosFromRootFolder(): {
+    importedCount: number;
+    updatedCount: number;
+    totalVideos: number;
+    videos: PersonalVideo[];
+  } {
+    if (!this.data.personalVideos) this.data.personalVideos = [];
+    const rootAliases = ['videos e midias pessoais', 'vídeos e mídias pessoais', 'videos e midias', 'vídeos e mídias', 'midias pessoais', 'mídias pessoais', 'videos pessoais', 'vídeos pessoais', 'gravacoes', 'gravações', 'home videos', 'familia', 'família', 'pessoal'];
+    const rootFolders = this.findLibraryRootFolders(rootAliases);
+
+    if (rootFolders.length === 0) {
+      return {
+        importedCount: 0,
+        updatedCount: 0,
+        totalVideos: this.data.personalVideos.length,
+        videos: this.data.personalVideos
+      };
+    }
+
+    const rootFolderIds = new Set(rootFolders.map(r => r.id));
+    const allPersonalFolderIds = this.collectDescendantFolderIds(Array.from(rootFolderIds));
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allFiles = (this.data.files || []).filter(f => !f.isTrash);
+    const videoExts = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv'];
+
+    const personalFiles = allFiles.filter(f => 
+      allPersonalFolderIds.has(f.parentId || '') &&
+      (f.type === 'video' || videoExts.includes((f.extension || '').toLowerCase()))
+    );
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    for (const file of personalFiles) {
+      let existing = this.data.personalVideos.find(v => v.fileId === file.id);
+
+      if (existing) {
+        if (file.parentId && existing.folderId !== file.parentId) {
+          existing.folderId = file.parentId;
+          existing.updatedAt = new Date().toISOString();
+          updatedCount++;
+        }
+        continue;
+      }
+
+      const parentFolder = allFolders.find(f => f.id === file.parentId);
+      const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/^[🎬🎥🎞️📽️📹📼\s]+/, '').trim();
+
+      const dateMatch = file.name.match(/(\d{4}[-_.]\d{2}[-_.]\d{2})/);
+      const date = dateMatch ? dateMatch[1].replace(/[_.]/g, '-') : undefined;
+
+      const folderCover = file.parentId ? this.findFolderImageCover(file.parentId) : undefined;
+      const defaultCover = folderCover || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60';
+      const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Memórias & Momentos';
+
+      const newVideo: PersonalVideo = {
+        id: 'personal-vid-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        title: cleanFileName,
+        date,
+        category,
+        tags: [],
+        description: parentFolder?.description || '',
+        coverImage: defaultCover,
+        folderId: file.parentId || rootFolders[0].id,
+        fileId: file.id,
+        timestamps: file.timestamps || [],
+        subtitles: file.subtitles || [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      this.data.personalVideos.push(newVideo);
+      importedCount++;
+    }
+
+    this.syncPersonalVideosWithFolderStructure();
+    this.save(this.data);
+
+    return {
+      importedCount,
+      updatedCount,
+      totalVideos: this.data.personalVideos.length,
+      videos: this.data.personalVideos
+    };
+  }
+
+  // ---------------- SYNC SERIES FROM ROOT FOLDER ----------------
+  public syncSeriesFromRootFolder(): {
+    importedCount: number;
+    updatedCount: number;
+    totalSeries: number;
+    series: SeriesShow[];
+  } {
+    if (!this.data.series) this.data.series = [];
+    const rootAliases = ['séries e animes', 'series e animes', 'séries & animes', 'series & animes', 'séries', 'series', 'animes'];
+    const rootFolders = this.findLibraryRootFolders(rootAliases);
+
+    if (rootFolders.length === 0) {
+      return {
+        importedCount: 0,
+        updatedCount: 0,
+        totalSeries: this.data.series.length,
+        series: this.data.series
+      };
+    }
+
+    const rootFolderIds = new Set(rootFolders.map(r => r.id));
+    const allSeriesFolderIds = this.collectDescendantFolderIds(Array.from(rootFolderIds));
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allFiles = (this.data.files || []).filter(f => !f.isTrash);
+    const videoExts = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv'];
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    const prevEpisodeCounts = new Map<string, number>();
+    for (const s of this.data.series) {
+      const epCount = (s.seasons || []).reduce((acc, sea) => acc + (sea.episodes || []).length, 0);
+      prevEpisodeCounts.set(s.id, epCount);
+    }
+
+    const candidateFolders = allFolders.filter(f => 
+      allSeriesFolderIds.has(f.id) && !rootFolderIds.has(f.id)
+    );
+
+    for (const folder of candidateFolders) {
+      const parentIsSeries = this.data.series.some(s => s.folderId === folder.parentId);
+      if (parentIsSeries) {
+        continue;
+      }
+
+      const existing = this.data.series.find(s => s.folderId === folder.id);
+      if (existing) {
+        continue;
+      }
+
+      const hasDirectVideos = allFiles.some(f => 
+        f.parentId === folder.id && (f.type === 'video' || videoExts.includes((f.extension || '').toLowerCase()))
+      );
+
+      const subFolderIds = new Set(allFolders.filter(f => f.parentId === folder.id).map(f => f.id));
+      const hasSubfolderVideos = allFiles.some(f => 
+        subFolderIds.has(f.parentId || '') && (f.type === 'video' || videoExts.includes((f.extension || '').toLowerCase()))
+      );
+
+      if (!hasDirectVideos && !hasSubfolderVideos) {
+        continue;
+      }
+
+      const parentFolder = allFolders.find(f => f.id === folder.parentId);
+      const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Séries de TV';
+      const cover = this.findFolderImageCover(folder.id) || 'https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=800&auto=format&fit=crop&q=60';
+      const cleanTitle = folder.name.replace(/^[📺🍿🎬\s]+/, '').trim();
+
+      const newSeries: SeriesShow = {
+        id: 'series-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        title: cleanTitle || folder.name,
+        category,
+        description: folder.description || '',
+        coverImage: cover,
+        folderId: folder.id,
+        status: 'watching',
+        seasons: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      this.data.series.push(newSeries);
+      importedCount++;
+    }
+
+    this.syncSeriesWithFolderStructure();
+
+    for (const s of this.data.series) {
+      const prev = prevEpisodeCounts.get(s.id);
+      if (prev !== undefined) {
+        const curr = (s.seasons || []).reduce((acc, sea) => acc + (sea.episodes || []).length, 0);
+        if (curr !== prev) {
+          updatedCount++;
+        }
+      }
+    }
+
+    this.save(this.data);
+
+    return {
+      importedCount,
+      updatedCount,
+      totalSeries: this.data.series.length,
+      series: this.data.series
+    };
+  }
+
+  // ---------------- SYNC AUDIO SHOWS FROM ROOT FOLDER ----------------
+  public syncAudioShowsFromRootFolder(): {
+    importedCount: number;
+    updatedCount: number;
+    totalShows: number;
+    shows: AudioShow[];
+  } {
+    if (!this.data.audioShows) this.data.audioShows = [];
+    const rootAliases = ['musicas e podcasts', 'músicas e podcasts', 'musicas & podcasts', 'músicas & podcasts', 'músicas', 'musicas', 'podcasts', 'albuns', 'álbuns'];
+    const rootFolders = this.findLibraryRootFolders(rootAliases);
+
+    if (rootFolders.length === 0) {
+      return {
+        importedCount: 0,
+        updatedCount: 0,
+        totalShows: this.data.audioShows.length,
+        shows: this.data.audioShows
+      };
+    }
+
+    const rootFolderIds = new Set(rootFolders.map(r => r.id));
+    const allAudioFolderIds = this.collectDescendantFolderIds(Array.from(rootFolderIds));
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allFiles = (this.data.files || []).filter(f => !f.isTrash);
+    const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus'];
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    const prevTrackCounts = new Map<string, number>();
+    for (const s of this.data.audioShows) {
+      prevTrackCounts.set(s.id, (s.tracks || []).length);
+    }
+
+    const candidateFolders = allFolders.filter(f => 
+      allAudioFolderIds.has(f.id) && !rootFolderIds.has(f.id)
+    );
+
+    for (const folder of candidateFolders) {
+      const existing = this.data.audioShows.find(s => s.folderId === folder.id);
+      if (existing) {
+        continue;
+      }
+
+      const audioFiles = allFiles.filter(f => 
+        f.parentId === folder.id && (f.type === 'audio' || audioExts.includes((f.extension || '').toLowerCase()))
+      );
+
+      if (audioFiles.length === 0) {
+        continue;
+      }
+
+      let parsedTitle = folder.name.replace(/^[🎧🎵🎙️📻\s]+/, '').trim();
+      let parsedArtist = undefined;
+      if (parsedTitle.includes(' - ')) {
+        const parts = parsedTitle.split(' - ');
+        parsedArtist = parts[0].trim();
+        parsedTitle = parts.slice(1).join(' - ').trim();
+      }
+
+      const parentFolder = allFolders.find(f => f.id === folder.parentId);
+      const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Álbuns de Música';
+      const cover = this.findFolderImageCover(folder.id) || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60';
+
+      const newShow: AudioShow = {
+        id: 'show-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        title: parsedTitle || folder.name,
+        artist: parsedArtist,
+        showType: 'music_album',
+        category,
+        description: folder.description || '',
+        coverImage: cover,
+        folderId: folder.id,
+        tracks: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      this.data.audioShows.push(newShow);
+      importedCount++;
+    }
+
+    this.syncAudioShowsWithFolderStructure();
+
+    for (const s of this.data.audioShows) {
+      const prev = prevTrackCounts.get(s.id);
+      if (prev !== undefined) {
+        const curr = (s.tracks || []).length;
+        if (curr !== prev) {
+          updatedCount++;
+        }
+      }
+    }
+
+    this.save(this.data);
+
+    return {
+      importedCount,
+      updatedCount,
+      totalShows: this.data.audioShows.length,
+      shows: this.data.audioShows
     };
   }
 

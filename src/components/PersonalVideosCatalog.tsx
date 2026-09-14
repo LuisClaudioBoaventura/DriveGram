@@ -17,7 +17,8 @@ import {
   Heart,
   Tag,
   RotateCcw,
-  Download
+  Download,
+  RefreshCw
 } from 'lucide-react';
 import { PersonalVideo, FolderItem, DriveItem } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
@@ -32,6 +33,8 @@ interface PersonalVideosCatalogProps {
   onEditVideo?: (video: PersonalVideo) => void;
   onDeleteVideo?: (id: string) => void;
   onToggleFavorite?: (id: string) => void;
+  onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalPersonalVideos: number } | void>;
+  onShowToast?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
@@ -43,12 +46,36 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
   onOpenNewModal,
   onEditVideo,
   onDeleteVideo,
-  onToggleFavorite
+  onToggleFavorite,
+  onSyncRootFolder,
+  onShowToast
 }) => {
   const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'favorites' | 'watching' | 'completed'>('all');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (!onSyncRootFolder || isSyncing) return;
+    setIsSyncing(true);
+    onShowToast?.('⚡ Varrendo pasta Vídeos e Mídias Pessoais e sincronizando com o catálogo...', 'info');
+    try {
+      const res = await onSyncRootFolder();
+      if (res && res.importedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.importedCount} novos vídeos pessoais importados!`, 'success');
+      } else if (res && res.updatedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.updatedCount} vídeos pessoais atualizados!`, 'success');
+      } else {
+        onShowToast?.('✅ Catálogo já está 100% atualizado com o Drive!', 'success');
+      }
+    } catch (err: any) {
+      console.error('Erro ao sincronizar pastas de vídeos pessoais:', err);
+      onShowToast?.('Erro ao sincronizar pastas de Vídeos e Mídias Pessoais.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const hasActiveFilters = searchQuery.trim() !== '' || selectedCategory !== 'all' || filterStatus !== 'all';
 
@@ -189,6 +216,18 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
                     <Plus className="w-4 h-4" />
                     <span>Novo Vídeo Pessoal</span>
                   </button>
+
+                  {onSyncRootFolder && (
+                    <button
+                      onClick={handleSync}
+                      disabled={isSyncing}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-600/30 hover:bg-amber-600/50 border border-amber-400/40 text-amber-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                      title="Escanear e sincronizar pastas da biblioteca Vídeos Pessoais automaticamente"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-amber-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -215,6 +254,18 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
                   <Plus className="w-4 h-4 text-amber-600" />
                   <span>Novo Vídeo Pessoal</span>
                 </button>
+
+                {onSyncRootFolder && (
+                  <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-600/30 hover:bg-amber-600/50 border border-amber-400/40 text-amber-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                    title="Escanear e sincronizar pastas da biblioteca Vídeos Pessoais automaticamente"
+                  >
+                    <RefreshCw className={`w-4 h-4 text-amber-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -519,13 +570,25 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
                   : 'Vincule uma pasta de vídeos pessoais no Drive para organizar suas memórias.'}
               </p>
             </div>
-            <button
-              onClick={onOpenNewModal}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 transition-all active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Catalogar Primeiro Vídeo Pessoal</span>
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={onOpenNewModal}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 transition-all active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Catalogar Primeiro Vídeo Pessoal</span>
+              </button>
+              {onSyncRootFolder && (
+                <button
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-700 text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 text-amber-500 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
       {downloadTargetFile && (

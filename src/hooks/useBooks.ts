@@ -678,6 +678,38 @@ export function useBooks() {
     return false;
   };
 
+  const syncFromDriveRoot = async (): Promise<{ importedCount: number; updatedCount: number; totalBooks: number }> => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/books/sync-root', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.books)) {
+          const sorted = data.books.map((b: Book) => ({
+            ...b,
+            chapters: sortChaptersNumerically(b.chapters || [])
+          }));
+          setBooks(sorted);
+        } else {
+          await fetchBooks();
+        }
+        return {
+          importedCount: data.importedCount || 0,
+          updatedCount: data.updatedCount || 0,
+          totalBooks: data.totalBooks || 0
+        };
+      }
+    } catch (e) {
+      console.error('Error syncing books from root folder:', e);
+    } finally {
+      setLoading(false);
+    }
+    return { importedCount: 0, updatedCount: 0, totalBooks: books.length };
+  };
+
   return {
     books,
     sagas,
@@ -706,6 +738,7 @@ export function useBooks() {
     savePlaybackPosition,
     createBook,
     createBookFromFolder,
+    syncFromDriveRoot,
     deleteBook,
     refreshBooks: fetchBooks,
     // Global Audio Player & Floating states & handlers

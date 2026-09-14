@@ -12,6 +12,8 @@ interface SeriesCatalogProps {
   onDeleteSeries?: (id: string) => void;
   onRefreshSeries?: (seriesId: string) => Promise<{ success: boolean; series?: SeriesShow; newEpisodesCount: number }>;
   onRefreshAllSeries?: () => Promise<{ success: boolean; totalNewEpisodes: number; refreshedCount: number }>;
+  onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalSeries: number } | void>;
+  onShowToast?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
@@ -22,7 +24,9 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
   onEditSeries,
   onDeleteSeries,
   onRefreshSeries,
-  onRefreshAllSeries
+  onRefreshAllSeries,
+  onSyncRootFolder,
+  onShowToast
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -30,6 +34,28 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [refreshingSeriesId, setRefreshingSeriesId] = useState<string | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (!onSyncRootFolder || isSyncing) return;
+    setIsSyncing(true);
+    onShowToast?.('⚡ Varrendo pasta Séries e Animes e sincronizando com o catálogo...', 'info');
+    try {
+      const res = await onSyncRootFolder();
+      if (res && res.importedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.importedCount} novas séries importadas!`, 'success');
+      } else if (res && res.updatedCount > 0) {
+        onShowToast?.(`✨ Sincronização concluída: ${res.updatedCount} séries atualizadas!`, 'success');
+      } else {
+        onShowToast?.('✅ Catálogo já está 100% atualizado com o Drive!', 'success');
+      }
+    } catch (err: any) {
+      console.error('Erro ao sincronizar pastas de séries:', err);
+      onShowToast?.('Erro ao sincronizar pastas de Séries e Animes.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const youtubeSeriesCount = seriesList.filter(s => s.youtubeUrl).length;
 
@@ -175,6 +201,18 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
                     <span>Adicionar Série / Anime</span>
                   </button>
 
+                  {onSyncRootFolder && (
+                    <button
+                      onClick={handleSync}
+                      disabled={isSyncing}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-400/40 text-purple-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                      title="Escanear e sincronizar pastas da biblioteca Séries e Animes automaticamente"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-purple-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                    </button>
+                  )}
+
                   {youtubeSeriesCount > 0 && onRefreshAllSeries && (
                     <button
                       onClick={handleRefreshAll}
@@ -216,6 +254,18 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
                   <Plus className="w-4 h-4 text-purple-600" />
                   <span>Adicionar Série / Anime</span>
                 </button>
+
+                {onSyncRootFolder && (
+                  <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-400/40 text-purple-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                    title="Escanear e sincronizar pastas da biblioteca Séries e Animes automaticamente"
+                  >
+                    <RefreshCw className={`w-4 h-4 text-purple-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                  </button>
+                )}
 
                 {youtubeSeriesCount > 0 && onRefreshAllSeries && (
                   <button
@@ -463,12 +513,24 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
             <p className="text-xs text-gray-500 max-w-md">
               Organize temporadas e episódios conectando pastas com vídeos do seu Drive.
             </p>
-            <button
-              onClick={onOpenNewModal}
-              className="px-5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-500/25 transition-all"
-            >
-              Adicionar Primeira Série
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={onOpenNewModal}
+                className="px-5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-500/25 transition-all"
+              >
+                Adicionar Primeira Série
+              </button>
+              {onSyncRootFolder && (
+                <button
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-700 text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 text-purple-500 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
     </div>
