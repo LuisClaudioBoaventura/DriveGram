@@ -547,7 +547,7 @@ export interface CastDevice {
   name: string;
   ip: string;
   port?: number;
-  type: 'chromecast' | 'smart_tv_samsung' | 'smart_tv_lg' | 'roku' | 'dlna' | 'generic';
+  type: 'chromecast' | 'smart_tv_samsung' | 'smart_tv_lg' | 'roku' | 'dlna' | 'phone' | 'generic';
   model?: string;
   status: 'online' | 'ready';
   avTransportUrl?: string;

@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.15.0',
+    version: '1.15.1',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -502,6 +502,12 @@ app.post('/api/cast/add-device', (req, res) => {
 // TV Interactive Session Endpoints (SSE & Remote Commands)
 app.get('/api/cast/session/:sessionId/events', (req, res) => {
   const { sessionId } = req.params;
+  const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() || req.socket.remoteAddress || '';
+  const userAgent = (req.headers['user-agent'] as string) || '';
+  if (rawIp) {
+    castService.registerConnectedClient(rawIp, userAgent);
+  }
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -4841,6 +4847,12 @@ function purgeExpiredCacheRoutine() {
 // Run 10s after startup, then every 2 minutes
 // ---------------- WEB SMART TV PLAYER ROUTE ----------------
 app.get('/tv', (req, res) => {
+  const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() || req.socket.remoteAddress || '';
+  const userAgent = (req.headers['user-agent'] as string) || '';
+  if (rawIp) {
+    castService.registerConnectedClient(rawIp, userAgent);
+  }
+
   const mediaUrl = (req.query.url as string) || (req.query.fileId ? `/api/stream/${req.query.fileId}` : '');
   const title = (req.query.title as string) || 'DriveGram TV Player';
   const subUrl = (req.query.subUrl as string) || '';
@@ -5041,6 +5053,12 @@ app.get('/tv', (req, res) => {
 
 // ---------------- SCREEN MIRRORING RECEIVER ROUTE (WEBRTC) ----------------
 app.get('/tv/mirror', (req, res) => {
+  const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() || req.socket.remoteAddress || '';
+  const userAgent = (req.headers['user-agent'] as string) || '';
+  if (rawIp) {
+    castService.registerConnectedClient(rawIp, userAgent);
+  }
+
   const roomId = (req.query.room as string) || 'default';
   res.send(`<!DOCTYPE html>
 <html lang="pt-BR">

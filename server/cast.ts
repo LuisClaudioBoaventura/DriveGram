@@ -2,13 +2,14 @@ import os from 'os';
 import http from 'http';
 import dgram from 'dgram';
 import net from 'net';
+import { execSync } from 'child_process';
 
 export interface CastDevice {
   id: string;
   name: string;
   ip: string;
   port?: number;
-  type: 'chromecast' | 'smart_tv_samsung' | 'smart_tv_lg' | 'roku' | 'dlna' | 'generic';
+  type: 'chromecast' | 'smart_tv_samsung' | 'smart_tv_lg' | 'roku' | 'dlna' | 'phone' | 'generic';
   model?: string;
   status: 'online' | 'ready';
   avTransportUrl?: string;
@@ -28,19 +29,44 @@ export class CastService {
   // Get local network LAN IP so Smart TVs on the same Wi-Fi can reach the server
   public getLocalIpAddress(): string {
     const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-      const netInterface = interfaces[name];
-      if (!netInterface) continue;
-      for (const iface of netInterface) {
-        // Skip internal/loopback and non-IPv4 addresses
+    const candidates: Array<{ address: string; score: number; name: string }> = [];
+
+    for (const [name, addrs] of Object.entries(interfaces)) {
+      if (!addrs) continue;
+      const lower = name.toLowerCase();
+      const isVirtual = lower.includes('virtual') || lower.includes('vpn') || 
+                        lower.includes('loopback') || lower.includes('veth') || 
+                        lower.includes('docker') || lower.includes('wsl') || 
+                        lower.includes('vmware') || lower.includes('topaz') || 
+                        lower.includes('mcafee') || lower.includes('tailscale') || 
+                        lower.includes('zerotier') || lower.includes('hyper-v');
+
+      for (const iface of addrs) {
         if (iface.family === 'IPv4' && !iface.internal) {
-          // Exclude virtual adapter subnets if possible (e.g. 192.168.56.x VirtualBox, 169.254.x APIPA)
-          if (!iface.address.startsWith('169.254.') && !iface.address.startsWith('127.')) {
-            return iface.address;
+          // Exclude point-to-point / host-only masks, APIPA and loopback
+          if (iface.netmask === '255.255.255.255' || iface.address.startsWith('169.254.') || iface.address.startsWith('127.')) {
+            continue;
           }
+
+          let score = 0;
+          if (!isVirtual) score += 50;
+          if (lower.includes('wi-fi') || lower.includes('wlan') || lower.includes('wireless')) score += 40;
+          else if (lower.includes('ethernet') || lower.includes('eth')) score += 30;
+
+          if (iface.address.startsWith('192.168.')) score += 20;
+          else if (iface.address.startsWith('10.')) score += 10;
+          else if (iface.address.startsWith('172.')) score += 10;
+
+          candidates.push({ address: iface.address, score, name });
         }
       }
     }
+
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => b.score - a.score);
+      return candidates[0].address;
+    }
+
     return '127.0.0.1';
   }
 
@@ -75,6 +101,86 @@ export class CastService {
     this.manualDevices.set(id, device);
     this.devices.set(id, device);
     return device;
+  }
+
+  /**
+   * Automatically registers or updates a connected device (e.g. mobile browser or TV opening /tv or SSE)
+   */
+  public registerConnectedClient(ip: string, userAgent?: string, customName?: string): CastDevice {
+    const cleanIp = ip.replace(/^.*:/, '').trim();
+    if (cleanIp === '127.0.0.1' || cleanIp === '::1' || cleanIp === this.getLocalIpAddress()) {
+      return this.devices.get('local-pc') || {
+        id: 'local-pc',
+        name: `Computador Local (${os.hostname()})`,
+        ip: cleanIp,
+        type: 'generic',
+        status: 'ready'
+      };
+    }
+
+    let type: CastDevice['type'] = 'phone';
+    let name = customName || `Dispositivo Móvel (${cleanIp})`;
+    let model = 'Navegador Web';
+
+    const ua = (userAgent || '').toLowerCase();
+    if (
+      ua.includes('smart-tv') || ua.includes('tizen') || ua.includes('web0s') || 
+      ua.includes('webos') || ua.includes('viera') || ua.includes('crkey') || 
+      ua.includes('googletv') || ua.includes('android tv') || ua.includes('appletv')
+    ) {
+      type = 'dlna';
+      if (ua.includes('tizen')) {
+        name = `Samsung Smart TV (${cleanIp})`;
+        type = 'smart_tv_samsung';
+        model = 'Samsung Tizen OS';
+      } else if (ua.includes('webos') || ua.includes('web0s')) {
+        name = `LG Smart TV (${cleanIp})`;
+        type = 'smart_tv_lg';
+        model = 'LG webOS';
+      } else if (ua.includes('googletv') || ua.includes('crkey') || ua.includes('android tv')) {
+        name = `Google TV / Android TV (${cleanIp})`;
+        type = 'chromecast';
+        model = 'Google Cast / Android TV';
+      } else {
+        name = `Smart TV Web (${cleanIp})`;
+        model = 'Smart TV Browser';
+      }
+    } else if (ua.includes('iphone')) {
+      type = 'phone';
+      name = `iPhone (${cleanIp})`;
+      model = 'Apple iOS';
+    } else if (ua.includes('ipad')) {
+      type = 'phone';
+      name = `iPad (${cleanIp})`;
+      model = 'Apple iPadOS';
+    } else if (ua.includes('android')) {
+      type = 'phone';
+      name = `Smartphone Android (${cleanIp})`;
+      model = 'Google Android';
+    } else if (ua.includes('windows')) {
+      type = 'generic';
+      name = `PC Windows (${cleanIp})`;
+      model = 'Windows PC';
+    } else if (ua.includes('macintosh') || ua.includes('mac os')) {
+      type = 'generic';
+      name = `Mac (${cleanIp})`;
+      model = 'macOS';
+    }
+
+    const id = `client-${cleanIp.replace(/\./g, '-')}`;
+    const existing = this.devices.get(id);
+
+    const dev: CastDevice = {
+      id,
+      name: existing?.name && !existing.name.startsWith('Dispositivo Móvel') ? existing.name : name,
+      ip: cleanIp,
+      type: existing?.type && existing.type !== 'phone' ? existing.type : type,
+      model: existing?.model || model,
+      status: 'ready'
+    };
+
+    this.devices.set(id, dev);
+    return dev;
   }
 
   /**
@@ -219,7 +325,34 @@ export class CastService {
   }
 
   /**
-   * Fast TCP subnet probe for known Smart TV ports (Roku 8060, Chromecast 8008, Samsung 8001)
+   * Discovers active IP addresses and MACs on the local Wi-Fi subnet using the OS ARP cache
+   */
+  private getArpNeighbors(localIp: string): Array<{ ip: string; mac?: string }> {
+    const neighbors: Array<{ ip: string; mac?: string }> = [];
+    try {
+      const output = execSync('arp -a', { encoding: 'utf-8', timeout: 2000 });
+      const subnetPrefix = localIp.substring(0, localIp.lastIndexOf('.') + 1);
+      const lines = output.split('\n');
+      for (const line of lines) {
+        const match = line.match(/(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F-]+)/);
+        if (match) {
+          const ip = match[1];
+          const mac = match[2].toLowerCase();
+          if (ip.startsWith(subnetPrefix) && ip !== localIp && !ip.endsWith('.255') && !ip.endsWith('.1')) {
+            if (!mac.includes('ff-ff-ff-ff-ff-ff') && !mac.includes('01-00-5e') && mac !== '00-00-00-00-00-00') {
+              neighbors.push({ ip, mac });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[CastService] Erro ao consultar tabela ARP:', e);
+    }
+    return neighbors;
+  }
+
+  /**
+   * Fast probe for Chromecast (8008), Samsung (8001), Roku (8060) and connected mobile devices
    */
   private async probeSubnetDevices(): Promise<void> {
     const localIp = this.getLocalIpAddress();
@@ -229,22 +362,19 @@ export class CastService {
     const baseSubnet = `${parts[0]}.${parts[1]}.${parts[2]}`;
     const myLastOctet = parseInt(parts[3], 10);
 
-    // Common probe ports:
-    // 8008 -> Chromecast / Google TV DIAL
-    // 8060 -> Roku ECP
-    // 8001 -> Samsung Smart TV
-    const portsToProbe = [8008, 8060, 8001];
+    // 1. Get active neighbor devices from ARP table (e.g. mobile phones, smart TVs)
+    const arpNeighbors = this.getArpNeighbors(localIp);
 
-    // Select candidate IPs: common DHCP range around local IP and router range (.1 to .30, plus neighborhood of local IP)
-    const candidateIps: string[] = [];
-    for (let i = 1; i <= 30; i++) {
-      if (i !== myLastOctet) candidateIps.push(`${baseSubnet}.${i}`);
+    // 2. Build candidates list: all ARP neighbors + common router DHCP range (.1 to .30) + local vicinity
+    const candidateIps = new Set<string>();
+    for (const n of arpNeighbors) {
+      candidateIps.add(n.ip);
     }
-    for (let i = Math.max(1, myLastOctet - 10); i <= Math.min(254, myLastOctet + 10); i++) {
-      const ip = `${baseSubnet}.${i}`;
-      if (!candidateIps.includes(ip) && i !== myLastOctet) {
-        candidateIps.push(ip);
-      }
+    for (let i = 1; i <= 30; i++) {
+      if (i !== myLastOctet && i !== 1) candidateIps.add(`${baseSubnet}.${i}`);
+    }
+    for (let i = Math.max(2, myLastOctet - 8); i <= Math.min(254, myLastOctet + 8); i++) {
+      if (i !== myLastOctet) candidateIps.add(`${baseSubnet}.${i}`);
     }
 
     const checkPort = (ip: string, port: number, timeout = 350): Promise<boolean> => {
@@ -279,41 +409,122 @@ export class CastService {
       });
     };
 
-    // Run probes with limited concurrency
+    // Probe candidate IPs
     await Promise.all(
-      candidateIps.map(async (ip) => {
-        for (const port of portsToProbe) {
-          const isOpen = await checkPort(ip, port);
-          if (isOpen) {
-            let type: CastDevice['type'] = 'dlna';
-            let name = `Smart TV / Dispositivo (${ip})`;
+      Array.from(candidateIps).map(async (ip) => {
+        // A. Google TV / Chromecast (port 8008)
+        try {
+          const is8008Open = await checkPort(ip, 8008, 350);
+          if (is8008Open) {
+            const devId = `cast-${ip.replace(/\./g, '-')}`;
+            let name = `Google TV / Chromecast (${ip})`;
+            let model = 'Google Cast / Android TV';
 
-            if (port === 8060) {
-              type = 'roku';
-              name = `Roku Express / TV (${ip})`;
-            } else if (port === 8008) {
-              type = 'chromecast';
-              name = `Google TV / Chromecast (${ip})`;
-            } else if (port === 8001) {
-              type = 'smart_tv_samsung';
-              name = `Samsung Smart TV (${ip})`;
-            }
+            try {
+              const res = await fetch(`http://${ip}:8008/setup/eureka_info`, { signal: AbortSignal.timeout(900) });
+              if (res.ok) {
+                const data: any = await res.json();
+                if (data.name) name = data.name;
+                if (data.model_name) model = data.model_name;
+              }
+            } catch {}
 
-            const id = `tcp-${ip.replace(/\./g, '-')}-${port}`;
-            if (!this.devices.has(id)) {
-              this.devices.set(id, {
-                id,
-                name,
-                ip,
-                port,
-                type,
-                status: 'ready'
-              });
-            }
+            this.devices.set(devId, {
+              id: devId,
+              name,
+              ip,
+              port: 8008,
+              type: 'chromecast',
+              model,
+              status: 'ready'
+            });
+            return;
           }
-        }
+        } catch {}
+
+        // B. Samsung Smart TV (port 8001)
+        try {
+          const is8001Open = await checkPort(ip, 8001, 350);
+          if (is8001Open) {
+            const devId = `samsung-${ip.replace(/\./g, '-')}`;
+            let name = `Samsung Smart TV (${ip})`;
+            let model = 'Samsung Tizen';
+
+            try {
+              const res = await fetch(`http://${ip}:8001/api/v2/`, { signal: AbortSignal.timeout(900) });
+              if (res.ok) {
+                const data: any = await res.json();
+                if (data?.device?.name) name = data.device.name;
+                if (data?.device?.modelName) model = data.device.modelName;
+              }
+            } catch {}
+
+            this.devices.set(devId, {
+              id: devId,
+              name,
+              ip,
+              port: 8001,
+              type: 'smart_tv_samsung',
+              model,
+              status: 'ready'
+            });
+            return;
+          }
+        } catch {}
+
+        // C. Roku TV (port 8060)
+        try {
+          const is8060Open = await checkPort(ip, 8060, 350);
+          if (is8060Open) {
+            const devId = `roku-${ip.replace(/\./g, '-')}`;
+            let name = `Roku TV (${ip})`;
+            let model = 'Roku OS';
+
+            try {
+              const res = await fetch(`http://${ip}:8060/query/device-info`, { signal: AbortSignal.timeout(900) });
+              if (res.ok) {
+                const xml = await res.text();
+                const friendlyMatch = xml.match(/<(?:user-device-name|friendly-device-name)>([^<]+)<\//i);
+                const modelMatch = xml.match(/<model-name>([^<]+)<\//i);
+                if (friendlyMatch && friendlyMatch[1]) name = friendlyMatch[1];
+                if (modelMatch && modelMatch[1]) model = modelMatch[1];
+              }
+            } catch {}
+
+            this.devices.set(devId, {
+              id: devId,
+              name,
+              ip,
+              port: 8060,
+              type: 'roku',
+              model,
+              status: 'ready'
+            });
+            return;
+          }
+        } catch {}
       })
     );
+
+    // 3. For ARP neighbors that were not recognized as TV endpoints, register as connected mobile/network devices
+    for (const neighbor of arpNeighbors) {
+      const alreadyRegistered = Array.from(this.devices.values()).some(
+        d => d.ip === neighbor.ip && (d.type === 'chromecast' || d.type === 'smart_tv_samsung' || d.type === 'smart_tv_lg' || d.type === 'roku')
+      );
+      if (!alreadyRegistered) {
+        const phoneId = `phone-${neighbor.ip.replace(/\./g, '-')}`;
+        if (!this.devices.has(phoneId)) {
+          this.devices.set(phoneId, {
+            id: phoneId,
+            name: `Celular / Dispositivo Móvel (${neighbor.ip})`,
+            ip: neighbor.ip,
+            type: 'phone',
+            model: neighbor.mac ? `Wi-Fi (MAC ${neighbor.mac.toUpperCase()})` : 'Rede Wi-Fi',
+            status: 'ready'
+          });
+        }
+      }
+    }
   }
 
   // Active SSDP & Network scanner for Smart TVs and Cast receivers on the local Wi-Fi
@@ -433,6 +644,25 @@ export class CastService {
 
         successMessage = `Transmissão DLNA enviada para "${device.name}"`;
       } catch (e) {}
+    }
+
+    // 3. Google Cast / Chromecast DIAL integration
+    if (device.type === 'chromecast') {
+      try {
+        const dialUrl = `http://${device.ip}:8008/apps/DefaultMediaReceiver`;
+        await fetch(dialUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `v=${encodeURIComponent(lanMediaUrl)}`,
+          signal: AbortSignal.timeout(2000)
+        }).catch(() => {});
+      } catch {}
+      successMessage = `Transmissão preparada para Google TV / Chromecast ("${device.name}")`;
+    }
+
+    // 4. Mobile / Connected devices
+    if (device.type === 'phone') {
+      successMessage = `Transmissão sincronizada com "${device.name}". O player pode ser aberto via QR Code ou link!`;
     }
 
     return {

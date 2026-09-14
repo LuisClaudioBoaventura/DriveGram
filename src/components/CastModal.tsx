@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Cast, Tv, Monitor, RefreshCw, Check, Copy, ExternalLink, 
-  X, Laptop, Radio, Wifi, AlertCircle, Play, Square, Airplay 
+  X, Laptop, Smartphone, Radio, Wifi, AlertCircle, Play, Square, Airplay 
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { CastDevice } from '../types/index.js';
@@ -123,6 +123,8 @@ export const CastModal: React.FC<CastModalProps> = ({
       case 'roku':
       case 'dlna':
         return <Tv className="w-5 h-5 text-indigo-400" />;
+      case 'phone':
+        return <Smartphone className="w-5 h-5 text-amber-400" />;
       default:
         return <Laptop className="w-5 h-5 text-emerald-400" />;
     }
@@ -231,7 +233,7 @@ export const CastModal: React.FC<CastModalProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                  Smart TVs e Players Detectados no Wi-Fi
+                  Aparelhos e Smart TVs Detectados no Wi-Fi
                 </span>
                 <button
                   onClick={scanDevices}
@@ -288,10 +290,10 @@ export const CastModal: React.FC<CastModalProps> = ({
                   <div className="col-span-2 p-6 rounded-2xl border border-dashed border-gray-300 dark:border-drive-darkBorder text-center">
                     <Tv className="w-8 h-8 text-gray-400 mx-auto mb-2 opacity-60" />
                     <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                      Nenhum aparelho DLNA detectado automaticamente
+                      Nenhum aparelho detectado automaticamente
                     </p>
                     <p className="text-[11px] text-gray-500 mt-1">
-                      Certifique-se de que a TV está na mesma rede Wi-Fi, ou use a aba <b>DriveGram TV (QR Code)</b> para abrir pelo navegador da TV!
+                      Certifique-se de que os dispositivos estão na mesma rede Wi-Fi, ou use a aba <b>DriveGram TV (QR Code)</b> para abrir pelo navegador do aparelho!
                     </p>
                   </div>
                 )}
