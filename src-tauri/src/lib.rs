@@ -54,6 +54,64 @@ fn open_external_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_in_external_player(url: String, title: String) -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let vlc_candidates = [
+            PathBuf::from(r"C:\Program Files\VideoLAN\VLC\vlc.exe"),
+            PathBuf::from(r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe"),
+        ];
+
+        for vlc in vlc_candidates {
+            if vlc.exists() {
+                let res = Command::new(&vlc)
+                    .arg(&url)
+                    .arg(format!("--meta-title={}", &title))
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .spawn();
+                if res.is_ok() {
+                    return Ok(true);
+                }
+            }
+        }
+
+        // Fallback: create temporary .m3u playlist and launch with default system player
+        let temp_dir = std::env::temp_dir();
+        let m3u_path = temp_dir.join("drivegram_stream.m3u");
+        let m3u_content = format!("#EXTM3U\n#EXTINF:-1,{}\n{}\n", title, url);
+        if fs::write(&m3u_path, m3u_content).is_ok() {
+            let res = Command::new("cmd")
+                .args(["/c", "start", "", &m3u_path.to_string_lossy()])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+            if res.is_ok() {
+                return Ok(true);
+            }
+        }
+
+        // Last fallback: start URL directly
+        let _ = Command::new("cmd")
+            .args(["/c", "start", "", &url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = Command::new("open")
+            .arg(&url)
+            .spawn()
+            .or_else(|_| Command::new("xdg-open").arg(&url).spawn())
+            .map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
 fn stop_backend_server(app: AppHandle) -> Result<bool, String> {
     if let Some(state) = app.try_state::<AppState>() {
         if let Ok(mut lock) = state.server_child.lock() {
@@ -270,7 +328,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![open_devtools, open_logs_folder, open_external_url, stop_backend_server])
+        .invoke_handler(tauri::generate_handler![open_devtools, open_logs_folder, open_external_url, stop_backend_server, open_in_external_player])
         .setup(|app| {
             let child = start_backend_server(app.handle());
             app.manage(AppState {

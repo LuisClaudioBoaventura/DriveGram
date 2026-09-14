@@ -189,7 +189,10 @@ for (const targetDir of targetDirs) {
   const castProtoSrc = path.join(rootDir, 'node_modules', 'castv2', 'lib', 'cast_channel.proto');
   if (fs.existsSync(castProtoSrc)) {
     fs.copyFileSync(castProtoSrc, path.join(targetDir, 'cast_channel.proto'));
-    console.log('[build-embedded] Copied cast_channel.proto to:', targetDir);
+    const targetLibDir = path.join(targetDir, 'lib');
+    if (!fs.existsSync(targetLibDir)) fs.mkdirSync(targetLibDir, { recursive: true });
+    fs.copyFileSync(castProtoSrc, path.join(targetLibDir, 'cast_channel.proto'));
+    console.log('[build-embedded] Copied cast_channel.proto to:', targetDir, 'and', targetLibDir);
   }
 
   console.log('[build-embedded] Deployed to:', targetDir);

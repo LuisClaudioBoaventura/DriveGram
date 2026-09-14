@@ -3,15 +3,13 @@ import http from 'http';
 import dgram from 'dgram';
 import net from 'net';
 import { execSync } from 'child_process';
-import { createRequire } from 'module';
+import castv2Pkg from 'castv2-client';
 
-const req = createRequire(import.meta.url);
 let CastV2Client: any = null;
 let DefaultMediaReceiver: any = null;
 try {
-  const castLib = req('castv2-client');
-  CastV2Client = castLib.Client;
-  DefaultMediaReceiver = castLib.DefaultMediaReceiver;
+  CastV2Client = (castv2Pkg as any).Client || (castv2Pkg as any).default?.Client || castv2Pkg;
+  DefaultMediaReceiver = (castv2Pkg as any).DefaultMediaReceiver || (castv2Pkg as any).default?.DefaultMediaReceiver;
 } catch (e) {
   console.warn('[CastService] castv2-client não carregado:', e);
 }
@@ -584,15 +582,17 @@ export class CastService {
     const device = this.devices.get(deviceId);
     const localIp = this.getLocalIpAddress();
 
+    const serverPort = process.env.PORT || 5000;
+
     // Ensure mediaUrl uses actual LAN IP so TV can stream it across Wi-Fi
     let lanMediaUrl = mediaUrl;
     if (lanMediaUrl.startsWith('/')) {
-      lanMediaUrl = `http://${localIp}:5000${lanMediaUrl}`;
+      lanMediaUrl = `http://${localIp}:${serverPort}${lanMediaUrl}`;
     } else if (lanMediaUrl.includes('localhost') || lanMediaUrl.includes('127.0.0.1')) {
       lanMediaUrl = lanMediaUrl.replace(/localhost|127\.0\.0\.1/, localIp);
     }
 
-    const tvPlayerUrl = `http://${localIp}:5000/tv?url=${encodeURIComponent(lanMediaUrl)}&title=${encodeURIComponent(title || 'DriveGram Video')}`;
+    const tvPlayerUrl = `http://${localIp}:${serverPort}/tv?url=${encodeURIComponent(lanMediaUrl)}&title=${encodeURIComponent(title || 'DriveGram Video')}`;
 
     if (!device) {
       return {

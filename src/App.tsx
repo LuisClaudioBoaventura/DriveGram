@@ -1706,7 +1706,7 @@ export function App() {
         currentFolderId={fs.currentFolderId}
         currentFolderName={currentFolder?.name}
         onDeleteDuplicate={async (fileId) => {
-          await fs.deleteItem(fileId, false);
+          await fs.deleteItem(fileId, false, true);
           refreshAllLibraries();
         }}
         onRefresh={() => {

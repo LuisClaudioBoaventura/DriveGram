@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.15.3',
+    version: '1.15.4',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -206,6 +206,10 @@ app.delete('/api/folders/:id', async (req, res) => {
         }
       } catch (e) {}
     }
+  }
+
+  if (permanent) {
+    telegramService.syncMetadataToTelegram({ force: true }).catch(() => {});
   }
 
   res.json({ success: true });
@@ -588,6 +592,10 @@ app.delete('/api/files/:id', async (req, res) => {
     } catch (e) {}
   }
 
+  if (permanent) {
+    telegramService.syncMetadataToTelegram({ force: true }).catch(() => {});
+  }
+
   res.json({ success: true });
 });
 
@@ -612,6 +620,8 @@ app.post('/api/trash/empty', async (_req, res) => {
       }
     } catch (e) {}
   }
+
+  telegramService.syncMetadataToTelegram({ force: true }).catch(() => {});
   res.json({ success: true, message: 'Lixeira esvaziada e arquivos removidos do Telegram com sucesso!' });
 });
 
@@ -1245,6 +1255,45 @@ app.get('/api/stream/:id', async (req, res) => {
       try { res.end(); } catch (e) {}
     }
   }
+});
+
+// ---------------- M3U PLAYLIST & EXTERNAL PLAYER ROUTE ----------------
+app.get('/api/stream/:id/playlist.m3u', (req, res) => {
+  const file = db.getAllFiles().find(f => f.id === req.params.id);
+  if (!file) return res.status(404).send('Arquivo não encontrado');
+  const title = file.name || 'DriveGram Stream';
+  const host = req.headers.host || `127.0.0.1:${PORT}`;
+  const streamUrl = `${req.protocol}://${host}/api/stream/${file.id}`;
+
+  const m3u = `#EXTM3U\n#EXTINF:-1,${title.replace(/[\r\n]/g, ' ')}\n${streamUrl}\n`;
+  res.setHeader('Content-Type', 'audio/x-mpegurl; charset=utf-8');
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.name || 'stream')}.m3u"`);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.send(m3u);
+});
+
+app.post('/api/media/open-external', (req, res) => {
+  const { url, title } = req.body;
+  if (!url) return res.status(400).json({ error: 'url is required' });
+
+  if (process.platform === 'win32') {
+    const vlcCandidates = [
+      'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe',
+      'C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe'
+    ];
+    const vlcPath = vlcCandidates.find(p => fs.existsSync(p));
+    if (vlcPath) {
+      exec(`"${vlcPath}" "${url}" --meta-title="${title || 'DriveGram'}"`, { windowsHide: true });
+      return res.json({ success: true, player: 'vlc' });
+    } else {
+      const tempM3u = path.join(os.tmpdir(), 'drivegram_stream.m3u');
+      fs.writeFileSync(tempM3u, `#EXTM3U\n#EXTINF:-1,${title || 'DriveGram'}\n${url}\n`, 'utf-8');
+      exec(`cmd /c start "" "${tempM3u}"`, { windowsHide: true });
+      return res.json({ success: true, player: 'default' });
+    }
+  }
+
+  res.json({ success: false, message: 'Plataforma não suporta execução direta' });
 });
 
 // ---------------- CAPAS & THUMBNAILS VIA TELEGRAM & CACHE LOCAL ----------------

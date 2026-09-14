@@ -73,6 +73,7 @@ export interface DatabaseSchema {
     lastSyncDate?: string;
     lastMetadataMessageId?: number;
     metadataRetentionCount?: number;
+    deletedFileIds?: string[];
   };
 }
 
@@ -342,6 +343,26 @@ class Database {
     }
     if (this.data.books) {
       this.data.books = this.data.books.filter(b => b.id !== 'book-habitos-atomicos');
+    }
+
+    // 1.1 Limpar arquivos fantasmas conhecidos já deletados no Telegram (Message 125 e Message 167)
+    const deadGhostFileIds = new Set(['file-1787430160455-6qk3x', 'file-1788801459803-24qwh']);
+    const hadGhosts = this.data.files.some(f => deadGhostFileIds.has(f.id) || (f.telegramMeta?.messageId && [125, 167].includes(f.telegramMeta.messageId)));
+    if (hadGhosts) {
+      if (!this.data.settings.deletedFileIds) this.data.settings.deletedFileIds = [];
+      deadGhostFileIds.forEach(id => {
+        if (!this.data.settings.deletedFileIds!.includes(id)) {
+          this.data.settings.deletedFileIds!.push(id);
+        }
+      });
+      this.data.files = this.data.files.filter(f => !deadGhostFileIds.has(f.id) && (!f.telegramMeta?.messageId || ![125, 167].includes(f.telegramMeta.messageId)));
+      // Corrigir Riddick 3 para apontar para o arquivo real e existente
+      if (this.data.videos) {
+        const rid3 = this.data.videos.find(v => v.id === 'movie-1789374349857-nzm1d');
+        if (rid3 && (rid3.fileId === 'file-1787430160455-6qk3x' || !rid3.fileId)) {
+          rid3.fileId = 'file-1787429542214-qtkfd';
+        }
+      }
     }
 
     // 2. Agrupar pastas-raiz (parentId === null) pelo nome normalizado
@@ -1780,6 +1801,10 @@ class Database {
 
     if (permanent) {
       this.data.files = this.data.files.filter(f => f.id !== id);
+      if (!this.data.settings.deletedFileIds) this.data.settings.deletedFileIds = [];
+      if (!this.data.settings.deletedFileIds.includes(id)) {
+        this.data.settings.deletedFileIds.push(id);
+      }
       this.syncAllLibrariesWithFolderStructure();
       this.save(this.data);
       return { success: true, deletedFile: file };
@@ -1819,6 +1844,12 @@ class Database {
 
   public emptyTrash(): DriveItem[] {
     const trashFiles = this.data.files.filter(f => f.isTrash);
+    if (!this.data.settings.deletedFileIds) this.data.settings.deletedFileIds = [];
+    trashFiles.forEach(f => {
+      if (!this.data.settings.deletedFileIds!.includes(f.id)) {
+        this.data.settings.deletedFileIds!.push(f.id);
+      }
+    });
     this.data.files = this.data.files.filter(f => !f.isTrash);
     this.data.folders = this.data.folders.filter(f => !f.isTrash);
     this.syncAllLibrariesWithFolderStructure();
@@ -4611,7 +4642,15 @@ class Database {
 
     // 2. Reconciliar Arquivos: Adicionar arquivos remotos ausentes ou atualizar metadados do Telegram
     const localFileMap = new Map<string, DriveItem>(this.data.files.map(f => [f.id, f]));
+    const deletedFileIds = new Set(this.data.settings.deletedFileIds || []);
+
     for (const rFile of manifest.files) {
+      // Nunca ressuscitar arquivos que foram excluídos permanentemente localmente
+      if (deletedFileIds.has(rFile.id)) continue;
+      // Nunca ressuscitar mensagens fantasmas já deletadas no Telegram
+      if (rFile.telegramMeta?.messageId && [125, 167].includes(rFile.telegramMeta.messageId)) continue;
+      if (rFile.id === 'file-1787430160455-6qk3x' || rFile.id === 'file-1788801459803-24qwh') continue;
+
       const localFile = localFileMap.get(rFile.id);
       if (!localFile) {
         this.data.files.push(rFile);

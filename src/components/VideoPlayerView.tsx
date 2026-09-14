@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { 
   ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, 
   Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2, Sparkles,
-  SkipBack, SkipForward, Shuffle, Repeat, List, X, Search, Cast
+  SkipBack, SkipForward, Shuffle, Repeat, List, X, Search, Cast, Tv, ExternalLink
 } from 'lucide-react';
 import { MovieVideo, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
@@ -54,9 +54,54 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [isGenerateMarkersModalOpen, setIsGenerateMarkersModalOpen] = useState(false);
   const [isCastModalOpen, setIsCastModalOpen] = useState(false);
+  const [externalPlayerFeedback, setExternalPlayerFeedback] = useState<string | null>(null);
 
   const videoFile = (video.fileId ? allFiles.find(f => f.id === video.fileId) : null) ||
     (video.folderId ? allFiles.find(f => f.parentId === video.folderId && !f.isTrash && (f.type === 'video' || (f.mimeType && f.mimeType.startsWith('video/')) || ['mp4', 'mkv', 'webm', 'mov', 'avi'].includes((f.extension || '').toLowerCase()))) : null);
+
+  const handleOpenExternalPlayer = async () => {
+    const fileId = videoFile?.id || video.fileId;
+    if (!fileId) return;
+    const streamUrl = resolveApiUrl(`/api/stream/${fileId}`);
+    const title = video.titlePt || video.title || 'DriveGram Vídeo';
+
+    setExternalPlayerFeedback('Iniciando player externo...');
+
+    // 1. If running under Tauri desktop
+    try {
+      if ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('open_in_external_player', { url: streamUrl, title });
+        setExternalPlayerFeedback('✅ Aberto no VLC / Player do Sistema!');
+        setTimeout(() => setExternalPlayerFeedback(null), 4000);
+        return;
+      }
+    } catch (e) {
+      console.warn('Tauri external player error, tentando via HTTP:', e);
+    }
+
+    // 2. HTTP Endpoint fallback
+    try {
+      const res = await fetch(resolveApiUrl('/api/media/open-external'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: streamUrl, title })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setExternalPlayerFeedback('✅ Aberto no VLC / Player do Sistema!');
+          setTimeout(() => setExternalPlayerFeedback(null), 4000);
+          return;
+        }
+      }
+    } catch (e) {}
+
+    // 3. Fallback final: playlist M3U direta
+    window.open(resolveApiUrl(`/api/stream/${fileId}/playlist.m3u`), '_blank');
+    setExternalPlayerFeedback('✅ Playlist M3U aberta!');
+    setTimeout(() => setExternalPlayerFeedback(null), 4000);
+  };
   const subtitles = video.subtitles || videoFile?.subtitles || [];
   const [localTimestamps, setLocalTimestamps] = useState<VideoTimestamp[]>(() => {
     const raw = video.timestamps || videoFile?.timestamps || [];
@@ -545,6 +590,16 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               <span className="hidden sm:inline text-xs font-semibold">Transmitir</span>
             </button>
 
+            {/* Player Externo (VLC) */}
+            <button
+              onClick={handleOpenExternalPlayer}
+              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-amber-400 hover:text-amber-300 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0 flex items-center gap-1.5"
+              title="Abrir no VLC ou Player Padrão do Sistema (Nativo, sem limites de codecs)"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs font-semibold">Player Externo</span>
+            </button>
+
             {onOpenEditModal && (
               <button
                 onClick={onOpenEditModal}
@@ -568,10 +623,19 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         </div>
       )}
 
+      {/* External Player Toast Feedback */}
+      {externalPlayerFeedback && (
+        <div className="max-w-xl mx-auto px-4 py-2 my-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold text-center flex items-center justify-center gap-2 shadow-lg animate-in fade-in slide-in-from-top-2">
+          <ExternalLink className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{externalPlayerFeedback}</span>
+        </div>
+      )}
+
       {/* Main Cinema Player Container */}
       <div className={isPiPHidden ? 'w-px h-px overflow-hidden' : 'flex-1 flex flex-col items-center justify-center p-2 sm:p-4 max-w-6xl w-full mx-auto space-y-4'}>
         {(videoFile || video.fileId) ? (
-          <div className={isPiPHidden ? 'w-px h-px' : 'relative w-full max-h-[72vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center group'}>
+          <>
+            <div className={isPiPHidden ? 'w-px h-px' : 'relative w-full max-h-[72vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center group'}>
             <video
               ref={videoRef}
               src={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
@@ -675,6 +739,24 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               </div>
             )}
           </div>
+
+            {/* Helper fallback for codec / black screen issues */}
+            {!isPiPHidden && (
+              <div className="flex flex-wrap items-center justify-between w-full px-3 py-2 text-xs text-gray-400 gap-2 bg-gray-900/60 rounded-xl border border-gray-800/80">
+                <span className="flex items-center gap-1.5 text-gray-300">
+                  <Tv className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Problemas com a imagem do vídeo (somente áudio ou tela preta)?</span>
+                </span>
+                <button
+                  onClick={handleOpenExternalPlayer}
+                  className="text-amber-400 hover:text-amber-300 hover:underline font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Abrir no VLC / Player do Sistema
+                </button>
+              </div>
+            )}
+          </>
         ) : (video.embedUrl || (video.videoUrl && (video.videoUrl.includes('youtube.com') || video.videoUrl.includes('youtu.be')))) ? (
           <div className={isPiPHidden ? 'w-px h-px' : 'relative w-full min-h-[50vh] max-h-[75vh] aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-gray-800/90 flex items-center justify-center'}>
             <iframe
