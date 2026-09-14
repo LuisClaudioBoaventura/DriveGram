@@ -15,7 +15,7 @@ interface VideosCatalogProps {
   allFiles?: DriveItem[];
   sagas?: MovieSagaGroup[];
   onSelectVideo: (video: MovieVideo, playlist?: MovieVideo[], playlistTitle?: string, isShuffle?: boolean) => void;
-  onOpenNewModal: () => void;
+  onOpenNewModal?: () => void;
   onEditVideo?: (video: MovieVideo) => void;
   onDeleteVideo?: (id: string) => void;
   onUpdateVideo?: (video: MovieVideo) => Promise<void>;
@@ -276,14 +276,6 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                     );
                   })()}
 
-                  <button
-                    onClick={onOpenNewModal}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-950/60 hover:bg-red-900 text-red-100 border border-red-600/50 text-xs font-bold transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Adicionar Filme</span>
-                  </button>
-
                   {onSyncRootFolder && (
                     <button
                       onClick={handleSync}
@@ -314,22 +306,14 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
               </p>
 
               <div className="pt-2 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={onOpenNewModal}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-red-900 hover:bg-red-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
-                >
-                  <Plus className="w-4 h-4 text-red-600" />
-                  <span>Adicionar Filme / Vídeo</span>
-                </button>
-
                 {onSyncRootFolder && (
                   <button
                     onClick={handleSync}
                     disabled={isSyncing}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-600/30 hover:bg-red-600/50 border border-red-400/40 text-red-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-red-900 hover:bg-red-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Escanear e sincronizar pastas da biblioteca Filmes & Cinema automaticamente"
                   >
-                    <RefreshCw className={`w-4 h-4 text-red-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-4 h-4 text-red-600 ${isSyncing ? 'animate-spin' : ''}`} />
                     <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
                   </button>
                 )}
@@ -827,14 +811,8 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
               </div>
               <h3 className="font-bold text-base">Nenhuma saga ou franquia cadastrada</h3>
               <p className="text-xs text-gray-500 max-w-md">
-                Para agrupar filmes em uma franquia contínua (ex: Harry Potter, Star Wars, Matrix), edite um filme existente ou adicione um novo e preencha o campo <strong>"Saga / Franquia"</strong>.
+                Para agrupar filmes em uma franquia contínua (ex: Harry Potter, Star Wars, Matrix), edite um filme existente e preencha o campo <strong>"Saga / Franquia"</strong>.
               </p>
-              <button
-                onClick={onOpenNewModal}
-                className="px-5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-500/25 transition-all"
-              >
-                Adicionar Filme a uma Saga
-              </button>
             </div>
           )}
         </div>
@@ -1055,22 +1033,16 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
               </div>
               <h3 className="font-bold text-base">Nenhum filme ou vídeo encontrado</h3>
               <p className="text-xs text-gray-500 max-w-md">
-                Adicione filmes ou vídeos vinculando pastas com arquivos .mp4, .mkv do seu Drive.
+                Conecte pastas de filmes ou vídeos no seu Drive e sincronize com a biblioteca.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                <button
-                  onClick={onOpenNewModal}
-                  className="px-5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-500/25 transition-all"
-                >
-                  Adicionar Primeiro Vídeo
-                </button>
                 {onSyncRootFolder && (
                   <button
                     onClick={handleSync}
                     disabled={isSyncing}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-700 text-xs font-bold transition-all disabled:opacity-50"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-500/25 transition-all disabled:opacity-50"
                   >
-                    <RefreshCw className={`w-4 h-4 text-red-500 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                     <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
                   </button>
                 )}

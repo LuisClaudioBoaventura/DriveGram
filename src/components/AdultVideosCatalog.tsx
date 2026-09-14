@@ -36,7 +36,7 @@ interface AdultVideosCatalogProps {
   folders: FolderItem[];
   allFiles?: DriveItem[];
   onSelectVideo: (video: AdultVideo, playlist?: AdultVideo[]) => void;
-  onOpenNewModal: () => void;
+  onOpenNewModal?: () => void;
   onOpenNewPerformerModal?: () => void;
   onEditPerformer?: (performer: AdultPerformer) => void;
   onUpdatePerformer?: (performer: AdultPerformer) => Promise<void>;
@@ -192,13 +192,17 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
 
             <div className="pt-2 flex flex-wrap items-center gap-2.5">
               {activeCatalogTab === 'videos' ? (
-                <button
-                  onClick={onOpenNewModal}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-rose-900 hover:bg-rose-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
-                >
-                  <Plus className="w-4 h-4 text-rose-600" />
-                  <span>Adicionar Vídeo</span>
-                </button>
+                onSyncRootFolder && (
+                  <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-rose-900 hover:bg-rose-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                    title="Detectar e sincronizar todas as pastas e vídeos do Red Locker no Drive automaticamente"
+                  >
+                    <RefreshCw className={`w-4 h-4 text-rose-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                  </button>
+                )
               ) : (
                 <button
                   onClick={onOpenNewPerformerModal}
@@ -206,18 +210,6 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
                 >
                   <Plus className="w-4 h-4 text-rose-600" />
                   <span>Novo Ator / Performer</span>
-                </button>
-              )}
-
-              {activeCatalogTab === 'videos' && onSyncRootFolder && (
-                <button
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-rose-600/30 hover:bg-rose-600/50 border border-rose-400/40 text-rose-100 hover:text-white text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
-                  title="Detectar e sincronizar todas as pastas e vídeos do Red Locker no Drive automaticamente"
-                >
-                  <RefreshCw className={`w-4 h-4 text-rose-300 ${isSyncing ? 'animate-spin' : ''}`} />
-                  <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
                 </button>
               )}
 
@@ -737,12 +729,16 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
                 <p className="text-xs text-gray-500 max-w-md">
                   Vincule pastas de vídeos do seu Drive para catalogar e reproduzir com segurança e privacidade no Red Locker.
                 </p>
-                <button
-                  onClick={onOpenNewModal}
-                  className="px-5 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-500/25 transition-all"
-                >
-                  Adicionar Primeiro Item
-                </button>
+                {onSyncRootFolder && (
+                  <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="px-5 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-500/25 transition-all flex items-center gap-2"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

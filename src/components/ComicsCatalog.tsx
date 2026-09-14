@@ -20,7 +20,7 @@ import { ComicBook } from '../types/index.js';
 interface ComicsCatalogProps {
   comics: ComicBook[];
   onSelectComic: (comic: ComicBook) => void;
-  onNewComic: () => void;
+  onNewComic?: () => void;
   onDeleteComic: (comicId: string) => void;
   onEditComic?: (comic: ComicBook) => void;
   onToggleComicCompletion?: (comicId: string) => void;
@@ -154,22 +154,14 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
           </div>
 
           <div className="pt-2 flex flex-wrap items-center gap-3">
-            <button
-              onClick={onNewComic}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-pink-900 hover:bg-pink-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
-            >
-              <Plus className="w-4 h-4 text-pink-600" />
-              <span>Nova HQ / Mangá</span>
-            </button>
-
             {onSyncRootFolder && (
               <button
                 onClick={handleSync}
                 disabled={isSyncing}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-pink-600/30 hover:bg-pink-600/50 border border-pink-400/40 text-pink-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-pink-900 hover:bg-pink-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Escanear e sincronizar pastas da biblioteca HQs e Mangás automaticamente"
               >
-                <RefreshCw className={`w-4 h-4 text-pink-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 text-pink-600 ${isSyncing ? 'animate-spin' : ''}`} />
                 <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
               </button>
             )}
@@ -287,15 +279,6 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
           )}
-
-          {/* CTA Button */}
-          <button
-            onClick={onNewComic}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 text-white font-bold text-xs shadow-md shadow-pink-500/25 transition-all shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Nova HQ / Mangá</span>
-          </button>
         </div>
       </div>
 
@@ -445,13 +428,14 @@ export const ComicsCatalog: React.FC<ComicsCatalogProps> = ({
             >
               Limpar Filtros
             </button>
-          ) : (
+          ) : onSyncRootFolder && (
             <button
-              onClick={onNewComic}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 text-white font-bold text-xs shadow-lg shadow-pink-500/25"
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 text-white font-bold text-xs shadow-lg shadow-pink-500/25 transition-all disabled:opacity-50"
             >
-              <Plus className="w-4 h-4" />
-              <span>Criar Primeira Coleção de HQ</span>
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
             </button>
           )}
         </div>

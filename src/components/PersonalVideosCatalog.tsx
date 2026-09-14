@@ -29,7 +29,7 @@ interface PersonalVideosCatalogProps {
   folders: FolderItem[];
   allFiles?: DriveItem[];
   onSelectVideo: (video: PersonalVideo) => void;
-  onOpenNewModal: () => void;
+  onOpenNewModal?: () => void;
   onEditVideo?: (video: PersonalVideo) => void;
   onDeleteVideo?: (id: string) => void;
   onToggleFavorite?: (id: string) => void;
@@ -209,14 +209,6 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
                     <span>{(featuredVideo.lastPositionSeconds || 0) > 0 ? 'Continuar Assistindo' : 'Assistir Agora'}</span>
                   </button>
 
-                  <button
-                    onClick={onOpenNewModal}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-950/60 hover:bg-amber-900 text-amber-100 border border-amber-600/50 text-xs font-bold transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Novo Vídeo Pessoal</span>
-                  </button>
-
                   {onSyncRootFolder && (
                     <button
                       onClick={handleSync}
@@ -247,22 +239,14 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
               </p>
 
               <div className="pt-2 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={onOpenNewModal}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-amber-950 hover:bg-amber-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
-                >
-                  <Plus className="w-4 h-4 text-amber-600" />
-                  <span>Novo Vídeo Pessoal</span>
-                </button>
-
                 {onSyncRootFolder && (
                   <button
                     onClick={handleSync}
                     disabled={isSyncing}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-600/30 hover:bg-amber-600/50 border border-amber-400/40 text-amber-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-amber-950 hover:bg-amber-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Escanear e sincronizar pastas da biblioteca Vídeos Pessoais automaticamente"
                   >
-                    <RefreshCw className={`w-4 h-4 text-amber-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-4 h-4 text-amber-600 ${isSyncing ? 'animate-spin' : ''}`} />
                     <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
                   </button>
                 )}
@@ -571,20 +555,13 @@ export const PersonalVideosCatalog: React.FC<PersonalVideosCatalogProps> = ({
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={onOpenNewModal}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 transition-all active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Catalogar Primeiro Vídeo Pessoal</span>
-              </button>
               {onSyncRootFolder && (
                 <button
                   onClick={handleSync}
                   disabled={isSyncing}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-700 text-xs font-bold transition-all disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 transition-all active:scale-95 disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-4 h-4 text-amber-500 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                   <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
                 </button>
               )}

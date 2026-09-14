@@ -20,7 +20,7 @@ import { Course } from '../types/index.js';
 interface CourseCatalogProps {
   courses: Course[];
   onSelectCourse: (course: Course) => void;
-  onNewCourse: () => void;
+  onNewCourse?: () => void;
   onDeleteCourse: (id: string) => void;
   onOpenYouTubeModal?: () => void;
   onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalCourses: number } | void>;
@@ -102,13 +102,17 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
           </p>
 
           <div className="pt-2 flex flex-wrap items-center gap-3">
-            <button
-              onClick={onNewCourse}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-blue-700 hover:bg-blue-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Criar Novo Curso</span>
-            </button>
+            {onSyncRootFolder && (
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-blue-900 hover:bg-blue-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                title="Detectar e sincronizar todas as pastas e cursos no Drive automaticamente"
+              >
+                <RefreshCw className={`w-4 h-4 text-blue-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+              </button>
+            )}
 
             {onOpenYouTubeModal && (
               <button
@@ -117,18 +121,6 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
               >
                 <Youtube className="w-4 h-4" />
                 <span>Importar do YouTube</span>
-              </button>
-            )}
-
-            {onSyncRootFolder && (
-              <button
-                onClick={handleSync}
-                disabled={isSyncing}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-blue-100 hover:text-white text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
-                title="Detectar e sincronizar todas as pastas e cursos no Drive automaticamente"
-              >
-                <RefreshCw className={`w-4 h-4 text-blue-300 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
               </button>
             )}
           </div>
@@ -308,15 +300,18 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
             Nenhum curso encontrado
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mb-4">
-            {searchQuery || selectedCategory !== 'all' ? 'Nenhum curso corresponde aos filtros selecionados.' : 'Crie seu primeiro curso para organizar módulos, aulas em vídeo e materiais.'}
+            {searchQuery || selectedCategory !== 'all' ? 'Nenhum curso corresponde aos filtros selecionados.' : 'Conecte pastas de cursos com vídeos no seu Drive e sincronize com a biblioteca.'}
           </p>
-          <button
-            onClick={onNewCourse}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Criar Novo Curso</span>
-          </button>
+          {onSyncRootFolder && (
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -7,7 +7,7 @@ interface SeriesCatalogProps {
   categories: string[];
   folders: FolderItem[];
   onSelectSeries: (series: SeriesShow) => void;
-  onOpenNewModal: () => void;
+  onOpenNewModal?: () => void;
   onEditSeries?: (series: SeriesShow) => void;
   onDeleteSeries?: (id: string) => void;
   onRefreshSeries?: (seriesId: string) => Promise<{ success: boolean; series?: SeriesShow; newEpisodesCount: number }>;
@@ -193,14 +193,6 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
                     <span>Abrir Temporadas & Episódios</span>
                   </button>
 
-                  <button
-                    onClick={onOpenNewModal}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-purple-950/60 hover:bg-purple-900 text-purple-100 border border-purple-600/50 text-xs font-bold transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Adicionar Série / Anime</span>
-                  </button>
-
                   {onSyncRootFolder && (
                     <button
                       onClick={handleSync}
@@ -247,22 +239,14 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
               </p>
 
               <div className="pt-2 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={onOpenNewModal}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-purple-900 hover:bg-purple-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
-                >
-                  <Plus className="w-4 h-4 text-purple-600" />
-                  <span>Adicionar Série / Anime</span>
-                </button>
-
                 {onSyncRootFolder && (
                   <button
                     onClick={handleSync}
                     disabled={isSyncing}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-400/40 text-purple-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-purple-900 hover:bg-purple-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Escanear e sincronizar pastas da biblioteca Séries e Animes automaticamente"
                   >
-                    <RefreshCw className={`w-4 h-4 text-purple-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-4 h-4 text-purple-600 ${isSyncing ? 'animate-spin' : ''}`} />
                     <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
                   </button>
                 )}
@@ -514,19 +498,13 @@ export const SeriesCatalog: React.FC<SeriesCatalogProps> = ({
               Organize temporadas e episódios conectando pastas com vídeos do seu Drive.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={onOpenNewModal}
-                className="px-5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-500/25 transition-all"
-              >
-                Adicionar Primeira Série
-              </button>
               {onSyncRootFolder && (
                 <button
                   onClick={handleSync}
                   disabled={isSyncing}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-700 text-xs font-bold transition-all disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-500/25 transition-all disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-4 h-4 text-purple-500 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                   <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
                 </button>
               )}

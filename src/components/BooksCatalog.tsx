@@ -42,7 +42,7 @@ interface BooksCatalogProps {
   onUpdateBookSagaCover?: (sagaName: string, coverImage: string) => Promise<boolean>;
   onUpdateBook?: (book: Book) => Promise<void>;
   onSelectBook: (book: Book) => void;
-  onNewBook: () => void;
+  onNewBook?: () => void;
   onDeleteBook: (bookId: string) => void;
   onEditBook?: (book: Book) => void;
   onToggleBookCompletion?: (bookId: string) => void;
@@ -333,13 +333,17 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
           </p>
 
           <div className="pt-2 flex flex-wrap items-center gap-3">
-            <button
-              onClick={onNewBook}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-purple-900 hover:bg-purple-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
-            >
-              <Plus className="w-4 h-4 text-purple-600" />
-              <span>Novo Livro / Audiolivro</span>
-            </button>
+            {onSyncRootFolder && (
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-purple-900 hover:bg-purple-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                title="Detectar e sincronizar todas as pastas de livros e audiolivros no Drive automaticamente"
+              >
+                <RefreshCw className={`w-4 h-4 text-purple-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+              </button>
+            )}
 
             {onOpenCategoryManager && (
               <button
@@ -348,18 +352,6 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
               >
                 <FolderKanban className="w-4 h-4 text-purple-400" />
                 <span>Gerenciar Categorias</span>
-              </button>
-            )}
-
-            {onSyncRootFolder && (
-              <button
-                onClick={handleSync}
-                disabled={isSyncing}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-400/40 text-purple-100 hover:text-white text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
-                title="Detectar e sincronizar todas as pastas de livros e audiolivros no Drive automaticamente"
-              >
-                <RefreshCw className={`w-4 h-4 text-purple-300 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
               </button>
             )}
           </div>
@@ -869,14 +861,8 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                 Nenhuma Saga ou Série Literária Encontrada
               </h4>
               <p className="text-xs text-gray-500 max-w-md">
-                Para agrupar livros em uma franquia contínua (ex: Harry Potter, Duna, O Senhor dos Anéis), edite um livro existente ou cadastre um novo e preencha o campo <strong>"Saga / Franquia Literária"</strong>.
+                Para agrupar livros em uma franquia contínua (ex: Harry Potter, Duna, O Senhor dos Anéis), edite um livro existente e preencha o campo <strong>"Saga / Franquia Literária"</strong>.
               </p>
-              <button
-                onClick={onNewBook}
-                className="px-5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/25 transition-all"
-              >
-                Adicionar Livro a uma Saga
-              </button>
             </div>
           )}
         </div>
@@ -1280,14 +1266,23 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
           <p className="text-xs text-gray-500 mt-1 max-w-sm">
             {hasActiveFilters
               ? 'Tente remover os filtros ou buscar por outros termos.'
-              : 'Clique em "Novo Livro ou Audiolivro" para importar uma pasta ou cadastrar um título.'}
+              : 'Conecte pastas de audiolivros ou e-books no seu Drive e sincronize com a biblioteca.'}
           </p>
-          {hasActiveFilters && (
+          {hasActiveFilters ? (
             <button
               onClick={handleClearFilters}
               className="mt-4 px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold"
             >
               Limpar Todos os Filtros
+            </button>
+          ) : onSyncRootFolder && (
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="mt-4 flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/25 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
             </button>
           )}
         </div>
