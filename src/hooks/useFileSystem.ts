@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DriveItem, FolderItem, UploadProgress, FileType } from '../types/index.js';
 
 export type ActiveTabType = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
@@ -17,6 +17,7 @@ export function useFileSystem() {
   const [activeTab, setActiveTab] = useState<ActiveTabType>('drive');
   const [uploads, setUploads] = useState<UploadProgress[]>([]);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const uploadQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const fetchItems = useCallback(async () => {
     try {
@@ -98,138 +99,156 @@ export function useFileSystem() {
     return false;
   };
 
-  // Upload multiple files or folder contents
+  // Upload multiple files or folder contents (serializado para evitar gargalo e duplicação no envio)
   const uploadFiles = async (
     fileList: FileList | File[] | { file: File; relativePath?: string }[],
     targetFolderId = currentFolderId
   ) => {
-    const items = Array.from(fileList as any[]);
+    const rawItems = Array.from(fileList as any[]);
+    if (rawItems.length === 0) return;
 
-    for (const item of items) {
-      const file: File = item instanceof File ? item : item.file || item;
-      const relativePath: string = (item as any).relativePath || (file as any).webkitRelativePath || '';
+    const runBatch = async () => {
+      // Filtrar arquivos duplicados na mesma lista de envio (mesmo nome, tamanho e pasta destino)
+      const seenBatchKeys = new Set<string>();
+      const items: { file: File; relativePath: string }[] = [];
 
-      const uploadId = 'up-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5);
-      
-      const newUpload: UploadProgress = {
-        id: uploadId,
-        fileName: relativePath || file.name,
-        size: file.size,
-        transferred: 0,
-        progress: 0,
-        speed: 'Iniciando...',
-        status: 'uploading',
-        stage: 'local',
-        stageLabel: '1/2 • Carregando arquivo...',
-        targetFolderId
-      };
-
-      setUploads(prev => [newUpload, ...prev]);
-
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('uploadId', uploadId);
-      if (targetFolderId) {
-        formData.append('parentId', targetFolderId);
-      }
-      if (relativePath) {
-        formData.append('relativePath', relativePath);
+      for (const item of rawItems) {
+        const file: File = item instanceof File ? item : item.file || item;
+        const relativePath: string = (item as any).relativePath || (file as any).webkitRelativePath || '';
+        const dedupeKey = `${targetFolderId || 'root'}:${(relativePath || file.name).toLowerCase()}:${file.size}`;
+        if (!seenBatchKeys.has(dedupeKey)) {
+          seenBatchKeys.add(dedupeKey);
+          items.push({ file, relativePath });
+        }
       }
 
-      await new Promise<void>((resolve) => {
-        const startTime = Date.now();
-        const xhr = new XMLHttpRequest();
-        let pollTimer: any = null;
+      for (const { file, relativePath } of items) {
+        const uploadId = 'up-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5);
+        
+        const newUpload: UploadProgress = {
+          id: uploadId,
+          fileName: relativePath || file.name,
+          size: file.size,
+          transferred: 0,
+          progress: 0,
+          speed: 'Iniciando...',
+          status: 'uploading',
+          stage: 'local',
+          stageLabel: '1/2 • Carregando arquivo...',
+          targetFolderId
+        };
 
-        const startCloudPolling = () => {
-          if (pollTimer) return;
-          pollTimer = setInterval(async () => {
-            try {
-              const res = await fetch(`/api/uploads/progress/${uploadId}`);
-              if (res.ok) {
-                const data = await res.json();
-                if (data && data.progress !== undefined) {
-                  setUploads(prev => prev.map(u => u.id === uploadId && u.status === 'uploading' ? {
-                    ...u,
-                    transferred: data.transferred !== undefined ? data.transferred : u.transferred,
-                    progress: data.progress,
-                    speed: data.speed || u.speed,
-                    stage: data.stage || 'cloud',
-                    stageLabel: data.stageLabel || '2/2 • Enviando para o Telegram Cloud...'
-                  } : u));
+        setUploads(prev => [newUpload, ...prev]);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('uploadId', uploadId);
+        if (targetFolderId) {
+          formData.append('parentId', targetFolderId);
+        }
+        if (relativePath) {
+          formData.append('relativePath', relativePath);
+        }
+
+        await new Promise<void>((resolve) => {
+          const startTime = Date.now();
+          const xhr = new XMLHttpRequest();
+          let pollTimer: any = null;
+
+          const startCloudPolling = () => {
+            if (pollTimer) return;
+            pollTimer = setInterval(async () => {
+              try {
+                const res = await fetch(`/api/uploads/progress/${uploadId}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data && data.progress !== undefined) {
+                    setUploads(prev => prev.map(u => u.id === uploadId && u.status === 'uploading' ? {
+                      ...u,
+                      transferred: data.transferred !== undefined ? data.transferred : u.transferred,
+                      progress: data.progress,
+                      speed: data.speed || u.speed,
+                      stage: data.stage || 'cloud',
+                      stageLabel: data.stageLabel || '2/2 • Enviando para o Telegram Cloud...'
+                    } : u));
+                  }
                 }
+              } catch (e) {}
+            }, 200);
+          };
+
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const transferred = event.loaded;
+              const total = event.total || file.size;
+              const isFinishedLocal = transferred >= total;
+              const progress = isFinishedLocal ? 100 : Math.min(Math.round((transferred / total) * 100), 99);
+              const elapsedSec = (Date.now() - startTime) / 1000;
+              const speedMBs = elapsedSec > 0 ? ((transferred / (1024 * 1024)) / elapsedSec).toFixed(1) : '1.0';
+
+              setUploads(prev => prev.map(u => u.id === uploadId && u.status === 'uploading' ? {
+                ...u,
+                transferred: isFinishedLocal ? 0 : transferred,
+                size: total,
+                progress: isFinishedLocal ? 0 : progress,
+                speed: `${speedMBs} MB/s`,
+                stage: isFinishedLocal ? 'cloud' : 'local',
+                stageLabel: isFinishedLocal ? '2/2 • Conectando ao Telegram Cloud...' : '1/2 • Carregando arquivo local...'
+              } : u));
+
+              if (isFinishedLocal) {
+                startCloudPolling();
               }
-            } catch (e) {}
-          }, 200);
-        };
-
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const transferred = event.loaded;
-            const total = event.total || file.size;
-            const isFinishedLocal = transferred >= total;
-            const progress = isFinishedLocal ? 100 : Math.min(Math.round((transferred / total) * 100), 99);
-            const elapsedSec = (Date.now() - startTime) / 1000;
-            const speedMBs = elapsedSec > 0 ? ((transferred / (1024 * 1024)) / elapsedSec).toFixed(1) : '1.0';
-
-            setUploads(prev => prev.map(u => u.id === uploadId && u.status === 'uploading' ? {
-              ...u,
-              transferred: isFinishedLocal ? 0 : transferred,
-              size: total,
-              progress: isFinishedLocal ? 0 : progress,
-              speed: `${speedMBs} MB/s`,
-              stage: isFinishedLocal ? 'cloud' : 'local',
-              stageLabel: isFinishedLocal ? '2/2 • Conectando ao Telegram Cloud...' : '1/2 • Carregando arquivo local...'
-            } : u));
-
-            if (isFinishedLocal) {
-              startCloudPolling();
             }
-          }
-        };
+          };
 
-        xhr.onload = async () => {
-          if (pollTimer) clearInterval(pollTimer);
-          if (xhr.status >= 200 && xhr.status < 300) {
-            setUploads(prev => prev.map(u => u.id === uploadId ? {
-              ...u,
-              transferred: file.size,
-              size: file.size,
-              progress: 100,
-              status: 'completed',
-              stage: 'completed',
-              stageLabel: 'Salvo com sucesso na nuvem',
-              speed: 'Concluído'
-            } : u));
-            await fetchItems();
-          } else {
+          xhr.onload = async () => {
+            if (pollTimer) clearInterval(pollTimer);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              setUploads(prev => prev.map(u => u.id === uploadId ? {
+                ...u,
+                transferred: file.size,
+                size: file.size,
+                progress: 100,
+                status: 'completed',
+                stage: 'completed',
+                stageLabel: 'Salvo com sucesso na nuvem',
+                speed: 'Concluído'
+              } : u));
+              await fetchItems();
+            } else {
+              setUploads(prev => prev.map(u => u.id === uploadId ? {
+                ...u,
+                status: 'error',
+                stage: 'error',
+                stageLabel: 'Falha no envio',
+                error: 'Erro no upload'
+              } : u));
+            }
+            resolve();
+          };
+
+          xhr.onerror = () => {
+            if (pollTimer) clearInterval(pollTimer);
             setUploads(prev => prev.map(u => u.id === uploadId ? {
               ...u,
               status: 'error',
               stage: 'error',
-              stageLabel: 'Falha no envio',
-              error: 'Erro no upload'
+              stageLabel: 'Falha na conexão',
+              error: 'Falha na conexão'
             } : u));
-          }
-          resolve();
-        };
+            resolve();
+          };
 
-        xhr.onerror = () => {
-          if (pollTimer) clearInterval(pollTimer);
-          setUploads(prev => prev.map(u => u.id === uploadId ? {
-            ...u,
-            status: 'error',
-            stage: 'error',
-            stageLabel: 'Falha na conexão',
-            error: 'Falha na conexão'
-          } : u));
-          resolve();
-        };
+          xhr.open('POST', '/api/files/upload', true);
+          xhr.send(formData);
+        });
+      }
+    };
 
-        xhr.open('POST', '/api/files/upload', true);
-        xhr.send(formData);
-      });
-    }
+    const queued = uploadQueueRef.current.then(runBatch, runBatch);
+    uploadQueueRef.current = queued;
+    await queued;
   };
 
   // Delete file or folder (permanent=true deletes permanently from Telegram & disk)

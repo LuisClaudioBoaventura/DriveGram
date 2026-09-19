@@ -59,6 +59,8 @@ class TelegramService {
   private lastSentMetadataMessageId: number | null = null;
   private lastUploadedManifestHash: string | null = null;
   private isUploadingFile: boolean = false;
+  private uploadMutex: Promise<any> = Promise.resolve();
+  private activeUploadCount: number = 0;
   private isRealtimeListenerActive: boolean = false;
 
   // ---- FileLocation Cache ----
@@ -578,81 +580,98 @@ class TelegramService {
       return { messageId: Math.floor(Math.random() * 90000) + 1000, success: true };
     }
 
-    this.isUploadingFile = true;
-    try {
-      let client = await this.ensureClient();
-      if (!client) {
-        return { success: false, error: 'Telegram não conectado ou sessão indisponível.' };
-      }
+    if (!fs.existsSync(filePath)) {
+      return { success: false, error: `Arquivo físico "${fileName}" não encontrado no disco para envio.` };
+    }
 
-      const doUpload = async (c: TelegramClient) => {
-        return await c.sendFile('me', {
-          file: filePath,
-          caption: caption,
-          workers: 4, // 4 workers paralelos aceleram muito uploads de vídeos grandes (>100MB)
-          progressCallback: (p: any) => {
-            if (onProgress && typeof p === 'number') {
-              onProgress(Math.min(Math.round(p * 100), 99));
-            }
-          }
-        });
-      };
+    const runUpload = async (): Promise<{ messageId?: number; success: boolean; error?: string }> => {
+      this.activeUploadCount++;
+      this.isUploadingFile = true;
 
       try {
-        const message = await doUpload(client);
-        if (onProgress) {
-          onProgress(100);
+        let client = await this.ensureClient();
+        if (!client) {
+          return { success: false, error: 'Telegram não conectado ou sessão indisponível.' };
         }
-        return {
-          messageId: message.id,
-          success: true
-        };
-      } catch (e: any) {
-        console.warn('[DriveGram Telegram] Upload encountered error:', e.message);
 
-        // Auto-recover once if connection dropped, auth key desynchronized, or timeout
-        if (
-          e.message?.includes('AUTH_KEY') ||
-          e.message?.includes('401') ||
-          e.message?.includes('TIMEOUT') ||
-          e.message?.includes('disconnected') ||
-          e.message?.includes('connection')
-        ) {
-          try {
-            console.log('[DriveGram Telegram] Rebuilding client and retrying upload...');
-            this.client = null;
-            client = await this.ensureClient();
-            if (client) {
-              const retryMessage = await doUpload(client);
-              if (onProgress) onProgress(100);
-              return { messageId: retryMessage.id, success: true };
+        const doUpload = async (c: TelegramClient) => {
+          return await c.sendFile('me', {
+            file: filePath,
+            caption: caption,
+            workers: 4, // 4 workers paralelos aceleram muito uploads de vídeos grandes (>100MB)
+            progressCallback: (p: any) => {
+              if (onProgress && typeof p === 'number') {
+                onProgress(Math.min(Math.round(p * 100), 99));
+              }
             }
-          } catch (retryErr: any) {
-            console.error('[DriveGram Telegram] Retry upload also failed:', retryErr.message);
-            if (retryErr.message?.includes('AUTH_KEY_UNREGISTERED')) {
-              this.authState.isConnected = false;
-              db.updateSettings({ telegramSession: undefined });
-              return {
-                success: false,
-                error: 'Sessão do Telegram revogada ou expirada. Por favor, conecte o Telegram novamente.'
-              };
+          });
+        };
+
+        try {
+          const message = await doUpload(client);
+          if (onProgress) {
+            onProgress(100);
+          }
+          return {
+            messageId: message.id,
+            success: true
+          };
+        } catch (e: any) {
+          console.warn('[DriveGram Telegram] Upload encountered error:', e.message);
+
+          // Auto-recover once if connection dropped, auth key desynchronized, or timeout
+          if (
+            e.message?.includes('AUTH_KEY') ||
+            e.message?.includes('401') ||
+            e.message?.includes('TIMEOUT') ||
+            e.message?.includes('disconnected') ||
+            e.message?.includes('connection')
+          ) {
+            try {
+              console.log('[DriveGram Telegram] Rebuilding client and retrying upload...');
+              this.client = null;
+              client = await this.ensureClient();
+              if (client) {
+                const retryMessage = await doUpload(client);
+                if (onProgress) onProgress(100);
+                return { messageId: retryMessage.id, success: true };
+              }
+            } catch (retryErr: any) {
+              console.error('[DriveGram Telegram] Retry upload also failed:', retryErr.message);
+              if (retryErr.message?.includes('AUTH_KEY_UNREGISTERED')) {
+                this.authState.isConnected = false;
+                db.updateSettings({ telegramSession: undefined });
+                return {
+                  success: false,
+                  error: 'Sessão do Telegram revogada ou expirada. Por favor, conecte o Telegram novamente.'
+                };
+              }
+              return { success: false, error: retryErr.message || 'Erro ao enviar para o Telegram' };
             }
-            return { success: false, error: retryErr.message || 'Erro ao enviar para o Telegram' };
+          }
+
+          return { success: false, error: e.message || 'Erro ao enviar para o Telegram' };
+        }
+      } finally {
+        this.activeUploadCount--;
+        if (this.activeUploadCount <= 0) {
+          this.activeUploadCount = 0;
+          this.isUploadingFile = false;
+          // Se havia um backup de metadados aguardando o término do upload do arquivo, dispara agora
+          if (this.hasPendingSyncRequest) {
+            this.hasPendingSyncRequest = false;
+            setTimeout(() => {
+              this.syncMetadataToTelegram().catch(() => {});
+            }, 3000);
           }
         }
+      }
+    };
 
-        return { success: false, error: e.message || 'Erro ao enviar para o Telegram' };
-      }
-    } finally {
-      this.isUploadingFile = false;
-      // Se havia um backup de metadados aguardando o término do upload do arquivo, dispara agora
-      if (this.hasPendingSyncRequest) {
-        this.hasPendingSyncRequest = false;
-        setTimeout(() => {
-          this.syncMetadataToTelegram().catch(() => {});
-        }, 3000);
-      }
-    }
+    // Serializa todos os uploads de arquivos para garantir 1 arquivo por vez no cliente MTProto
+    const queuedTask = this.uploadMutex.then(runUpload, runUpload);
+    this.uploadMutex = queuedTask.then(() => {}, () => {});
+    return queuedTask;
   }
 
   /**

@@ -28,7 +28,7 @@ import { telegramService, telegramEvents } from './telegram.js';
 import { castService } from './cast.js';
 import { comicService } from './comicService.js';
 import { parseYouTubeUrl, extractYouTubeVideoId } from './youtube-parser.js';
-import { FileType } from '../src/types/index.js';
+import { FileType, DriveItem } from '../src/types/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.15.4',
+    version: '1.15.5',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -237,6 +237,7 @@ interface ServerUploadProgress {
   updatedAt: number;
 }
 const activeUploadsMap = new Map<string, ServerUploadProgress>();
+const inFlightUploadsMap = new Map<string, Promise<DriveItem>>();
 
 app.get(['/api/uploads/progress/:id', '/api/upload-progress/:id'], (req, res) => {
   const progress = activeUploadsMap.get(req.params.id);
@@ -318,6 +319,73 @@ app.post('/api/files/upload', async (req, res) => {
       parentId = currentParent;
     }
 
+    // 1. Deduplicação contra arquivos existentes no banco já salvos no Telegram
+    const allFiles = db.getAllFiles();
+    const existingFile = allFiles.find(f => 
+      !f.isTrash && 
+      f.name.toLowerCase() === originalname.toLowerCase() && 
+      f.size === size && 
+      (f.parentId || null) === (parentId || null) &&
+      f.telegramMeta?.isUploadedToTelegram &&
+      f.telegramMeta?.messageId
+    );
+
+    if (existingFile) {
+      console.log(`[Upload] ⚡ Arquivo idêntico já existente no Drive ("${originalname}" em parentId: ${parentId}). Reutilizando registro ${existingFile.id}.`);
+      try {
+        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+      } catch (_) {}
+
+      activeUploadsMap.set(uploadId, {
+        uploadId,
+        fileName: originalname,
+        size,
+        transferred: size,
+        progress: 100,
+        speed: 'Já sincronizado',
+        stage: 'completed',
+        stageLabel: 'Arquivo já sincronizado no Telegram',
+        updatedAt: Date.now()
+      });
+      setTimeout(() => activeUploadsMap.delete(uploadId), 5000);
+
+      return res.status(200).json(existingFile);
+    }
+
+    // 2. Trava contra uploads concorrentes do mesmíssimo arquivo
+    const uploadFingerprint = `${parentId || 'root'}:${originalname.toLowerCase()}:${size}`;
+    const inFlightPromise = inFlightUploadsMap.get(uploadFingerprint);
+    if (inFlightPromise) {
+      console.log(`[Upload] ⏳ Upload do mesmo arquivo já em andamento ("${originalname}"). Aguardando conclusão da requisição ativa.`);
+      try {
+        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+      } catch (_) {}
+
+      const finishedItem = await inFlightPromise;
+      activeUploadsMap.set(uploadId, {
+        uploadId,
+        fileName: originalname,
+        size,
+        transferred: size,
+        progress: 100,
+        speed: 'Concluído',
+        stage: 'completed',
+        stageLabel: 'Salvo com sucesso no Telegram',
+        updatedAt: Date.now()
+      });
+      setTimeout(() => activeUploadsMap.delete(uploadId), 5000);
+
+      return res.status(200).json(finishedItem);
+    }
+
+    let uploadResolve!: (item: DriveItem) => void;
+    let uploadReject!: (err: any) => void;
+    const currentUploadPromise = new Promise<DriveItem>((resPromise, rejPromise) => {
+      uploadResolve = resPromise;
+      uploadReject = rejPromise;
+    });
+    inFlightUploadsMap.set(uploadFingerprint, currentUploadPromise);
+
     const ext = path.extname(originalname);
     const fileType = getFileType(ext);
 
@@ -390,6 +458,9 @@ app.post('/api/files/upload', async (req, res) => {
       lessonId
     });
 
+    uploadResolve(newFile);
+    inFlightUploadsMap.delete(uploadFingerprint);
+
     console.log(`[Upload] ✅ Arquivo enviado ao Telegram com sucesso (Msg ID: ${telegramResult.messageId}) e registrado como ${newFile.id}`);
 
     activeUploadsMap.set(uploadId, {
@@ -415,6 +486,12 @@ app.post('/api/files/upload', async (req, res) => {
 
     res.status(201).json(newFile);
   } catch (e: any) {
+    const origName = req.file?.originalname ? fixUtf8Encoding(req.file.originalname) : 'Arquivo';
+    const parentId = req.body?.parentId || 'root';
+    const fSize = req.file?.size || 0;
+    const fingerprint = `${parentId}:${origName.toLowerCase()}:${fSize}`;
+    inFlightUploadsMap.delete(fingerprint);
+
     // Log detalhado com stack trace para facilitar diagnóstico
     console.error('[Upload] Erro no handler de upload:', e?.message || e);
     if (e?.stack) console.error('[Upload] Stack trace:', e.stack);
@@ -1422,6 +1499,17 @@ app.post('/api/cache/clear', (_req, res) => {
     freedBytes: result.freedBytes,
     freedBytesFormatted: (result.freedBytes / (1024 * 1024)).toFixed(2) + ' MB',
     message: `Cache limpo com sucesso! ${result.clearedFiles} arquivo(s) removidos (${(result.freedBytes / (1024 * 1024)).toFixed(2)} MB liberados).`
+  });
+});
+
+app.post('/api/database/deduplicate', (_req, res) => {
+  const result = db.deduplicateDuplicateFilesAndMedia();
+  res.json({
+    success: true,
+    removedFiles: result.removedFiles,
+    removedVideos: result.removedVideos,
+    bytesFreed: result.bytesFreed,
+    freedFormatted: (result.bytesFreed / (1024 * 1024)).toFixed(2) + ' MB'
   });
 });
 

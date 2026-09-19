@@ -249,6 +249,7 @@ class Database {
   constructor() {
     this.data = this.load();
     this.deduplicateFolders();
+    this.deduplicateDuplicateFilesAndMedia();
     this.ensureDefaultLibraryFolders();
   }
 
@@ -465,6 +466,184 @@ class Database {
     }
 
     return { removedFolders, removedFiles };
+  }
+
+  public deduplicateDuplicateFilesAndMedia(): { removedFiles: number; removedVideos: number; bytesFreed: number } {
+    let removedFiles = 0;
+    let removedVideos = 0;
+    let bytesFreed = 0;
+
+    if (!this.data.files) this.data.files = [];
+    if (!this.data.videos) this.data.videos = [];
+    if (!this.data.settings) (this.data as any).settings = {};
+    if (!this.data.settings.deletedFileIds) this.data.settings.deletedFileIds = [];
+
+    // 1. Agrupar arquivos idênticos por pasta, nome em minúsculas e tamanho
+    const fileGroups = new Map<string, DriveItem[]>();
+    for (const f of this.data.files) {
+      if (f.isTrash) continue;
+      const key = `${f.parentId || 'root'}:${(f.name || '').toLowerCase()}:${f.size || 0}`;
+      if (!fileGroups.has(key)) fileGroups.set(key, []);
+      fileGroups.get(key)!.push(f);
+    }
+
+    const removedFileIdSet = new Set<string>();
+
+    for (const [, list] of fileGroups.entries()) {
+      if (list.length > 1) {
+        // Ordenar para eleger o arquivo canônico (original e confiável):
+        // 1. Arquivo com upload confirmado no Telegram (isUploadedToTelegram === true) e messageId válido
+        // 2. Arquivo já referenciado em vídeos, cursos, livros, quadrinhos, etc.
+        // 3. Arquivo mais antigo (createdAt original)
+        list.sort((a, b) => {
+          const aUploaded = a.telegramMeta?.isUploadedToTelegram && a.telegramMeta?.messageId ? 1 : 0;
+          const bUploaded = b.telegramMeta?.isUploadedToTelegram && b.telegramMeta?.messageId ? 1 : 0;
+          if (aUploaded !== bUploaded) return bUploaded - aUploaded;
+
+          const aReferenced = (this.data.videos || []).some(v => v.fileId === a.id) ? 1 : 0;
+          const bReferenced = (this.data.videos || []).some(v => v.fileId === b.id) ? 1 : 0;
+          if (aReferenced !== bReferenced) return bReferenced - aReferenced;
+
+          const aDate = new Date(a.createdAt || 0).getTime();
+          const bDate = new Date(b.createdAt || 0).getTime();
+          return aDate - bDate;
+        });
+
+        const canonical = list[0];
+        const duplicates = list.slice(1);
+
+        for (const dup of duplicates) {
+          removedFileIdSet.add(dup.id);
+          if (!this.data.settings.deletedFileIds!.includes(dup.id)) {
+            this.data.settings.deletedFileIds!.push(dup.id);
+          }
+
+          // Remapear referências de vídeos para o arquivo canônico
+          if (this.data.videos) {
+            for (const v of this.data.videos) {
+              if (v.fileId === dup.id) {
+                v.fileId = canonical.id;
+              }
+            }
+          }
+          // Remapear cursos
+          if (this.data.courses) {
+            for (const c of this.data.courses) {
+              for (const m of c.modules || []) {
+                for (const l of m.lessons || []) {
+                  if (l.fileId === dup.id) l.fileId = canonical.id;
+                }
+              }
+            }
+          }
+          // Remapear livros
+          if (this.data.books) {
+            for (const b of this.data.books) {
+              if (b.ebookFileId === dup.id) b.ebookFileId = canonical.id;
+              for (const ch of b.chapters || []) {
+                if (ch.fileId === dup.id) ch.fileId = canonical.id;
+              }
+            }
+          }
+          // Remapear quadrinhos
+          if (this.data.comics) {
+            for (const cm of this.data.comics) {
+              for (const iss of cm.issues || []) {
+                if (iss.fileId === dup.id) iss.fileId = canonical.id;
+              }
+            }
+          }
+          // Remapear vídeos pessoais
+          if (this.data.personalVideos) {
+            for (const pv of this.data.personalVideos) {
+              if (pv.fileId === dup.id) pv.fileId = canonical.id;
+            }
+          }
+          // Remapear adult videos
+          if (this.data.adultVideos) {
+            for (const av of this.data.adultVideos) {
+              if (av.fileId === dup.id) av.fileId = canonical.id;
+            }
+          }
+        }
+      }
+    }
+
+    if (removedFileIdSet.size > 0) {
+      const prevCount = this.data.files.length;
+      this.data.files = this.data.files.filter(f => !removedFileIdSet.has(f.id));
+      removedFiles = prevCount - this.data.files.length;
+    }
+
+    // 2. Deduplicar vídeos em this.data.videos
+    if (this.data.videos && this.data.videos.length > 0) {
+      const videoGroups = new Map<string, MovieVideo[]>();
+      for (const v of this.data.videos) {
+        const key = v.fileId 
+          ? `file:${v.fileId}`
+          : `title:${v.folderId || 'none'}:${(v.title || '').toLowerCase().trim()}:${v.year || ''}`;
+        if (!videoGroups.has(key)) videoGroups.set(key, []);
+        videoGroups.get(key)!.push(v);
+      }
+
+      const keptVideos: MovieVideo[] = [];
+      for (const [, list] of videoGroups.entries()) {
+        if (list.length === 1) {
+          keptVideos.push(list[0]);
+        } else {
+          // Priorizar o que tem mais metadados completos
+          list.sort((a, b) => {
+            const aScore = (a.imdbId ? 10 : 0) + (a.lastPositionSeconds ? 5 : 0) + (a.description ? 2 : 0) + (a.actors ? 2 : 0);
+            const bScore = (b.imdbId ? 10 : 0) + (b.lastPositionSeconds ? 5 : 0) + (b.description ? 2 : 0) + (b.actors ? 2 : 0);
+            if (aScore !== bScore) return bScore - aScore;
+            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+          });
+          keptVideos.push(list[0]);
+          removedVideos += list.length - 1;
+        }
+      }
+      this.data.videos = keptVideos;
+    }
+
+    // 3. Limpar arquivos temporários órfãos acumulados em uploads/
+    try {
+      const uploadsDir = path.resolve(process.cwd(), 'uploads');
+      if (fs.existsSync(uploadsDir)) {
+        const registeredFileNames = new Set(
+          (this.data.files || []).map(f => f.telegramMeta?.telegramFileName).filter(Boolean)
+        );
+        const entries = fs.readdirSync(uploadsDir);
+        const now = Date.now();
+        const fifteenMinutes = 15 * 60 * 1000;
+
+        for (const entry of entries) {
+          if (entry === '.gitkeep') continue;
+          const fullPath = path.join(uploadsDir, entry);
+          try {
+            const st = fs.statSync(fullPath);
+            if (!st.isFile()) continue;
+
+            // Se o arquivo não está no banco e tem mais de 15 minutos (evitando tocar em upload em andamento)
+            if (!registeredFileNames.has(entry) && (now - st.mtimeMs > fifteenMinutes)) {
+              fs.unlinkSync(fullPath);
+              bytesFreed += st.size;
+            }
+          } catch (stErr) {
+            // Ignorar erro em arquivo específico
+          }
+        }
+      }
+    } catch (dirErr: any) {
+      console.warn('[DriveGram Deduplication] Não foi possível limpar pasta uploads:', dirErr.message);
+    }
+
+    if (removedFiles > 0 || removedVideos > 0 || bytesFreed > 0) {
+      const freedMb = (bytesFreed / (1024 * 1024)).toFixed(1);
+      console.log(`[DriveGram Deduplication] Limpeza concluída: ${removedFiles} arquivos duplicados removidos, ${removedVideos} filmes duplicados consolidados, ${freedMb} MB liberados em uploads/ órfãos.`);
+      this.save(this.data, false);
+    }
+
+    return { removedFiles, removedVideos, bytesFreed };
   }
 
   public ensureDefaultLibraryFolders(): void {
@@ -4031,6 +4210,22 @@ class Database {
 
       if (!cleanTitle) cleanTitle = cleanFileName;
 
+      // Evitar duplicações se já existe um filme cadastrado com o mesmo título e pasta
+      const existingByTitleAndFolder = this.data.videos.find(v => 
+        (v.folderId === file.parentId || (!v.folderId && file.parentId === rootFolders[0].id)) &&
+        v.title.toLowerCase().trim() === cleanTitle.toLowerCase().trim() &&
+        (!v.year || !year || v.year === year)
+      );
+
+      if (existingByTitleAndFolder) {
+        if (!existingByTitleAndFolder.fileId || existingByTitleAndFolder.fileId !== file.id) {
+          existingByTitleAndFolder.fileId = file.id;
+          existingByTitleAndFolder.updatedAt = new Date().toISOString();
+          updatedCount++;
+        }
+        continue;
+      }
+
       const folderCover = file.parentId ? this.findFolderImageCover(file.parentId) : undefined;
       const defaultCover = folderCover || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60';
       const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Filmes';
@@ -4117,6 +4312,21 @@ class Database {
 
       const dateMatch = file.name.match(/(\d{4}[-_.]\d{2}[-_.]\d{2})/);
       const date = dateMatch ? dateMatch[1].replace(/[_.]/g, '-') : undefined;
+
+      // Evitar duplicações se já existe um vídeo pessoal cadastrado com o mesmo título e pasta
+      const existingByTitleAndFolder = this.data.personalVideos.find(v => 
+        (v.folderId === file.parentId || (!v.folderId && file.parentId === rootFolders[0].id)) &&
+        v.title.toLowerCase().trim() === cleanFileName.toLowerCase().trim()
+      );
+
+      if (existingByTitleAndFolder) {
+        if (!existingByTitleAndFolder.fileId || existingByTitleAndFolder.fileId !== file.id) {
+          existingByTitleAndFolder.fileId = file.id;
+          existingByTitleAndFolder.updatedAt = new Date().toISOString();
+          updatedCount++;
+        }
+        continue;
+      }
 
       const folderCover = file.parentId ? this.findFolderImageCover(file.parentId) : undefined;
       const defaultCover = folderCover || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60';
@@ -4695,6 +4905,7 @@ class Database {
 
     if (updated) {
       this.deduplicateFolders();
+      this.deduplicateDuplicateFilesAndMedia();
       this.syncAllLibrariesWithFolderStructure();
       this.data.settings.lastSyncDate = new Date().toISOString();
       this.save(this.data, false);
