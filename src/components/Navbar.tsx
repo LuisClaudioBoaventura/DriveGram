@@ -21,6 +21,7 @@ import {
   Menu,
   Smartphone,
   FolderOpen,
+  Cloud,
   X
 } from 'lucide-react';
 import { TelegramAuthState, FileType } from '../types/index.js';
@@ -158,24 +159,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Search className="w-4 h-4" />
           </button>
 
-          {/* Cloud Sync Status */}
-          <button
-            onClick={onSyncNow}
-            disabled={isSyncing}
-            title="Sincronizar metadados e árvore de pastas com o Telegram"
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium bg-gray-100 hover:bg-gray-200 dark:bg-drive-darkSurface dark:hover:bg-drive-darkHover text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-drive-darkBorder transition-all active:scale-95"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-blue-500 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span className="hidden md:inline">{isSyncing ? 'Sincronizando...' : 'Auto-Sync'}</span>
-          </button>
-
-          {/* Backup / Restore Modal Trigger */}
+          {/* Hub de Gerenciamento de Nuvem, Streaming, Cache & Configurações */}
           <button
             onClick={onOpenSync}
-            title="Gerenciar Backup e Restauração em Nuvem"
-            className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-drive-darkHover border border-gray-200 dark:border-drive-darkBorder transition-all"
+            title="Gerenciamento de Nuvem, Streaming & Cache"
+            className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 transition-all active:scale-95"
           >
-            <HardDrive className="w-4 h-4 text-emerald-500" />
+            <Cloud className="w-4 h-4 text-blue-500" />
           </button>
 
           {/* Abrir Pasta Local de Arquivos (Uploads/Downloads) Trigger */}
@@ -186,28 +176,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all active:scale-95"
             >
               <FolderOpen className="w-4 h-4 text-amber-500" />
-            </button>
-          )}
-
-          {/* Central de Chaves de API Modal Trigger (Desktop/Tablet) */}
-          {(onOpenApiKeysModal || onOpenOmdbKeyModal) && (
-            <button
-              onClick={onOpenApiKeysModal || onOpenOmdbKeyModal}
-              title="Central de Chaves de API (OMDb, Google Books, YouTube, TMDb)"
-              className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all active:scale-95"
-            >
-              <Key className="w-4 h-4 text-amber-500" />
-            </button>
-          )}
-
-          {/* Diagnóstico do Sistema Desktop Trigger (Desktop/Tablet) */}
-          {onOpenMobileServerSettings && (
-            <button
-              onClick={onOpenMobileServerSettings}
-              title="Diagnóstico do Sistema Desktop (F12)"
-              className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 transition-all active:scale-95"
-            >
-              <Smartphone className="w-4 h-4 text-blue-500" />
             </button>
           )}
 

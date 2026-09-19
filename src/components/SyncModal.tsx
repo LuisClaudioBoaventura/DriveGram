@@ -23,9 +23,13 @@ import {
   EyeOff,
   Radio,
   ArrowLeft,
-  ChevronRight
+  ChevronRight,
+  Key,
+  Monitor
 } from 'lucide-react';
 import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult, SavedAuditItem } from '../types/index.js';
+import { ApiKeysSection } from './ApiKeysSection.js';
+import { SystemDiagnosticSection } from './SystemDiagnosticSection.js';
 
 interface SyncModalProps {
   isOpen: boolean;
@@ -40,6 +44,7 @@ interface SyncModalProps {
   onClearCache?: () => Promise<any>;
   onAuditSaved?: (limit?: number) => Promise<SavedAuditResult>;
   onReconcileSaved?: (messageIds?: number[]) => Promise<any>;
+  onOpenAuth?: () => void;
 }
 
 export const SyncModal: React.FC<SyncModalProps> = ({
@@ -54,9 +59,10 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   onUpdateCacheDuration,
   onClearCache,
   onAuditSaved,
-  onReconcileSaved
+  onReconcileSaved,
+  onOpenAuth
 }) => {
-  type SyncSection = 'menu' | 'playback' | 'pending' | 'audit' | 'sync' | 'backup_json';
+  type SyncSection = 'menu' | 'playback' | 'pending' | 'audit' | 'sync' | 'api_keys' | 'system_diagnostic' | 'backup_json';
   const [activeSection, setActiveSection] = useState<SyncSection>('menu');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
@@ -425,6 +431,14 @@ export const SyncModal: React.FC<SyncModalProps> = ({
       title: 'Sincronização Ativa & Backup de Metadados',
       subtitle: 'Reconciliação ativa, backup de pastas e política de retenção'
     },
+    api_keys: {
+      title: 'Central de Chaves de API',
+      subtitle: 'Configurações de chaves para OMDb, TMDb, Google Books e YouTube'
+    },
+    system_diagnostic: {
+      title: 'Diagnóstico do Sistema Desktop',
+      subtitle: 'Ferramentas de desenvolvedor, inspeção e logs'
+    },
     backup_json: {
       title: 'Exportação e Importação Manual (JSON)',
       subtitle: 'Backup físico e restauração local de metadados em formato JSON'
@@ -497,6 +511,30 @@ export const SyncModal: React.FC<SyncModalProps> = ({
         {
           text: `${telegramState.totalSavedFiles || 0} catalogados`,
           style: 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+        }
+      ]
+    },
+    {
+      id: 'api_keys' as const,
+      title: 'Central de Chaves de API',
+      icon: Key,
+      iconBg: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/50',
+      badges: [
+        {
+          text: 'OMDb, TMDb, YouTube...',
+          style: 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+        }
+      ]
+    },
+    {
+      id: 'system_diagnostic' as const,
+      title: 'Diagnóstico do Sistema Desktop',
+      icon: Monitor,
+      iconBg: 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-200/60 dark:border-cyan-900/50',
+      badges: [
+        {
+          text: 'DevTools (F12) & Logs',
+          style: 'bg-cyan-50 dark:bg-cyan-950/50 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800'
         }
       ]
     },
@@ -1114,7 +1152,29 @@ export const SyncModal: React.FC<SyncModalProps> = ({
           </div>
           )}
 
-          {/* 3. Exportação e Importação Manual (JSON) */}
+          {/* 4. Central de Chaves de API */}
+          {activeSection === 'api_keys' && (
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50/50 via-yellow-50/30 to-orange-50/40 dark:from-drive-darkBg dark:to-drive-darkBg border border-amber-200/90 dark:border-amber-900/60 shadow-sm animate-in fade-in duration-150">
+              <div className="flex items-center gap-2 font-bold text-xs text-amber-800 dark:text-amber-300 mb-2">
+                <Key className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>Central de Chaves de API (OMDb, TMDb, YouTube, etc.)</span>
+              </div>
+              <ApiKeysSection telegramState={telegramState} onOpenAuth={onOpenAuth} />
+            </div>
+          )}
+
+          {/* 5. Diagnóstico do Sistema Desktop */}
+          {activeSection === 'system_diagnostic' && (
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/50 via-sky-50/30 to-indigo-50/40 dark:from-drive-darkBg dark:to-drive-darkBg border border-blue-200/90 dark:border-blue-900/60 shadow-sm animate-in fade-in duration-150">
+              <div className="flex items-center gap-2 font-bold text-xs text-blue-700 dark:text-blue-400 mb-2">
+                <Monitor className="w-4 h-4 text-blue-500 shrink-0" />
+                <span>Diagnóstico do Sistema Desktop</span>
+              </div>
+              <SystemDiagnosticSection />
+            </div>
+          )}
+
+          {/* 6. Exportação e Importação Manual (JSON) */}
           {activeSection === 'backup_json' && (
           <div className="p-4 rounded-2xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder animate-in fade-in duration-150">
             <div className="font-bold text-xs text-gray-800 dark:text-gray-200 mb-1">

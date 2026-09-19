@@ -1324,6 +1324,7 @@ export function App() {
         onClearCache={tg.clearLocalCache}
         onAuditSaved={tg.auditSavedMessages}
         onReconcileSaved={tg.reconcileMissingFiles}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
       />
 
       {/* Folder Creation Modal */}
