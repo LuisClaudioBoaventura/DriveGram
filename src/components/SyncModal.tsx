@@ -21,7 +21,9 @@ import {
   Search,
   Eye,
   EyeOff,
-  Radio
+  Radio,
+  ArrowLeft,
+  ChevronRight
 } from 'lucide-react';
 import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult, SavedAuditItem } from '../types/index.js';
 
@@ -54,6 +56,8 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   onAuditSaved,
   onReconcileSaved
 }) => {
+  type SyncSection = 'menu' | 'playback' | 'pending' | 'audit' | 'sync' | 'backup_json';
+  const [activeSection, setActiveSection] = useState<SyncSection>('menu');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [importingSaved, setImportingSaved] = useState(false);
@@ -236,6 +240,8 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      setActiveSection('menu');
+      setFeedback(null);
       fetchPendingInfo();
     }
   }, [isOpen]);
@@ -396,25 +402,152 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 
   const currentMode = telegramState.streamingMode || 'cloud_direct';
 
+  if (!isOpen) return null;
+
+  const sectionHeaders: Record<SyncSection, { title: string; subtitle: string }> = {
+    menu: {
+      title: 'Gerenciamento de Nuvem, Streaming & Cache',
+      subtitle: 'Configure como suas mídias são reproduzidas, armazenadas e sincronizadas com o Telegram'
+    },
+    playback: {
+      title: 'Modo de Reprodução & Cache (Vídeos e Áudios)',
+      subtitle: 'Estratégias de streaming, retenção temporária e armazenamento local'
+    },
+    pending: {
+      title: 'Arquivos Pendentes de Envio ao Telegram',
+      subtitle: 'Upload de arquivos locais para as Mensagens Salvas do Telegram'
+    },
+    audit: {
+      title: 'Auditoria & Reconciliação das Mensagens Salvas',
+      subtitle: 'Comparação de catálogo com Telegram, faltantes e reparo de pastas'
+    },
+    sync: {
+      title: 'Sincronização Ativa & Backup de Metadados',
+      subtitle: 'Reconciliação ativa, backup de pastas e política de retenção'
+    },
+    backup_json: {
+      title: 'Exportação e Importação Manual (JSON)',
+      subtitle: 'Backup físico e restauração local de metadados em formato JSON'
+    }
+  };
+
+  const menuOptions = [
+    {
+      id: 'playback' as const,
+      title: 'Reprodução (Áudio e Vídeo)',
+      icon: Zap,
+      iconBg: 'bg-amber-50 dark:bg-amber-950/40 text-amber-500 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/50',
+      badges: [
+        {
+          text: currentMode === 'cloud_direct' 
+            ? '⚡ Nuvem Direta' 
+            : currentMode === 'temp_cache' 
+            ? '⏳ Cache Temporário' 
+            : '💾 Cache Permanente',
+          style: 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+        },
+        {
+          text: `Disco: ${formatBytes(telegramState.localCacheSizeBytes || 0)}`,
+          style: 'bg-gray-100 dark:bg-drive-darkBg text-gray-600 dark:text-gray-400 border-gray-200 dark:border-drive-darkBorder'
+        }
+      ]
+    },
+    {
+      id: 'pending' as const,
+      title: 'Arquivos Pendentes de Envio',
+      icon: CloudUpload,
+      iconBg: 'bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border border-orange-200/60 dark:border-orange-900/50',
+      badges: [
+        {
+          text: pendingInfo && pendingInfo.totalPending > 0 
+            ? `${pendingInfo.totalPending} pendente(s)` 
+            : 'Tudo salvo na nuvem',
+          style: pendingInfo && pendingInfo.totalPending > 0
+            ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-800'
+            : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+        }
+      ]
+    },
+    {
+      id: 'audit' as const,
+      title: 'Auditoria & Reconciliação (Mensagens Salvas)',
+      icon: Search,
+      iconBg: 'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200/60 dark:border-purple-900/50',
+      badges: [
+        {
+          text: auditResult && auditResult.missingCount > 0
+            ? `${auditResult.missingCount} não catalogado(s)`
+            : 'Tempo Real Ativo',
+          style: auditResult && auditResult.missingCount > 0
+            ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-800'
+            : 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+        }
+      ]
+    },
+    {
+      id: 'sync' as const,
+      title: 'Sincronização Ativa & Backup de Metadados',
+      icon: Send,
+      iconBg: 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/50',
+      badges: [
+        {
+          text: 'Backup Ativo (3.5s)',
+          style: 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+        },
+        {
+          text: `${telegramState.totalSavedFiles || 0} catalogados`,
+          style: 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+        }
+      ]
+    },
+    {
+      id: 'backup_json' as const,
+      title: 'Exportação e Importação Manual (JSON)',
+      icon: Database,
+      iconBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900/50',
+      badges: [
+        {
+          text: 'Backup Offline (.json)',
+          style: 'bg-gray-100 dark:bg-drive-darkBg text-gray-700 dark:text-gray-300 border-gray-200 dark:border-drive-darkBorder'
+        }
+      ]
+    }
+  ];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-150">
       <div className="relative w-full max-w-2xl max-h-[94vh] sm:max-h-[92vh] overflow-y-auto overflow-x-hidden rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl p-4 sm:p-6 text-gray-800 dark:text-gray-100 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-gray-100 dark:border-drive-darkBorder mb-4 sm:mb-5 sticky top-0 bg-white/95 dark:bg-drive-darkSurface/95 backdrop-blur-md z-10">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
-            <div className="p-2 sm:p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0">
-              <Cloud className="w-5 h-5 sm:w-6 sm:h-6" />
-            </div>
+            {activeSection === 'menu' ? (
+              <div className="p-2 sm:p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0">
+                <Cloud className="w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSection('menu');
+                  setFeedback(null);
+                }}
+                className="p-2 sm:p-2.5 rounded-2xl bg-gray-100 hover:bg-gray-200 dark:bg-drive-darkHover dark:hover:bg-drive-darkBorder text-gray-700 dark:text-gray-200 transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+                title="Voltar ao menu de funções"
+              >
+                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="text-xs font-bold hidden sm:inline">Voltar</span>
+              </button>
+            )}
             <div className="min-w-0">
               <h3 className="font-bold text-sm sm:text-base leading-tight truncate sm:whitespace-normal">
-                Gerenciamento de Nuvem, Streaming & Cache
+                {sectionHeaders[activeSection].title}
               </h3>
               <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 line-clamp-1 sm:line-clamp-none">
-                Configure como suas mídias são reproduzidas, armazenadas e sincronizadas com o Telegram
+                {sectionHeaders[activeSection].subtitle}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors shrink-0">
+          <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors shrink-0 cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -431,8 +564,55 @@ export const SyncModal: React.FC<SyncModalProps> = ({
         )}
 
         <div className="space-y-4">
+          {/* Pré-Tela: Hub / Menu de Funções */}
+          {activeSection === 'menu' && (
+            <div className="space-y-2 animate-in fade-in duration-150">
+              <div className="text-xs text-gray-500 dark:text-gray-400 font-medium px-1 mb-1">
+                Selecione uma função para configurar:
+              </div>
+              {menuOptions.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveSection(item.id);
+                      setFeedback(null);
+                    }}
+                    className="w-full flex items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-gray-50/70 hover:bg-white dark:bg-drive-darkBg/60 dark:hover:bg-drive-darkBg border border-gray-200/80 dark:border-drive-darkBorder hover:border-blue-400 dark:hover:border-blue-500/50 hover:shadow-sm transition-all text-left group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 pr-2">
+                      <div className={`p-2.5 sm:p-3 rounded-2xl shrink-0 transition-transform group-hover:scale-105 ${item.iconBg}`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <span className="font-bold text-xs sm:text-sm text-gray-800 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+                        {item.title}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                      <div className="hidden xs:flex flex-wrap items-center gap-1.5 justify-end">
+                        {item.badges.map((badge, idx) => (
+                          <span
+                            key={idx}
+                            className={`text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full border ${badge.style}`}
+                          >
+                            {badge.text}
+                          </span>
+                        ))}
+                      </div>
+                      <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* 1. Modo de Reprodução & Streaming com 3 Opções */}
-          <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-br from-indigo-50/50 via-purple-50/30 to-blue-50/40 dark:from-drive-darkBg dark:to-drive-darkBg border border-indigo-100 dark:border-drive-darkBorder space-y-3">
+          {activeSection === 'playback' && (
+          <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-br from-indigo-50/50 via-purple-50/30 to-blue-50/40 dark:from-drive-darkBg dark:to-drive-darkBg border border-indigo-100 dark:border-drive-darkBorder space-y-3 animate-in fade-in duration-150">
             <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="flex items-center gap-2 font-bold text-xs text-indigo-700 dark:text-indigo-400">
                 <Zap className="w-4 h-4 text-amber-500 shrink-0" />
@@ -448,7 +628,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
             </div>
 
             <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
-              Escolha a estratégia ideal de reprodução para economizar armazenamento ou otimizar a velocidade de buffer:
+              Configure como suas mídias são reproduzidas no DriveGram. Escolha a estratégia ideal para economizar espaço ou acelerar o buffer, ajuste o tempo de retenção do cache temporário e limpe o armazenamento em disco:
             </p>
 
             {/* 3 Option Grid */}
@@ -650,9 +830,11 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               </button>
             </div>
           </div>
+          )}
 
           {/* 2. Sincronização de Arquivos Pendentes */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50/60 to-orange-50/60 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-900/40">
+          {activeSection === 'pending' && (
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50/60 to-orange-50/60 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-900/40 animate-in fade-in duration-150">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2 font-bold text-xs text-amber-800 dark:text-amber-300">
                 <CloudUpload className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -685,9 +867,11 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               </button>
             )}
           </div>
+          )}
 
           {/* Auditoria & Reconciliação Inteligente das Mensagens Salvas */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/70 via-purple-50/50 to-blue-50/70 dark:from-drive-darkBg dark:to-drive-darkBg border border-indigo-200/90 dark:border-indigo-900/60 shadow-sm">
+          {activeSection === 'audit' && (
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/70 via-purple-50/50 to-blue-50/70 dark:from-drive-darkBg dark:to-drive-darkBg border border-indigo-200/90 dark:border-indigo-900/60 shadow-sm animate-in fade-in duration-150">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
               <div className="flex items-center gap-2 font-bold text-xs text-indigo-800 dark:text-indigo-300">
                 <Search className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
@@ -812,9 +996,11 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               </button>
             </div>
           </div>
+          )}
 
           {/* 3. Sincronização Automática & Contínua com Telegram (Mensagens Salvas) */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/50 via-sky-50/40 to-indigo-50/50 dark:from-drive-darkBg dark:to-drive-darkBg border border-blue-200 dark:border-blue-900/60 shadow-sm">
+          {activeSection === 'sync' && (
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/50 via-sky-50/40 to-indigo-50/50 dark:from-drive-darkBg dark:to-drive-darkBg border border-blue-200 dark:border-blue-900/60 shadow-sm animate-in fade-in duration-150">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
               <div className="flex items-center gap-2 font-bold text-xs text-blue-700 dark:text-blue-400">
                 <Send className="w-4 h-4" />
@@ -926,14 +1112,16 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               </div>
             </div>
           </div>
+          )}
 
           {/* 3. Exportação e Importação Manual (JSON) */}
-          <div className="p-4 rounded-2xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder">
+          {activeSection === 'backup_json' && (
+          <div className="p-4 rounded-2xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder animate-in fade-in duration-150">
             <div className="font-bold text-xs text-gray-800 dark:text-gray-200 mb-1">
               Exportação e Importação Manual (JSON)
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Guarde uma cópia física do arquivo de índice e metadados no seu computador.
+              Guarde uma cópia física do arquivo de índice e metadados no seu computador ou restaure uma cópia prévia em arquivo JSON.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-2">
@@ -985,6 +1173,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               />
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>
