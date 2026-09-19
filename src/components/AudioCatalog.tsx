@@ -562,6 +562,17 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
                     <span>Abrir Estúdio</span>
                   </button>
 
+                  {onOpenNewModal && (
+                    <button
+                      onClick={onOpenNewModal}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold shadow-md shadow-emerald-950/40 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                      title="Adicionar novo podcast, álbum ou cadastrar via RSS feed"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Adicionar Podcast</span>
+                    </button>
+                  )}
+
                   {onSyncRootFolder && (
                     <button
                       onClick={handleSyncRoot}
@@ -625,14 +636,25 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-3">
+              {onOpenNewModal && (
+                <button
+                  onClick={onOpenNewModal}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  title="Adicionar novo podcast, álbum ou cadastrar via RSS feed"
+                >
+                  <Plus className="w-4 h-4 text-emerald-600" />
+                  <span>Adicionar Podcast</span>
+                </button>
+              )}
+
               {onSyncRootFolder && (
                 <button
                   onClick={handleSyncRoot}
                   disabled={isSyncingRoot}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-400/40 text-emerald-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-black/10"
                   title="Escanear e sincronizar pastas da biblioteca Músicas e Podcasts automaticamente"
                 >
-                  <RefreshCw className={`w-4 h-4 text-emerald-600 ${isSyncingRoot ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 text-emerald-300 ${isSyncingRoot ? 'animate-spin' : ''}`} />
                   <span>{isSyncingRoot ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
                 </button>
               )}
@@ -947,35 +969,49 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
           />
         </div>
 
-        {/* Type Selector (Álbuns / Podcasts / Playlists) */}
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-0.5 rounded-xl text-xs font-bold shrink-0">
-          <button
-            onClick={() => setSelectedType('all')}
-            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'all' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
-          >
-            <span>Todos</span>
-          </button>
-          <button
-            onClick={() => setSelectedType('music_album')}
-            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'music_album' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
-          >
-            <Disc className="w-3.5 h-3.5" />
-            <span>Álbuns</span>
-          </button>
-          <button
-            onClick={() => setSelectedType('podcast')}
-            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'podcast' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
-          >
-            <Mic className="w-3.5 h-3.5" />
-            <span>Podcasts</span>
-          </button>
-          <button
-            onClick={() => setSelectedType('playlist')}
-            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'playlist' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
-          >
-            <Music2 className="w-3.5 h-3.5" />
-            <span>Playlists</span>
-          </button>
+        {/* Right Controls: Type Selector & Add Podcast Button */}
+        <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-between md:justify-end">
+          {/* Type Selector (Álbuns / Podcasts / Playlists) */}
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-0.5 rounded-xl text-xs font-bold shrink-0">
+            <button
+              onClick={() => setSelectedType('all')}
+              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'all' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
+            >
+              <span>Todos</span>
+            </button>
+            <button
+              onClick={() => setSelectedType('music_album')}
+              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'music_album' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
+            >
+              <Disc className="w-3.5 h-3.5" />
+              <span>Álbuns</span>
+            </button>
+            <button
+              onClick={() => setSelectedType('podcast')}
+              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'podcast' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
+            >
+              <Mic className="w-3.5 h-3.5" />
+              <span>Podcasts</span>
+            </button>
+            <button
+              onClick={() => setSelectedType('playlist')}
+              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${selectedType === 'playlist' ? 'bg-white dark:bg-drive-darkSurface text-emerald-500 shadow-sm' : 'text-gray-500'}`}
+            >
+              <Music2 className="w-3.5 h-3.5" />
+              <span>Playlists</span>
+            </button>
+          </div>
+
+          {onOpenNewModal && (
+            <button
+              onClick={onOpenNewModal}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all active:scale-95 shrink-0 cursor-pointer"
+              title="Adicionar novo podcast, álbum ou cadastrar via RSS feed"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Adicionar Podcast</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1088,11 +1124,21 @@ export const AudioCatalog: React.FC<AudioCatalogProps> = ({
             Adicione podcasts via busca online, feed RSS ou vincule pastas de áudio do seu Drive.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
+            {onOpenNewModal && (
+              <button
+                onClick={onOpenNewModal}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                title="Adicionar novo podcast, álbum ou cadastrar via RSS feed"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Adicionar Podcast</span>
+              </button>
+            )}
             {onSyncRootFolder && (
               <button
                 onClick={handleSyncRoot}
                 disabled={isSyncingRoot}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/15 text-gray-800 dark:text-white text-xs font-bold transition-all disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${isSyncingRoot ? 'animate-spin' : ''}`} />
                 <span>{isSyncingRoot ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
