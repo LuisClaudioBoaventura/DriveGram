@@ -554,13 +554,13 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-2xl max-h-[94vh] sm:max-h-[92vh] overflow-y-auto overflow-x-hidden rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl p-4 sm:p-6 text-gray-800 dark:text-gray-100 flex flex-col">
+      <div className={`relative w-full ${activeSection === 'menu' ? 'max-w-md sm:max-w-lg' : 'max-w-2xl'} max-h-[94vh] sm:max-h-[92vh] overflow-y-auto overflow-x-hidden rounded-2xl sm:rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl ${activeSection === 'menu' ? 'p-3.5 sm:p-5' : 'p-4 sm:p-6'} text-gray-800 dark:text-gray-100 flex flex-col transition-all duration-150`}>
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-gray-100 dark:border-drive-darkBorder mb-4 sm:mb-5 sticky top-0 bg-white/95 dark:bg-drive-darkSurface/95 backdrop-blur-md z-10">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
+        <div className={`flex items-center justify-between ${activeSection === 'menu' ? 'pb-2.5 sm:pb-3 mb-3 sm:mb-3.5' : 'pb-3 sm:pb-4 mb-4 sm:mb-5'} border-b border-gray-100 dark:border-drive-darkBorder sticky top-0 bg-white/95 dark:bg-drive-darkSurface/95 backdrop-blur-md z-10`}>
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 pr-2">
             {activeSection === 'menu' ? (
-              <div className="p-2 sm:p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0">
-                <Cloud className="w-5 h-5 sm:w-6 sm:h-6" />
+              <div className="p-1.5 sm:p-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0">
+                <Cloud className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
             ) : (
               <button
@@ -569,29 +569,29 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                   setActiveSection('menu');
                   setFeedback(null);
                 }}
-                className="p-2 sm:p-2.5 rounded-2xl bg-gray-100 hover:bg-gray-200 dark:bg-drive-darkHover dark:hover:bg-drive-darkBorder text-gray-700 dark:text-gray-200 transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+                className="p-1.5 sm:p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-drive-darkHover dark:hover:bg-drive-darkBorder text-gray-700 dark:text-gray-200 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
                 title="Voltar ao menu de funções"
               >
-                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                <ArrowLeft className="w-4 h-4" />
                 <span className="text-xs font-bold hidden sm:inline">Voltar</span>
               </button>
             )}
             <div className="min-w-0">
-              <h3 className="font-bold text-sm sm:text-base leading-tight truncate sm:whitespace-normal">
+              <h3 className="font-bold text-xs sm:text-sm leading-tight truncate sm:whitespace-normal">
                 {sectionHeaders[activeSection].title}
               </h3>
-              <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 line-clamp-1 sm:line-clamp-none">
+              <p className="text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-400 line-clamp-1 sm:line-clamp-none">
                 {sectionHeaders[activeSection].subtitle}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors shrink-0 cursor-pointer">
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="p-1.5 sm:p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-colors shrink-0 cursor-pointer">
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
         {feedback && (
-          <div className={`p-3.5 rounded-2xl mb-4 text-xs flex items-center gap-2.5 animate-in fade-in ${
+          <div className={`p-3 rounded-xl mb-3 text-xs flex items-center gap-2.5 animate-in fade-in ${
             feedback.type === 'success'
               ? 'bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
               : 'bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200'
@@ -601,12 +601,12 @@ export const SyncModal: React.FC<SyncModalProps> = ({
           </div>
         )}
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Pré-Tela: Hub / Menu de Funções */}
           {activeSection === 'menu' && (
-            <div className="space-y-2 animate-in fade-in duration-150">
-              <div className="text-xs text-gray-500 dark:text-gray-400 font-medium px-1 mb-1">
-                Selecione uma função para configurar:
+            <div className="space-y-1.5 animate-in fade-in duration-150">
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium px-1 mb-0.5">
+                Selecione uma função:
               </div>
               {menuOptions.map((item) => {
                 const Icon = item.icon;
@@ -618,29 +618,29 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                       setActiveSection(item.id);
                       setFeedback(null);
                     }}
-                    className="w-full flex items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-gray-50/70 hover:bg-white dark:bg-drive-darkBg/60 dark:hover:bg-drive-darkBg border border-gray-200/80 dark:border-drive-darkBorder hover:border-blue-400 dark:hover:border-blue-500/50 hover:shadow-sm transition-all text-left group cursor-pointer"
+                    className="w-full flex items-center justify-between py-2 px-2.5 sm:py-2.5 sm:px-3.5 rounded-xl bg-gray-50/70 hover:bg-white dark:bg-drive-darkBg/60 dark:hover:bg-drive-darkBg border border-gray-200/80 dark:border-drive-darkBorder hover:border-blue-400 dark:hover:border-blue-500/50 hover:shadow-xs transition-all text-left group cursor-pointer"
                   >
-                    <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 pr-2">
-                      <div className={`p-2.5 sm:p-3 rounded-2xl shrink-0 transition-transform group-hover:scale-105 ${item.iconBg}`}>
-                        <Icon className="w-5 h-5" />
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
+                      <div className={`p-1.5 sm:p-2 rounded-xl shrink-0 transition-transform group-hover:scale-105 ${item.iconBg}`}>
+                        <Icon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                       </div>
-                      <span className="font-bold text-xs sm:text-sm text-gray-800 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+                      <span className="font-semibold text-xs sm:text-[13px] text-gray-800 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
                         {item.title}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-                      <div className="hidden xs:flex flex-wrap items-center gap-1.5 justify-end">
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                      <div className="hidden xs:flex flex-wrap items-center gap-1 justify-end">
                         {item.badges.map((badge, idx) => (
                           <span
                             key={idx}
-                            className={`text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full border ${badge.style}`}
+                            className={`text-[9px] sm:text-[10px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-md border ${badge.style}`}
                           >
                             {badge.text}
                           </span>
                         ))}
                       </div>
-                      <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                      <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
                     </div>
                   </button>
                 );
