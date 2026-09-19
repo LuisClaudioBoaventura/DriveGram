@@ -31,10 +31,12 @@ export const LoginRequiredModal: React.FC<LoginRequiredModalProps> = ({
             <X className="w-4 h-4" />
           </button>
 
-          {/* Animated Telegram Logo Icon */}
-          <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-xl mb-3 animate-pulse">
-            <Send className="w-8 h-8 text-white -rotate-12 translate-x-0.5" />
-          </div>
+          {/* DriveGram Logo Icon */}
+          <img
+            src="/icons/icon-192.png"
+            alt="DriveGram"
+            className="w-16 h-16 rounded-2xl shadow-2xl mb-3 object-cover select-none pointer-events-none border border-white/20"
+          />
 
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[11px] font-bold text-sky-100 mb-2 border border-white/20">
             <Cloud className="w-3.5 h-3.5" />
