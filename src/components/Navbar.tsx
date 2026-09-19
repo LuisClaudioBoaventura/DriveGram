@@ -100,9 +100,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-sky-500 via-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20 shrink-0">
-            <Send className="w-4 h-4 sm:w-5 sm:h-5 -rotate-12 translate-x-0.5" />
-          </div>
+          <img 
+            src="/icons/icon-192.png" 
+            alt="DriveGram" 
+            className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl shadow-md object-cover shrink-0 select-none pointer-events-none" 
+          />
 
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-1.5">
