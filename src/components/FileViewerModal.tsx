@@ -291,19 +291,19 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}
     >
-      <div className={`relative flex flex-col w-full ${isComic || isEpub ? 'max-w-[96vw] h-[94vh]' : 'max-w-5xl h-[88vh]'} bg-drive-darkSurface rounded-3xl border border-gray-800 shadow-2xl overflow-hidden text-gray-100`}>
+      <div className={`relative flex flex-col w-full ${isComic || isEpub ? 'max-w-[96vw] h-[94vh]' : 'max-w-5xl h-[88vh]'} bg-white dark:bg-drive-darkSurface rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden text-gray-900 dark:text-gray-100`}>
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-b border-gray-800 bg-gray-900/60 shrink-0">
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-gray-200 dark:border-gray-800 bg-gray-50/90 dark:bg-gray-900/60 shrink-0">
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="flex items-center gap-2 truncate">
               {file.telegramMeta?.isUploadedToTelegram ? (
-                <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-400 text-[10px] font-bold">
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-600 dark:text-sky-400 text-[10px] font-bold">
                   <Send className="w-2.5 h-2.5" />
                   TG #{file.telegramMeta.messageId || 'Salvas'}
                 </span>
               ) : retryingFileIds.includes(file.id) ? (
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 text-[11px] font-bold border border-sky-500/40 animate-pulse shadow-xs">
-                  <RefreshCw className="w-3 h-3 text-sky-400 animate-spin" />
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-600 dark:text-sky-300 text-[11px] font-bold border border-sky-500/40 animate-pulse shadow-xs">
+                  <RefreshCw className="w-3 h-3 text-sky-500 dark:text-sky-400 animate-spin" />
                   <span>Enviando ao Telegram...</span>
                 </span>
               ) : (
@@ -311,9 +311,9 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   type="button"
                   onClick={() => onRetryUploadTelegram?.(file.id)}
                   title="Arquivo salvo apenas no cache local. Clique para enviar para as Mensagens Salvas do Telegram agora"
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-bold border border-amber-500/40 transition-transform active:scale-95 cursor-pointer shadow-xs"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-bold border border-amber-500/40 transition-transform active:scale-95 cursor-pointer shadow-xs"
                 >
-                  <CloudUpload className="w-3 h-3 text-amber-400 animate-pulse" />
+                  <CloudUpload className="w-3 h-3 text-amber-500 dark:text-amber-400 animate-pulse" />
                   <span>Salvar no Telegram</span>
                 </button>
               )}
@@ -321,7 +321,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 <MarqueeTitle
                   text={file.name}
                   as="h2"
-                  className="text-sm font-bold text-white max-w-[180px] sm:max-w-md"
+                  className="text-sm font-bold text-gray-900 dark:text-white max-w-[180px] sm:max-w-md"
                 />
               </div>
             </div>
@@ -334,12 +334,12 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 onClick={() => setIsAutoPlaySequence(!isAutoPlaySequence)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                   isAutoPlaySequence
-                    ? 'bg-sky-950/60 text-sky-300 border-sky-700'
-                    : 'bg-gray-800 text-gray-400 border-gray-700'
+                    ? 'bg-sky-100 text-sky-700 border-sky-300 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-700'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
                 title="Reproduzir o próximo arquivo da pasta automaticamente"
               >
-                <Repeat className={`w-3.5 h-3.5 ${isAutoPlaySequence ? 'text-sky-400 animate-pulse' : ''}`} />
+                <Repeat className={`w-3.5 h-3.5 ${isAutoPlaySequence ? 'text-sky-600 dark:text-sky-400 animate-pulse' : ''}`} />
                 <span>Sequência: <strong>{isAutoPlaySequence ? 'ON' : 'OFF'}</strong></span>
               </button>
             )}
@@ -348,7 +348,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               <button
                 onClick={() => setShowInfo(!showInfo)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
-                  showInfo ? 'bg-amber-600 text-white border-amber-500' : 'bg-gray-800 text-amber-400 border-gray-700 hover:bg-gray-700'
+                  showInfo ? 'bg-amber-600 text-white border-amber-500' : 'bg-gray-100 dark:bg-gray-800 text-amber-600 dark:text-amber-400 border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
                 title="Timestamps e Legendas"
               >
@@ -360,10 +360,10 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
             {(file.type === 'video' || file.type === 'audio') && (
               <button
                 onClick={() => setIsCastModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all bg-sky-950/40 hover:bg-sky-900/60 text-sky-300 border-sky-800/60 hover:border-sky-500 shadow-sm active:scale-95"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800/60 hover:border-sky-400 dark:hover:border-sky-500 shadow-xs active:scale-95"
                 title="Transmitir para Smart TV / Chromecast"
               >
-                <Cast className="w-3.5 h-3.5 text-sky-400" />
+                <Cast className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                 <span className="hidden sm:inline">Transmitir</span>
               </button>
             )}
@@ -391,7 +391,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
 
             <button
               onClick={onClose}
-              className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700 transition-colors"
+              className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -401,7 +401,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         {/* Content Viewer Area */}
         <div className="flex-1 flex overflow-hidden relative">
           {/* Main Media Preview */}
-          <div className="flex-1 flex items-center justify-center bg-black/50 p-0 sm:p-2 relative overflow-hidden">
+          <div className="flex-1 flex items-center justify-center bg-gray-100/60 dark:bg-black/50 p-0 sm:p-2 relative overflow-hidden">
             {/* Comic / HQ CBR/CBZ Viewer */}
             {isComic && (
               <div className="w-full h-full">
@@ -428,7 +428,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   onEnded={handleMediaEnded}
                   onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
                   src={resolveApiUrl(`/api/stream/${file.id}`)}
-                  className="max-h-full max-w-full rounded-xl shadow-2xl object-contain"
+                  className="max-h-full max-w-full rounded-xl shadow-2xl object-contain bg-black"
                 >
                   {subtitles.map((sub) => (
                     <track
@@ -446,12 +446,12 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
 
             {/* Audio Player */}
             {file.type === 'audio' && (
-              <div className="flex flex-col items-center justify-center p-8 bg-gray-900/80 rounded-3xl border border-gray-800 max-w-md w-full shadow-2xl">
+              <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-900/80 rounded-3xl border border-gray-200 dark:border-gray-800 max-w-md w-full shadow-2xl">
                 <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center mb-6 shadow-lg shadow-purple-500/30">
                   <Music className="w-10 h-10 text-white" />
                 </div>
-                <h3 className="font-bold text-base text-center mb-2 truncate w-full">{file.name}</h3>
-                <span className="text-xs text-gray-400 mb-6">{formatBytes(file.size)}</span>
+                <h3 className="font-bold text-base text-center mb-2 truncate w-full text-gray-900 dark:text-white">{file.name}</h3>
+                <span className="text-xs text-gray-500 dark:text-gray-400 mb-6">{formatBytes(file.size)}</span>
                 <audio
                   ref={audioRef}
                   controls
@@ -484,9 +484,9 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
             {/* Other / Document Preview */}
             {!['video', 'audio', 'image', 'pdf'].includes(file.type) && !isComic && !isEpub && (
               <div className="flex flex-col items-center justify-center text-center p-8 max-w-md">
-                <FileText className="w-16 h-16 text-blue-400 mb-4" />
-                <h3 className="font-bold text-base mb-1">{file.name}</h3>
-                <p className="text-xs text-gray-400 mb-6">
+                <FileText className="w-16 h-16 text-blue-500 dark:text-blue-400 mb-4" />
+                <h3 className="font-bold text-base mb-1 text-gray-900 dark:text-white">{file.name}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
                   {file.description || 'Este arquivo está salvo com segurança nas suas Mensagens Salvas do Telegram.'}
                 </p>
                 <a
@@ -523,13 +523,13 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
 
           {/* Right Timestamps & Subtitles Drawer */}
           {showInfo && (
-            <div className="w-80 border-l border-gray-800 bg-gray-900 p-4 overflow-y-auto shrink-0 animate-in slide-in-from-right duration-200 flex flex-col text-xs">
+            <div className="w-80 border-l border-gray-200 dark:border-gray-800 bg-gray-50/90 dark:bg-gray-900 p-4 overflow-y-auto shrink-0 animate-in slide-in-from-right duration-200 flex flex-col text-xs">
               {/* Drawer Tabs */}
-              <div className="flex bg-gray-800 p-1 rounded-xl mb-3">
+              <div className="flex bg-gray-200/70 dark:bg-gray-800 p-1 rounded-xl mb-3">
                 <button
                   onClick={() => setActiveSideTab('timestamps')}
                   className={`flex-1 py-1.5 rounded-lg font-bold text-[11px] ${
-                    activeSideTab === 'timestamps' ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-white'
+                    activeSideTab === 'timestamps' ? 'bg-amber-600 text-white shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
                   Timestamps ({timestamps.length})
@@ -537,7 +537,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 <button
                   onClick={() => setActiveSideTab('subtitles')}
                   className={`flex-1 py-1.5 rounded-lg font-bold text-[11px] ${
-                    activeSideTab === 'subtitles' ? 'bg-sky-600 text-white' : 'text-gray-400 hover:text-white'
+                    activeSideTab === 'subtitles' ? 'bg-sky-600 text-white shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
                   Legendas ({subtitles.length})
@@ -545,7 +545,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 <button
                   onClick={() => setActiveSideTab('info')}
                   className={`flex-1 py-1.5 rounded-lg font-bold text-[11px] ${
-                    activeSideTab === 'info' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                    activeSideTab === 'info' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
                   Info
@@ -559,16 +559,16 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsGenerateMarkersModalOpen(true)}
-                      className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-purple-600/25 hover:bg-purple-600/35 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all active:scale-95 shadow-sm"
+                      className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-purple-50 dark:bg-purple-600/25 hover:bg-purple-100 dark:hover:bg-purple-600/35 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/40 text-xs font-bold transition-all active:scale-95 shadow-xs"
                       title="Gerar capítulos e marcadores a partir da legenda em 1 clique"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                       <span>✨ Gerar Marcadores da Legenda</span>
                     </button>
                   )}
 
-                  <div className="p-2.5 rounded-xl bg-gray-800/90 border border-gray-700 space-y-2">
-                    <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider block">
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 space-y-2 shadow-xs">
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider block">
                       Criar Timestamp no Tempo Atual
                     </span>
                     <div className="flex gap-1.5">
@@ -577,11 +577,11 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                         value={newTsLabel}
                         onChange={(e) => setNewTsLabel(e.target.value)}
                         placeholder="Nome do ponto..."
-                        className="flex-1 px-2.5 py-1.5 text-xs rounded-lg bg-gray-950 border border-gray-700 focus:outline-none"
+                        className="flex-1 px-2.5 py-1.5 text-xs rounded-lg bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
                       />
                       <button
                         onClick={handleAddTimestamp}
-                        className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs"
+                        className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs"
                       >
                         + Add
                       </button>
@@ -592,27 +592,27 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                     {[...timestamps].sort((a, b) => a.seconds - b.seconds).map((ts) => (
                       <div
                         key={ts.id}
-                        className="flex items-center justify-between p-2 rounded-lg bg-gray-800/60 hover:bg-gray-800 border border-gray-750 group transition-colors"
+                        className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-750 group transition-colors shadow-xs"
                       >
                         <button
                           onClick={() => handleSeek(ts.seconds)}
                           className="flex items-center gap-2 text-left flex-1 truncate"
                         >
-                          <span className="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-mono text-[10px] font-bold">
+                          <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono text-[10px] font-bold">
                             ▶ {ts.timeFormatted}
                           </span>
-                          <span className="text-gray-200 truncate">{ts.label}</span>
+                          <span className="text-gray-800 dark:text-gray-200 truncate">{ts.label}</span>
                         </button>
                         <button
                           onClick={() => handleDeleteTs(ts.id)}
-                          className="p-1 text-gray-500 hover:text-rose-400 opacity-0 group-hover:opacity-100"
+                          className="p-1 text-gray-400 hover:text-rose-500 opacity-0 group-hover:opacity-100"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     ))}
                     {timestamps.length === 0 && (
-                      <p className="text-gray-500 text-center py-6 text-[11px]">
+                      <p className="text-gray-400 dark:text-gray-500 text-center py-6 text-[11px]">
                         Nenhum timestamp adicionado.
                       </p>
                     )}
@@ -645,8 +645,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                         onClick={() => setSelectedSubtitleId(s.id === selectedSubtitleId ? null : s.id)}
                         className={`p-2.5 rounded-xl border cursor-pointer flex items-center justify-between transition-colors ${
                           selectedSubtitleId === s.id
-                            ? 'bg-sky-950 border-sky-500 text-sky-200 font-bold'
-                            : 'bg-gray-800/80 border-gray-700 text-gray-300 hover:bg-gray-800'
+                            ? 'bg-sky-50 dark:bg-sky-950 border-sky-400 dark:border-sky-500 text-sky-700 dark:text-sky-200 font-bold shadow-xs'
+                            : 'bg-white dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                         }`}
                       >
                         <span>{s.label}</span>
@@ -654,7 +654,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                       </div>
                     ))}
                     {subtitles.length === 0 && (
-                      <p className="text-gray-500 text-center py-6 text-[11px]">
+                      <p className="text-gray-400 dark:text-gray-500 text-center py-6 text-[11px]">
                         Nenhuma legenda carregada para este vídeo.
                       </p>
                     )}
@@ -666,16 +666,16 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               {activeSideTab === 'info' && (
                 <div className="space-y-3.5">
                   <div>
-                    <span className="text-gray-400 block text-[10px]">Nome</span>
-                    <span className="font-semibold text-white break-all">{file.name}</span>
+                    <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Nome</span>
+                    <span className="font-semibold text-gray-900 dark:text-white break-all">{file.name}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400 block text-[10px]">Tamanho</span>
-                    <span className="font-mono text-gray-200">{formatBytes(file.size)}</span>
+                    <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Tamanho</span>
+                    <span className="font-mono text-gray-800 dark:text-gray-200">{formatBytes(file.size)}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400 block text-[10px]">Telegram Saved Messages</span>
-                    <span className="text-sky-400 font-mono">#{file.telegramMeta?.messageId || '1042'}</span>
+                    <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Telegram Saved Messages</span>
+                    <span className="text-sky-600 dark:text-sky-400 font-mono">#{file.telegramMeta?.messageId || '1042'}</span>
                   </div>
                 </div>
               )}

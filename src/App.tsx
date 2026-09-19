@@ -74,7 +74,8 @@ import { UploadCloud, Lock, Flame, LockKeyhole } from 'lucide-react';
 
 export function App() {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem('drivegram_theme') === 'dark' || true;
+    const saved = localStorage.getItem('drivegram_theme');
+    return saved !== null ? saved === 'dark' : true;
   });
 
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{

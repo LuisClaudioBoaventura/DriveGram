@@ -460,16 +460,16 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
       className={
         isPiPHidden
           ? 'fixed bottom-0 right-0 w-px h-px opacity-0 pointer-events-none -z-50 overflow-hidden'
-          : 'flex-1 flex flex-col h-full bg-black text-white overflow-y-auto select-none'
+          : 'flex-1 flex flex-col h-full bg-gray-50 dark:bg-black text-gray-900 dark:text-white overflow-y-auto select-none'
       }
     >
       {/* Slim Top Navbar Bar with Icon-Only Actions */}
       {!isPiPHidden && (
-        <div className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-4 py-1.5 bg-gray-950/95 backdrop-blur-md border-b border-gray-800/80 shrink-0 h-11">
+        <div className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-4 py-1.5 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800/80 shrink-0 h-11">
           {/* Back Button (Icon Only) */}
           <button
             onClick={handleBack}
-            className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-red-400 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
+            className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
             title="Voltar para Catálogo de Filmes"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -482,7 +482,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             </span>
 
             {playlistTitle && (
-              <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30 shrink-0 truncate max-w-[130px] sm:max-w-[200px]" title={playlistTitle}>
+              <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] font-bold border border-amber-500/30 shrink-0 truncate max-w-[130px] sm:max-w-[200px]" title={playlistTitle}>
                 {playlistTitle}
               </span>
             )}
@@ -491,7 +491,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               <MarqueeTitle
                 text={video.titlePt || video.title}
                 as="h2"
-                className="text-xs sm:text-sm font-bold text-white"
+                className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white"
               />
             </div>
           </div>
@@ -504,7 +504,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 <button
                   onClick={handlePlayPrev}
                   disabled={currentIndex === 0}
-                  className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shrink-0"
+                  className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shrink-0"
                   title="Filme Anterior (Shift+P)"
                 >
                   <SkipBack className="w-4 h-4" />
@@ -513,7 +513,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 <button
                   onClick={handlePlayNext}
                   disabled={!isShuffle && currentIndex >= effectivePlaylist.length - 1}
-                  className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shrink-0"
+                  className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shrink-0"
                   title="Próximo Filme (Shift+N)"
                 >
                   <SkipForward className="w-4 h-4" />
@@ -524,7 +524,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   className={`p-2 rounded-xl border shadow-sm transition-all active:scale-95 shrink-0 ${
                     isShuffle 
                       ? 'bg-red-600 text-white border-red-500 shadow-red-600/30' 
-                      : 'bg-gray-900/90 hover:bg-gray-800 text-gray-400 hover:text-white border-gray-800 hover:border-gray-700'
+                      : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
                   }`}
                   title={isShuffle ? 'Modo Aleatório Ativo (S)' : 'Ativar Modo Aleatório (S)'}
                 >
@@ -536,7 +536,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   className={`p-2 rounded-xl border shadow-sm transition-all active:scale-95 shrink-0 ${
                     isAutoPlayNext 
                       ? 'bg-amber-600 text-white border-amber-500 shadow-amber-600/30' 
-                      : 'bg-gray-900/90 hover:bg-gray-800 text-gray-400 hover:text-white border-gray-800 hover:border-gray-700'
+                      : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
                   }`}
                   title={isAutoPlayNext ? 'Reprodução Contínua Ativa (Autoplay)' : 'Ativar Reprodução Contínua'}
                 >
@@ -548,7 +548,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   className={`p-2 rounded-xl border shadow-sm transition-all active:scale-95 flex items-center gap-1.5 shrink-0 ${
                     isQueueOpen
                       ? 'bg-red-600 text-white border-red-500 shadow-red-600/30'
-                      : 'bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border-gray-800 hover:border-gray-700'
+                      : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
                   }`}
                   title="Fila de Reprodução / Playlist"
                 >
@@ -574,7 +574,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   console.warn('PiP error:', e);
                 }
               }}
-              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-purple-400 hover:text-purple-300 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
+              className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
               title="Janela Flutuante (Picture-in-Picture) - Assista enquanto navega"
             >
               <Airplay className="w-4 h-4" />
@@ -583,7 +583,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             {/* Cast to Smart TV */}
             <button
               onClick={() => setIsCastModalOpen(true)}
-              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-sky-400 hover:text-sky-300 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0 flex items-center gap-1.5"
+              className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0 flex items-center gap-1.5"
               title="Transmitir para Smart TV / Chromecast"
             >
               <Cast className="w-4 h-4" />
@@ -593,7 +593,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             {/* Player Externo (VLC) */}
             <button
               onClick={handleOpenExternalPlayer}
-              className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-amber-400 hover:text-amber-300 border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0 flex items-center gap-1.5"
+              className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0 flex items-center gap-1.5"
               title="Abrir no VLC ou Player Padrão do Sistema (Nativo, sem limites de codecs)"
             >
               <ExternalLink className="w-4 h-4" />
@@ -603,7 +603,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             {onOpenEditModal && (
               <button
                 onClick={onOpenEditModal}
-                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
+                className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm transition-all active:scale-95 shrink-0"
                 title="Editar Obra / Capa"
               >
                 <Edit3 className="w-4 h-4" />
@@ -613,7 +613,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             {videoFile && (
               <button
                 onClick={() => setIsDownloadModalOpen(true)}
-                className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700 shadow-sm transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
+                className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
                 title="Baixar Vídeo para Cache Local"
               >
                 <Download className="w-4 h-4" />
@@ -742,14 +742,14 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
             {/* Helper fallback for codec / black screen issues */}
             {!isPiPHidden && (
-              <div className="flex flex-wrap items-center justify-between w-full px-3 py-2 text-xs text-gray-400 gap-2 bg-gray-900/60 rounded-xl border border-gray-800/80">
-                <span className="flex items-center gap-1.5 text-gray-300">
-                  <Tv className="w-4 h-4 text-amber-400 shrink-0" />
+              <div className="flex flex-wrap items-center justify-between w-full px-3 py-2 text-xs text-amber-900 dark:text-gray-400 gap-2 bg-amber-50 dark:bg-gray-900/60 rounded-xl border border-amber-200 dark:border-gray-800/80">
+                <span className="flex items-center gap-1.5 text-amber-950 dark:text-gray-300">
+                  <Tv className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                   <span>Problemas com a imagem do vídeo (somente áudio ou tela preta)?</span>
                 </span>
                 <button
                   onClick={handleOpenExternalPlayer}
-                  className="text-amber-400 hover:text-amber-300 hover:underline font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300 hover:underline font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                   Abrir no VLC / Player do Sistema
@@ -826,10 +826,10 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             )}
           </div>
         ) : !isPiPHidden ? (
-          <div className="flex flex-col items-center justify-center p-16 text-center bg-gray-900/50 rounded-3xl border border-gray-800 max-w-md w-full">
+          <div className="flex flex-col items-center justify-center p-16 text-center bg-white dark:bg-gray-900/50 rounded-3xl border border-gray-200 dark:border-gray-800 max-w-md w-full shadow-sm">
             <Film className="w-12 h-12 text-red-500 mb-3" />
-            <h3 className="text-sm font-bold">Arquivo de vídeo não encontrado</h3>
-            <p className="text-xs text-gray-400 mt-1">
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Arquivo de vídeo não encontrado</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               Certifique-se de que a pasta vinculada contém um arquivo de vídeo .mp4 ou .mkv válido ou link de streaming do YouTube.
             </p>
           </div>
@@ -837,12 +837,12 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
         {/* Video Information & Chapters Hub */}
         {!isPiPHidden && (
-          <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 text-gray-300">
+          <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 text-gray-700 dark:text-gray-300">
           {/* Metadata Section */}
-          <div className="md:col-span-2 space-y-4 bg-gray-900/60 p-6 rounded-3xl border border-gray-800/80">
+          <div className="md:col-span-2 space-y-4 bg-white dark:bg-gray-900/60 p-6 rounded-3xl border border-gray-200 dark:border-gray-800/80 shadow-sm">
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-2">
-                <span className="px-2.5 py-1 rounded-lg bg-red-600/20 text-red-400 text-xs font-bold">
+                <span className="px-2.5 py-1 rounded-lg bg-red-100 dark:bg-red-600/20 text-red-700 dark:text-red-400 text-xs font-bold border border-red-200 dark:border-red-500/20">
                   {video.category || 'Filmes'}
                 </span>
                 {video.imdbRating && video.imdbRating !== 'N/A' && (
@@ -852,62 +852,64 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   </span>
                 )}
                 {video.rated && video.rated !== 'N/A' && (
-                  <span className="px-2.5 py-1 rounded-lg bg-gray-800 text-gray-300 text-xs font-bold">
+                  <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold border border-gray-200 dark:border-gray-700">
                     {video.rated}
                   </span>
                 )}
                 {video.year && (
-                  <span className="px-2.5 py-1 rounded-lg bg-gray-800 text-gray-300 text-xs font-mono">
+                  <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">
                     {video.year}
                   </span>
                 )}
                 {video.runtime && video.runtime !== 'N/A' && (
-                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-800 text-gray-300 text-xs font-mono">
+                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">
                     <Clock className="w-3 h-3 text-gray-400" />
                     <span>{video.runtime}</span>
                   </span>
                 )}
                 {video.genre && (
-                  <span className="px-2.5 py-1 rounded-lg bg-gray-800 text-gray-300 text-xs">
+                  <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs border border-gray-200 dark:border-gray-700">
                     {video.genre}
                   </span>
                 )}
               </div>
 
-              <h1 className="text-xl sm:text-2xl font-black text-white">{video.titlePt || video.title}</h1>
+              <h1 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white">{video.titlePt || video.title}</h1>
               {video.titlePt && video.titlePt !== video.title && (
-                <p className="text-xs text-red-300 italic mt-0.5">
+                <p className="text-xs text-red-600 dark:text-red-300 italic mt-0.5">
                   Título Original: <strong>{video.title}</strong>
                 </p>
               )}
               
               {video.director && (
-                <p className="text-xs text-gray-400 mt-1.5">
-                  Direção: <strong className="text-gray-200">{video.director}</strong>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                  Direção: <strong className="text-gray-800 dark:text-gray-200">{video.director}</strong>
                 </p>
               )}
 
               {video.actors && (
-                <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                  <User className="w-3 h-3 text-gray-500 shrink-0" />
-                  <span>Elenco: <strong className="text-gray-300">{video.actors}</strong></span>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                  <User className="w-3 h-3 text-gray-400 shrink-0" />
+                  <span>Elenco: <strong className="text-gray-800 dark:text-gray-300">{video.actors}</strong></span>
                 </p>
               )}
             </div>
 
-            <p className="text-xs text-gray-400 leading-relaxed">
+            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
               {video.description || 'Nenhuma sinopse disponível para este vídeo.'}
             </p>
 
             {/* Quick Playback Speed Switcher */}
-            <div className="pt-2 flex items-center gap-2 border-t border-gray-800 text-xs">
-              <span className="text-gray-400 font-bold">Velocidade:</span>
+            <div className="pt-2 flex items-center gap-2 border-t border-gray-100 dark:border-gray-800 text-xs">
+              <span className="text-gray-500 dark:text-gray-400 font-bold">Velocidade:</span>
               {[0.75, 1, 1.25, 1.5, 2].map(spd => (
                 <button
                   key={spd}
                   onClick={() => handleSpeedChange(spd)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-colors ${
-                    playbackRate === spd ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                    playbackRate === spd
+                      ? 'bg-red-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700'
                   }`}
                 >
                   {spd}x
@@ -917,9 +919,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </div>
 
           {/* Timestamps / Chapters Panel */}
-          <div className="space-y-4 bg-gray-900/70 p-5 sm:p-6 rounded-3xl border border-gray-800 shadow-xl backdrop-blur-sm">
+          <div className="space-y-4 bg-white dark:bg-gray-900/70 p-5 sm:p-6 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm dark:shadow-xl backdrop-blur-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Bookmark className="w-4 h-4 text-red-500" />
                 <span>Capítulos / Timestamps ({localTimestamps.length})</span>
               </h3>
@@ -928,10 +930,10 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsGenerateMarkersModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all active:scale-95 shadow-sm"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-600/20 dark:hover:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/40 text-xs font-bold transition-all active:scale-95 shadow-sm"
                   title="Gerar capítulos e marcadores a partir da legenda em 1 clique"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                   <span>✨ Gerar Marcadores da Legenda</span>
                 </button>
               )}
@@ -950,7 +952,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   }
                 }}
                 placeholder="Nome do capítulo ou cena (ex: Início da Batalha)..."
-                className="flex-1 px-3.5 py-2 text-xs rounded-xl bg-gray-950/90 border border-gray-700/80 text-white placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors"
+                className="flex-1 px-3.5 py-2 text-xs rounded-xl bg-gray-50 dark:bg-gray-950/90 border border-gray-200 dark:border-gray-700/80 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors"
               />
               <button
                 type="button"
@@ -969,7 +971,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 {localTimestamps.map(ts => (
                   <div
                     key={ts.id}
-                    className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gray-950/60 hover:bg-red-600/15 border border-gray-800/80 hover:border-red-500/40 text-left transition-all group"
+                    className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-950/60 hover:bg-red-50 dark:hover:bg-red-600/15 border border-gray-200 dark:border-gray-800/80 hover:border-red-300 dark:hover:border-red-500/40 text-left transition-all group"
                   >
                     <button
                       type="button"
@@ -982,10 +984,10 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                       className="flex items-center gap-2.5 flex-1 min-w-0 pr-2 text-left"
                       title={`Pular para ${formatTime(ts.seconds)}`}
                     >
-                      <span className="text-[10px] font-mono font-bold text-red-400 bg-red-950/60 border border-red-800/60 px-2 py-0.5 rounded-md shrink-0">
+                      <span className="text-[10px] font-mono font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-950/60 border border-red-200 dark:border-red-800/60 px-2 py-0.5 rounded-md shrink-0">
                         ▶ {formatTime(ts.seconds)}
                       </span>
-                      <span className="text-xs font-semibold text-gray-200 group-hover:text-red-300 truncate">
+                      <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 group-hover:text-red-600 dark:group-hover:text-red-300 truncate">
                         {ts.label}
                       </span>
                     </button>
@@ -993,7 +995,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleDeleteTimestamp(ts.id)}
-                      className="p-1.5 text-gray-500 hover:text-rose-400 rounded-lg hover:bg-rose-950/30 transition-colors shrink-0"
+                      className="p-1.5 text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors shrink-0"
                       title="Excluir capítulo"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -1002,11 +1004,11 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="p-4 rounded-2xl bg-gray-950/40 border border-gray-800/60 text-center">
-                <p className="text-xs text-gray-400 font-medium">
+              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-950/40 border border-gray-200 dark:border-gray-800/60 text-center">
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">
                   Nenhum capítulo marcado ainda.
                 </p>
-                <p className="text-[11px] text-gray-500 mt-1">
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
                   Pause ou dê play no filme no momento desejado, digite o nome e clique em <strong>"+ Marcar Tempo Atual"</strong>.
                 </p>
               </div>
@@ -1044,25 +1046,25 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
       )}
       {/* Playlist / Queue Drawer */}
       {isQueueOpen && (
-        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm sm:max-w-md bg-gray-950/98 backdrop-blur-2xl border-l border-gray-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 select-none">
+        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm sm:max-w-md bg-white/98 dark:bg-gray-950/98 backdrop-blur-2xl border-l border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 select-none">
           {/* Drawer Header */}
-          <div className="p-4 border-b border-gray-800/80 flex items-center justify-between">
+          <div className="p-4 border-b border-gray-200/80 dark:border-gray-800/80 flex items-center justify-between">
             <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-xl bg-red-600/20 text-red-500 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-600/20 text-red-600 dark:text-red-500 flex items-center justify-center shrink-0">
                 <List className="w-4 h-4" />
               </div>
               <div className="overflow-hidden">
-                <h3 className="font-bold text-sm text-white truncate">
+                <h3 className="font-bold text-sm text-gray-900 dark:text-white truncate">
                   {playlistTitle || (video.saga ? `Saga: ${video.saga}` : 'Fila de Reprodução')}
                 </h3>
-                <p className="text-[11px] text-gray-400">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
                   {effectivePlaylist.length} {effectivePlaylist.length === 1 ? 'filme' : 'filmes'} • #{currentIndex + 1} de {effectivePlaylist.length}
                 </p>
               </div>
             </div>
             <button
               onClick={() => setIsQueueOpen(false)}
-              className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+              className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               title="Fechar fila"
             >
               <X className="w-4 h-4" />
@@ -1070,7 +1072,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </div>
 
           {/* Quick Controls inside Drawer */}
-          <div className="px-4 py-2.5 bg-gray-900/60 border-b border-gray-800/60 flex items-center justify-between gap-2 text-xs">
+          <div className="px-4 py-2.5 bg-gray-50/90 dark:bg-gray-900/60 border-b border-gray-200/60 dark:border-gray-800/60 flex items-center justify-between gap-2 text-xs">
             <div className="relative flex-1">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
@@ -1078,7 +1080,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 value={queueSearch}
                 onChange={(e) => setQueueSearch(e.target.value)}
                 placeholder="Buscar na fila..."
-                className="w-full pl-8 pr-3 py-1.5 bg-gray-800/80 rounded-xl text-xs text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-red-500"
+                className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/80 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-red-500"
               />
             </div>
 
@@ -1087,7 +1089,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               className={`p-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1 ${
                 isShuffle
                   ? 'bg-red-600 text-white border-red-500 shadow-md shadow-red-600/30'
-                  : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:text-white'
+                  : 'bg-white dark:bg-gray-800/80 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:text-gray-900 dark:hover:text-white'
               }`}
               title={isShuffle ? 'Modo Aleatório Ativo (S)' : 'Ativar Modo Aleatório (S)'}
             >
@@ -1099,7 +1101,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               className={`p-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1 ${
                 isAutoPlayNext
                   ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/30'
-                  : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:text-white'
+                  : 'bg-white dark:bg-gray-800/80 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:text-gray-900 dark:hover:text-white'
               }`}
               title={isAutoPlayNext ? 'Reprodução Contínua Ativa (Autoplay)' : 'Ativar Reprodução Contínua'}
             >
@@ -1131,19 +1133,19 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     }}
                     className={`group p-2.5 rounded-2xl flex items-center gap-3 transition-all cursor-pointer border ${
                       isCurrent
-                        ? 'bg-red-600/20 border-red-500/60 shadow-lg'
-                        : 'bg-gray-900/50 hover:bg-gray-900 border-gray-800/80 hover:border-gray-700'
+                        ? 'bg-red-50 dark:bg-red-600/20 border-red-300 dark:border-red-500/60 shadow-sm'
+                        : 'bg-gray-50/80 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-900 border-gray-200 dark:border-gray-800/80 hover:border-gray-300 dark:hover:border-gray-700'
                     }`}
                   >
                     {/* Order indicator */}
                     <span className={`w-6 text-center text-xs font-mono font-bold shrink-0 ${
-                      isCurrent ? 'text-red-400' : 'text-gray-500'
+                      isCurrent ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'
                     }`}>
                       {m.sagaOrder ? `#${m.sagaOrder}` : `#${itemIndex + 1}`}
                     </span>
 
                     {/* Poster */}
-                    <div className="relative w-12 aspect-[2/3] rounded-xl overflow-hidden bg-black/60 shrink-0 border border-white/10">
+                    <div className="relative w-12 aspect-[2/3] rounded-xl overflow-hidden bg-black/60 shrink-0 border border-gray-200 dark:border-white/10">
                       <img
                         src={m.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
                         alt={m.title}
@@ -1165,24 +1167,24 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                           </span>
                         )}
                         <h4 className={`text-xs font-bold truncate ${
-                          isCurrent ? 'text-red-400' : 'text-gray-200 group-hover:text-white'
+                          isCurrent ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-white'
                         }`}>
                           {m.titlePt || m.title}
                         </h4>
                       </div>
                       {m.titlePt && m.titlePt !== m.title && (
-                        <p className="text-[10px] text-gray-400 italic truncate -mt-0.5">{m.title}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400 italic truncate -mt-0.5">{m.title}</p>
                       )}
                       <div className="flex items-center gap-2 text-[10px] text-gray-400 mt-1">
                         {m.year && <span>{m.year}</span>}
                         {m.duration && <span>• {m.duration}</span>}
                         {m.isCompleted ? (
-                          <span className="text-emerald-400 flex items-center gap-0.5 ml-auto font-bold">
+                          <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 ml-auto font-bold">
                             <CheckCircle2 className="w-3 h-3" />
                             <span>Assistido</span>
                           </span>
                         ) : (m.lastPositionSeconds || 0) > 0 ? (
-                          <span className="text-amber-400 ml-auto font-medium">Continuar</span>
+                          <span className="text-amber-600 dark:text-amber-400 ml-auto font-medium">Continuar</span>
                         ) : null}
                       </div>
                     </div>

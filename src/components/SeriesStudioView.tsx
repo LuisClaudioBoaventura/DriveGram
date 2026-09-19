@@ -470,20 +470,20 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
     : '';
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-950 text-gray-100 overflow-hidden select-none font-sans">
+    <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-gray-100 overflow-hidden select-none font-sans">
       {/* Top Navbar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-2 sm:py-2.5 bg-gray-950/95 backdrop-blur-md border-b border-gray-800/80 shrink-0">
+      <div className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-2 sm:py-2.5 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800/80 shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={onBackToCatalog}
-            className="p-1.5 sm:p-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-purple-400 border border-gray-800 transition-all active:scale-95 shrink-0"
+            className="p-1.5 sm:p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 border border-gray-200 dark:border-gray-800 transition-all active:scale-95 shrink-0"
             title="Voltar para Catálogo de Séries / Canais"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
 
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg overflow-hidden border border-purple-500/30 shrink-0 bg-black">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg overflow-hidden border border-purple-500/30 shrink-0 bg-gray-100 dark:bg-black">
               <img
                 src={series.coverImage || 'https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=800&auto=format&fit=crop&q=60'}
                 alt={series.title}
@@ -494,14 +494,14 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
               <MarqueeTitle
                 text={series.title}
                 as="h1"
-                className="text-xs sm:text-sm font-black text-white max-w-[140px] sm:max-w-xs md:max-w-md"
+                className="text-xs sm:text-sm font-black text-gray-900 dark:text-white max-w-[140px] sm:max-w-xs md:max-w-md"
               />
-              <div className="flex items-center gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] text-gray-400 truncate">
-                <span className="text-purple-400 font-bold shrink-0">{series.category || 'Série / Canal'}</span>
+              <div className="flex items-center gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                <span className="text-purple-600 dark:text-purple-400 font-bold shrink-0">{series.category || 'Série / Canal'}</span>
                 <span>•</span>
                 <span className="shrink-0">{totalEpisodes} vídeos</span>
                 <span className="hidden sm:inline">•</span>
-                <span className="text-emerald-400 font-medium hidden sm:inline truncate">{completedEpisodes} assistidos ({progressPct}%)</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium hidden sm:inline truncate">{completedEpisodes} assistidos ({progressPct}%)</span>
               </div>
             </div>
           </div>
@@ -511,7 +511,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Season Selector Tabs (if multi-season) */}
           {seasons.length > 1 && (
-            <div className="hidden md:flex items-center gap-1 bg-gray-900 p-1 rounded-xl border border-gray-800 shrink-0">
+            <div className="hidden md:flex items-center gap-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800 shrink-0">
               {seasons.map((season, idx) => (
                 <button
                   key={season.id}
@@ -519,7 +519,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                     selectedSeasonIdx === idx
                       ? 'bg-purple-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-white'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
                   {season.title || `T${season.seasonNumber || idx + 1}`} ({season.episodes?.length || 0})
@@ -533,8 +533,8 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 ${
               isSidebarOpen
-                ? 'bg-purple-600/20 text-purple-300 border-purple-500/40 hover:bg-purple-600/30'
-                : 'bg-gray-900 text-gray-300 border-gray-800 hover:border-gray-700'
+                ? 'bg-purple-600/15 dark:bg-purple-600/20 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-500/40 hover:bg-purple-600/25'
+                : 'bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
             }`}
             title={isSidebarOpen ? 'Ocultar barra lateral de vídeos' : 'Exibir barra lateral de vídeos'}
           >
@@ -546,10 +546,10 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
           {playingEpisode && onMinimizeToFloatingPiP && (
             <button
               onClick={handleEnterPiP}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 bg-red-600/20 hover:bg-red-600/30 text-red-300 border-red-500/40 shadow-xs active:scale-95"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 bg-red-50 hover:bg-red-100 dark:bg-red-600/20 dark:hover:bg-red-600/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-500/40 shadow-xs active:scale-95"
               title="Janela Flutuante (Picture-in-Picture) - Assista enquanto navega pelo DriveGram"
             >
-              <Airplay className="w-3.5 h-3.5 text-red-400" />
+              <Airplay className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
               <span className="hidden sm:inline">Picture-in-Picture</span>
             </button>
           )}
@@ -558,10 +558,10 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
           {playingEpisode && (
             <button
               onClick={() => setIsCastModalOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border-sky-500/40 shadow-xs active:scale-95"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 bg-sky-50 hover:bg-sky-100 dark:bg-sky-600/20 dark:hover:bg-sky-600/30 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-500/40 shadow-xs active:scale-95"
               title="Transmitir Episódio para Smart TV / Chromecast"
             >
-              <Cast className="w-3.5 h-3.5 text-sky-400" />
+              <Cast className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
               <span className="hidden sm:inline">Transmitir</span>
             </button>
           )}
@@ -573,12 +573,12 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
               disabled={isRefreshing}
               className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shadow-sm shrink-0 ${
                 isRefreshing
-                  ? 'bg-red-600/20 text-red-300 border-red-500/50 cursor-wait'
-                  : 'bg-red-950/40 hover:bg-red-900/60 text-red-300 border-red-800/60 hover:border-red-600 active:scale-95'
+                  ? 'bg-red-100 dark:bg-red-600/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-500/50 cursor-wait'
+                  : 'bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800/60 hover:border-red-400 dark:hover:border-red-600 active:scale-95'
               }`}
               title="Sincronizar agora para buscar novos vídeos da playlist do YouTube"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-red-400' : 'text-red-400'}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-red-500' : 'text-red-500'}`} />
               <span className="hidden sm:inline">{isRefreshing ? 'Atualizando...' : 'Atualizar Playlist'}</span>
             </button>
           )}
@@ -586,7 +586,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
           {onOpenEditModal && (
             <button
               onClick={onOpenEditModal}
-              className="p-1.5 sm:p-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-purple-400 border border-gray-800 transition-all shrink-0"
+              className="p-1.5 sm:p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-900 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 border border-gray-200 dark:border-gray-800 transition-all shrink-0"
               title="Editar Dados & Capa"
             >
               <Edit3 className="w-4 h-4" />
@@ -600,7 +600,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                 onBackToCatalog();
               }
             }}
-            className="p-1.5 sm:p-2 rounded-xl bg-gray-900 hover:bg-rose-950/40 text-gray-400 hover:text-rose-400 border border-gray-800 hover:border-rose-900 transition-all shrink-0"
+            className="p-1.5 sm:p-2 rounded-xl bg-gray-100 hover:bg-rose-50 dark:bg-gray-900 dark:hover:bg-rose-950/40 text-gray-600 hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400 border border-gray-200 dark:border-gray-800 hover:border-rose-200 dark:hover:border-rose-900 transition-all shrink-0"
             title="Excluir Coleção"
           >
             <Trash2 className="w-4 h-4" />
@@ -639,9 +639,9 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
       {/* Main Studio Workspace (2-Column Player + Sidebar) */}
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden overflow-y-auto relative">
         {/* ================= LEFT / MAIN VIDEO PLAYER WORKSPACE ================= */}
-        <div className="flex-1 flex flex-col lg:h-full lg:overflow-y-auto bg-black text-white p-3 sm:p-5 space-y-4 shrink-0 lg:shrink">
+        <div className="flex-1 flex flex-col lg:h-full lg:overflow-y-auto bg-gray-50 dark:bg-black text-gray-900 dark:text-white p-3 sm:p-5 space-y-4 shrink-0 lg:shrink">
           {/* Cinema Video Player Container */}
-          <div className="relative w-full aspect-video max-h-[70vh] bg-black rounded-2xl sm:rounded-3xl overflow-hidden border border-gray-800 shadow-2xl flex items-center justify-center group shrink-0">
+          <div className="relative w-full aspect-video max-h-[70vh] bg-black rounded-2xl sm:rounded-3xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-2xl flex items-center justify-center group shrink-0">
             {playingEpisode ? (
               (playingFile || playingEpisode.fileId) ? (
                 <video
@@ -685,8 +685,8 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   <Tv className="w-8 h-8" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Nenhum vídeo selecionado</h3>
-                  <p className="text-xs text-gray-400 mt-1">Selecione um vídeo na barra lateral ou clique no botão abaixo para começar.</p>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">Nenhum vídeo selecionado</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Selecione um vídeo na barra lateral ou clique no botão abaixo para começar.</p>
                 </div>
                 <button
                   onClick={handlePlayRandom}
@@ -736,21 +736,21 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
 
           {/* Episode Info & Controls Bar */}
           {playingEpisode && (
-            <div className="bg-gray-900/80 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-gray-800/90 shadow-xl space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800/80 pb-4">
+            <div className="bg-white dark:bg-gray-900/80 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-gray-200 dark:border-gray-800/90 shadow-lg dark:shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800/80 pb-4">
                 <div className="space-y-1 overflow-hidden flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-lg bg-purple-600/20 text-purple-300 border border-purple-500/30 text-[11px] font-black uppercase">
+                    <span className="px-2 py-0.5 rounded-lg bg-purple-100 dark:bg-purple-600/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 text-[11px] font-black uppercase">
                       T{playingEpisode.seasonNumber || 1}:E{playingEpisode.episodeNumber}
                     </span>
                     {playingEpisode.duration && (
-                      <span className="flex items-center gap-1 text-xs text-gray-400 font-mono">
+                      <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 font-mono">
                         <Clock className="w-3.5 h-3.5" />
                         <span>{playingEpisode.duration}</span>
                       </span>
                     )}
                     {playingEpisode.isCompleted && (
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-800/60">
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800/60">
                         <CheckCircle2 className="w-3 h-3" />
                         <span>Assistido</span>
                       </span>
@@ -760,7 +760,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                     <MarqueeTitle
                       text={playingEpisode.title}
                       as="h2"
-                      className="text-base sm:text-lg font-bold text-white leading-tight"
+                      className="text-base sm:text-lg font-bold text-gray-900 dark:text-white leading-tight"
                     />
                   </div>
                 </div>
@@ -773,7 +773,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                     className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${
                       playingEpisode.isCompleted
                         ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 shadow-sm shadow-emerald-500/30'
-                        : 'bg-gray-800 hover:bg-gray-750 text-gray-300 border-gray-700 hover:text-emerald-400'
+                        : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:text-emerald-600 dark:hover:text-emerald-400'
                     }`}
                     title={playingEpisode.isCompleted ? 'Marcar como não assistido' : 'Marcar como assistido'}
                   >
@@ -785,7 +785,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   {playingFile && (
                     <button
                       onClick={() => setDownloadTargetFile(playingFile)}
-                      className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 transition-all active:scale-95"
+                      className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-all active:scale-95"
                       title="Baixar para Cache Local"
                     >
                       <Download className="w-4 h-4" />
@@ -796,10 +796,10 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   {onMinimizeToFloatingPiP && (
                     <button
                       onClick={handleEnterPiP}
-                      className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-red-400 border border-gray-700 transition-all active:scale-95"
+                      className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 border border-gray-200 dark:border-gray-700 transition-all active:scale-95"
                       title="Janela Flutuante (Picture-in-Picture)"
                     >
-                      <Airplay className="w-4 h-4 text-red-400" />
+                      <Airplay className="w-4 h-4 text-red-500 dark:text-red-400" />
                     </button>
                   )}
 
@@ -807,7 +807,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   <button
                     onClick={handlePlayPrevious}
                     disabled={!getPreviousEpisode(playingEpisode)}
-                    className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                     title="Vídeo Anterior"
                   >
                     <SkipBack className="w-4 h-4" />
@@ -828,11 +828,11 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
 
               {/* Description / Additional Info */}
               {playingEpisode.description ? (
-                <p className="text-xs text-gray-400 leading-relaxed max-w-4xl whitespace-pre-line">
+                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed max-w-4xl whitespace-pre-line">
                   {playingEpisode.description}
                 </p>
               ) : series.description ? (
-                <p className="text-xs text-gray-400 leading-relaxed max-w-4xl">
+                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed max-w-4xl">
                   {series.description}
                 </p>
               ) : null}
@@ -842,26 +842,26 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
 
         {/* ================= RIGHT / BARRA LATERAL DE VÍDEOS (PLAYLIST SIDEBAR) ================= */}
         {isSidebarOpen && (
-          <div className="w-full lg:w-96 xl:w-[420px] flex flex-col lg:h-full bg-gray-950 border-t lg:border-t-0 lg:border-l border-gray-800 shrink-0 z-10 transition-all">
+          <div className="w-full lg:w-96 xl:w-[420px] flex flex-col lg:h-full bg-white dark:bg-gray-950 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-gray-800 shrink-0 z-10 transition-all">
             {/* Sidebar Controls Header */}
-            <div className="p-3.5 bg-gray-900/90 border-b border-gray-800 space-y-3 shrink-0">
+            <div className="p-3.5 bg-gray-50/90 dark:bg-gray-900/90 border-b border-gray-200 dark:border-gray-800 space-y-3 shrink-0">
               {/* Header Title & Mode Switches */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <Film className="w-4 h-4 text-purple-400" />
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  <Film className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">
                     Vídeos do Canal ({filteredEpisodes.length}{filteredEpisodes.length !== seasonEpisodes.length ? ` / ${seasonEpisodes.length}` : ''})
                   </h3>
                 </div>
 
                 {/* View Mode Toggle: Lista vs Grade */}
-                <div className="flex items-center bg-gray-950 p-0.5 rounded-xl border border-gray-800">
+                <div className="flex items-center bg-gray-100 dark:bg-gray-950 p-0.5 rounded-xl border border-gray-200 dark:border-gray-800">
                   <button
                     onClick={() => setViewMode('list')}
                     className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                       viewMode === 'list'
                         ? 'bg-purple-600 text-white shadow-xs'
-                        : 'text-gray-400 hover:text-gray-200'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                     }`}
                     title="Visualizar em Lista"
                   >
@@ -873,7 +873,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                     className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                       viewMode === 'grid'
                         ? 'bg-purple-600 text-white shadow-xs'
-                        : 'text-gray-400 hover:text-gray-200'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                     }`}
                     title="Visualizar em Grade"
                   >
@@ -890,12 +890,12 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   onClick={handlePlayRandom}
                   className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border active:scale-95 shadow-sm ${
                     isShuffle
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                      : 'bg-gray-800/90 text-gray-300 border-gray-750 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-400 dark:border-amber-500/40 hover:bg-amber-500/30'
+                      : 'bg-white dark:bg-gray-800/90 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-750 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
                   }`}
                   title="Tocar um vídeo aleatório da lista"
                 >
-                  <Shuffle className={`w-3.5 h-3.5 ${isShuffle ? 'text-amber-400' : ''}`} />
+                  <Shuffle className={`w-3.5 h-3.5 ${isShuffle ? 'text-amber-500 dark:text-amber-400' : ''}`} />
                   <span>{isShuffle ? 'Aleatório: Ativo' : 'Aleatório'}</span>
                 </button>
 
@@ -904,21 +904,21 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   onClick={() => setIsAutoPlayNext(!isAutoPlayNext)}
                   className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border active:scale-95 shadow-sm ${
                     isAutoPlayNext
-                      ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-600/30'
-                      : 'bg-gray-800/90 text-gray-400 border-gray-750 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border-emerald-400 dark:border-emerald-500/40 hover:bg-emerald-600/30'
+                      : 'bg-white dark:bg-gray-800/90 text-gray-700 dark:text-gray-400 border-gray-200 dark:border-gray-750 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
                   }`}
                   title={isAutoPlayNext ? 'Autoplay ativado (toca o próximo ao finalizar)' : 'Autoplay desativado'}
                 >
-                  <Sparkles className={`w-3.5 h-3.5 ${isAutoPlayNext ? 'text-emerald-400' : ''}`} />
+                  <Sparkles className={`w-3.5 h-3.5 ${isAutoPlayNext ? 'text-emerald-600 dark:text-emerald-400' : ''}`} />
                   <span>{isAutoPlayNext ? 'Autoplay: Ligado' : 'Autoplay: Off'}</span>
                 </button>
               </div>
 
               {/* YouTube AutoSync Status Badge */}
               {series.youtubeUrl && (
-                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-red-950/30 border border-red-900/40 text-[10px] text-red-300">
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-[10px] text-red-700 dark:text-red-300">
                   <div className="flex items-center gap-1.5 truncate">
-                    <Youtube className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                    <Youtube className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
                     <span className="truncate">
                       {series.lastSyncedAt 
                         ? `Atualizado: ${new Date(series.lastSyncedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
@@ -929,7 +929,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                     <button
                       onClick={handleRefreshPlaylist}
                       disabled={isRefreshing}
-                      className="text-[10px] font-bold text-red-400 hover:text-red-200 underline disabled:opacity-50 shrink-0"
+                      className="text-[10px] font-bold text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 underline disabled:opacity-50 shrink-0"
                     >
                       {isRefreshing ? 'Buscando...' : 'Sincronizar'}
                     </button>
@@ -945,12 +945,12 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Pesquisar entre todos os vídeos..."
-                  className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-gray-950 border border-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-gray-500"
+                  className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-white"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-900 dark:hover:text-white"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -962,13 +962,13 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                 <div className="grid grid-cols-2 gap-1.5">
                   {/* Sort Selector */}
                   <div className="relative">
-                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-purple-400">
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-purple-600 dark:text-purple-400">
                       <ArrowUpDown className="w-3 h-3" />
                     </div>
                     <select
                       value={sortOption}
                       onChange={(e) => setSortOption(e.target.value as any)}
-                      className="w-full appearance-none pl-7 pr-6 py-1.5 bg-gray-950/90 border border-gray-800 rounded-lg text-[11px] font-medium text-gray-200 hover:border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                      className="w-full appearance-none pl-7 pr-6 py-1.5 bg-white dark:bg-gray-950/90 border border-gray-200 dark:border-gray-800 rounded-lg text-[11px] font-medium text-gray-800 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
                       title="Ordenar vídeos"
                     >
                       <option value="oldest">Mais antigos primeiro</option>
@@ -978,20 +978,20 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                       <option value="duration-desc">Maior duração</option>
                       <option value="duration-asc">Menor duração</option>
                     </select>
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 dark:text-gray-500">
                       <ChevronDown className="w-3 h-3" />
                     </div>
                   </div>
 
                   {/* Duration Selector */}
                   <div className="relative">
-                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-purple-400">
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-purple-600 dark:text-purple-400">
                       <SlidersHorizontal className="w-3 h-3" />
                     </div>
                     <select
                       value={durationFilter}
                       onChange={(e) => setDurationFilter(e.target.value as any)}
-                      className="w-full appearance-none pl-7 pr-6 py-1.5 bg-gray-950/90 border border-gray-800 rounded-lg text-[11px] font-medium text-gray-200 hover:border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                      className="w-full appearance-none pl-7 pr-6 py-1.5 bg-white dark:bg-gray-950/90 border border-gray-200 dark:border-gray-800 rounded-lg text-[11px] font-medium text-gray-800 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
                       title="Filtrar por duração"
                     >
                       <option value="all">Todas as durações</option>
@@ -999,7 +999,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                       <option value="medium">Médios (10 - 30 min)</option>
                       <option value="long">Longos (&gt; 30 min)</option>
                     </select>
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 dark:text-gray-500">
                       <ChevronDown className="w-3 h-3" />
                     </div>
                   </div>
@@ -1012,8 +1012,8 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                       onClick={() => setStatusFilter('all')}
                       className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-colors ${
                         statusFilter === 'all'
-                          ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50'
-                          : 'bg-gray-950/70 text-gray-400 border border-gray-800/80 hover:text-gray-200'
+                          ? 'bg-purple-100 dark:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-500/50'
+                          : 'bg-white dark:bg-gray-950/70 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800/80 hover:text-gray-900 dark:hover:text-gray-200'
                       }`}
                     >
                       Todos ({seasonEpisodes.length})
@@ -1022,8 +1022,8 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                       onClick={() => setStatusFilter('unwatched')}
                       className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-colors ${
                         statusFilter === 'unwatched'
-                          ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50'
-                          : 'bg-gray-950/70 text-gray-400 border border-gray-800/80 hover:text-gray-200'
+                          ? 'bg-purple-100 dark:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-500/50'
+                          : 'bg-white dark:bg-gray-950/70 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800/80 hover:text-gray-900 dark:hover:text-gray-200'
                       }`}
                     >
                       Não vistos ({unwatchedCount})
@@ -1032,8 +1032,8 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                       onClick={() => setStatusFilter('watched')}
                       className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-colors ${
                         statusFilter === 'watched'
-                          ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50'
-                          : 'bg-gray-950/70 text-gray-400 border border-gray-800/80 hover:text-gray-200'
+                          ? 'bg-purple-100 dark:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-500/50'
+                          : 'bg-white dark:bg-gray-950/70 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800/80 hover:text-gray-900 dark:hover:text-gray-200'
                       }`}
                     >
                       Vistos ({watchedCount})
@@ -1043,8 +1043,8 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                         onClick={() => setStatusFilter('in-progress')}
                         className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-colors ${
                           statusFilter === 'in-progress'
-                            ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50'
-                            : 'bg-gray-950/70 text-gray-400 border border-gray-800/80 hover:text-gray-200'
+                            ? 'bg-purple-100 dark:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-500/50'
+                            : 'bg-white dark:bg-gray-950/70 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800/80 hover:text-gray-900 dark:hover:text-gray-200'
                         }`}
                       >
                         Em progresso ({inProgressCount})
@@ -1060,7 +1060,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                         setStatusFilter('all');
                         setDurationFilter('all');
                       }}
-                      className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-gray-400 hover:text-purple-300 hover:bg-purple-950/30 rounded transition-colors shrink-0"
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded transition-colors shrink-0"
                       title="Redefinir ordenação e filtros"
                     >
                       <RotateCcw className="w-2.5 h-2.5" />
@@ -1072,7 +1072,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
             </div>
 
             {/* Sidebar Episode List / Grid Content */}
-            <div className="lg:flex-1 lg:overflow-y-auto p-2 sm:p-3 scrollbar-thin scrollbar-thumb-gray-800 max-h-[500px] lg:max-h-none">
+            <div className="lg:flex-1 lg:overflow-y-auto p-2 sm:p-3 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-800 max-h-[500px] lg:max-h-none">
               {filteredEpisodes.length > 0 ? (
                 viewMode === 'list' ? (
                   // ================= LIST VIEW =================
@@ -1089,10 +1089,10 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                           onClick={() => handleStartPlaying(ep)}
                           className={`flex items-center gap-2.5 p-2 rounded-2xl cursor-pointer transition-all border text-xs group ${
                             isCurrent
-                              ? 'bg-purple-950/60 border-purple-500/80 shadow-md shadow-purple-950/40 text-white font-bold'
+                              ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-400 dark:border-purple-500/80 shadow-md shadow-purple-500/10 dark:shadow-purple-950/40 text-purple-900 dark:text-white font-bold'
                               : ep.isCompleted
-                              ? 'bg-gray-900/40 border-gray-850 hover:bg-gray-900/80 text-gray-400'
-                              : 'bg-gray-900/70 border-gray-800/80 hover:bg-gray-850 text-gray-200'
+                              ? 'bg-gray-50/70 dark:bg-gray-900/40 border-gray-200/80 dark:border-gray-850 hover:bg-gray-100/70 dark:hover:bg-gray-900/80 text-gray-500 dark:text-gray-400'
+                              : 'bg-white dark:bg-gray-900/70 border-gray-200 dark:border-gray-800/80 hover:bg-gray-50 dark:hover:bg-gray-850 text-gray-800 dark:text-gray-200'
                           }`}
                         >
                           {/* Completion Checkbox */}
@@ -1101,18 +1101,18 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                               e.stopPropagation();
                               onToggleEpisodeCompletion(ep.id);
                             }}
-                            className="p-0.5 text-gray-400 hover:text-emerald-400 shrink-0 transition-colors"
+                            className="p-0.5 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 shrink-0 transition-colors"
                             title={ep.isCompleted ? 'Assistido' : 'Marcar como assistido'}
                           >
                             {ep.isCompleted ? (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400 fill-emerald-500/20" />
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 fill-emerald-500/20" />
                             ) : (
                               <Circle className="w-4 h-4" />
                             )}
                           </button>
 
                           {/* Mini Thumbnail with Duration Overlay */}
-                          <div className="relative w-20 h-12 rounded-xl overflow-hidden bg-black shrink-0 border border-gray-800">
+                          <div className="relative w-20 h-12 rounded-xl overflow-hidden bg-black shrink-0 border border-gray-200 dark:border-gray-800">
                             <img
                               src={thumb}
                               alt={ep.title}
@@ -1134,15 +1134,15 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                           {/* Video Info */}
                           <div className="flex-1 overflow-hidden">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] font-mono text-purple-400 shrink-0">
+                              <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400 shrink-0">
                                 #{ep.episodeNumber}
                               </span>
-                              <span className={`truncate block leading-tight ${isCurrent ? 'text-purple-300 font-bold' : ''}`}>
+                              <span className={`truncate block leading-tight ${isCurrent ? 'text-purple-700 dark:text-purple-300 font-bold' : ''}`}>
                                 {ep.title}
                               </span>
                             </div>
                             {ep.isCompleted && (
-                              <span className="text-[10px] text-emerald-400/90 flex items-center gap-1 mt-0.5">
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400/90 flex items-center gap-1 mt-0.5">
                                 ✓ Assistido
                               </span>
                             )}
@@ -1155,7 +1155,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                                 e.stopPropagation();
                                 setDownloadTargetFile(epFile);
                               }}
-                              className="p-1.5 rounded-lg text-gray-500 hover:text-purple-400 hover:bg-purple-950/40 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                              className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 opacity-0 group-hover:opacity-100 transition-all shrink-0"
                               title="Baixar para Cache Local"
                             >
                               <Download className="w-3.5 h-3.5" />
@@ -1168,7 +1168,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                               e.stopPropagation();
                               handleDeleteEpisode(ep);
                             }}
-                            className="p-1.5 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                            className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-all shrink-0"
                             title="Remover vídeo da lista (não será reimportado nas sincronizações)"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1181,7 +1181,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                               handleStartPlaying(ep);
                             }}
                             className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity ${
-                              isCurrent ? 'bg-purple-600 text-white opacity-100' : 'bg-gray-800 text-gray-300 hover:text-white'
+                              isCurrent ? 'bg-purple-600 text-white opacity-100' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-white'
                             }`}
                             title="Assistir agora"
                           >
@@ -1206,10 +1206,10 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                           onClick={() => handleStartPlaying(ep)}
                           className={`flex flex-col rounded-2xl overflow-hidden cursor-pointer transition-all border group relative ${
                             isCurrent
-                              ? 'bg-purple-950/70 border-purple-500 shadow-md shadow-purple-950/50 ring-2 ring-purple-500/50'
+                              ? 'bg-purple-50 dark:bg-purple-950/70 border-purple-500 shadow-md shadow-purple-500/10 dark:shadow-purple-950/50 ring-2 ring-purple-500/50'
                               : ep.isCompleted
-                              ? 'bg-gray-900/40 border-gray-850 hover:bg-gray-900 opacity-80'
-                              : 'bg-gray-900/80 border-gray-800 hover:bg-gray-850 hover:border-gray-700'
+                              ? 'bg-gray-50/70 dark:bg-gray-900/40 border-gray-200 dark:border-gray-850 hover:bg-gray-100/80 dark:hover:bg-gray-900 opacity-80'
+                              : 'bg-white dark:bg-gray-900/80 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-850 hover:border-gray-300 dark:hover:border-gray-700'
                           }`}
                         >
                           {/* Thumbnail Image Container */}
@@ -1242,16 +1242,16 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
 
                           {/* Card Text Content */}
                           <div className="p-2.5 space-y-1 flex-1 flex flex-col justify-between">
-                            <h4 className={`text-[11px] font-semibold line-clamp-2 leading-tight ${isCurrent ? 'text-purple-300 font-bold' : 'text-gray-200'}`}>
+                            <h4 className={`text-[11px] font-semibold line-clamp-2 leading-tight ${isCurrent ? 'text-purple-700 dark:text-purple-300 font-bold' : 'text-gray-800 dark:text-gray-200'}`}>
                               {ep.title}
                             </h4>
-                            <div className="flex items-center justify-between pt-1 border-t border-gray-800/60 mt-1">
+                            <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-800/60 mt-1">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onToggleEpisodeCompletion(ep.id);
                                 }}
-                                className="text-[10px] text-gray-400 hover:text-emerald-400 transition-colors"
+                                className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
                               >
                                 {ep.isCompleted ? '✓ Visto' : 'Marcar visto'}
                               </button>
@@ -1262,7 +1262,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                                       e.stopPropagation();
                                       setDownloadTargetFile(epFile);
                                     }}
-                                    className="p-1 rounded-md text-gray-500 hover:text-purple-400 hover:bg-purple-950/40 opacity-0 group-hover:opacity-100 transition-all"
+                                    className="p-1 rounded-md text-gray-400 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 opacity-0 group-hover:opacity-100 transition-all"
                                     title="Baixar para Cache Local"
                                   >
                                     <Download className="w-3 h-3" />
@@ -1273,7 +1273,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                                     e.stopPropagation();
                                     handleDeleteEpisode(ep);
                                   }}
-                                  className="p-1 rounded-md text-gray-500 hover:text-rose-400 hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-all"
+                                  className="p-1 rounded-md text-gray-400 dark:text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-all"
                                   title="Remover vídeo da lista"
                                 >
                                   <Trash2 className="w-3 h-3" />
@@ -1283,7 +1283,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                                     e.stopPropagation();
                                     handleStartPlaying(ep);
                                   }}
-                                  className="p-1 rounded-md text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="p-1 rounded-md text-purple-600 dark:text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity"
                                   title="Assistir agora"
                                 >
                                   <Play className="w-3 h-3 fill-current" />
@@ -1298,9 +1298,9 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                 )
               ) : (
                 <div className="flex flex-col items-center justify-center p-8 text-center text-gray-400 space-y-3">
-                  <Search className="w-8 h-8 text-gray-500" />
-                  <p className="text-xs font-semibold text-gray-200">Nenhum vídeo encontrado</p>
-                  <p className="text-[10px] text-gray-400 max-w-[220px]">
+                  <Search className="w-8 h-8 text-gray-400 dark:text-gray-500" />
+                  <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">Nenhum vídeo encontrado</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 max-w-[220px]">
                     Nenhum vídeo corresponde aos filtros e termos de busca selecionados.
                   </p>
                   {(sortOption !== 'oldest' || statusFilter !== 'all' || durationFilter !== 'all' || searchQuery.trim() !== '') && (
@@ -1311,7 +1311,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                         setStatusFilter('all');
                         setDurationFilter('all');
                       }}
-                      className="px-3 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+                      className="px-3 py-1.5 bg-purple-100 dark:bg-purple-600/30 hover:bg-purple-200 dark:hover:bg-purple-600/50 text-purple-700 dark:text-purple-200 border border-purple-300 dark:border-purple-500/40 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
                     >
                       <RotateCcw className="w-3 h-3" />
                       Limpar filtros e busca

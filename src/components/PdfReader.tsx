@@ -155,11 +155,11 @@ const ContinuousPageItem: React.FC<ContinuousPageItemProps> = ({
         className="rounded-xl shadow-2xl bg-white max-w-full"
       />
       {!isRendered && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-800/40 rounded-xl">
-          <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-200/40 dark:bg-gray-800/40 rounded-xl">
+          <Loader2 className="w-6 h-6 text-purple-500 dark:text-purple-400 animate-spin" />
         </div>
       )}
-      <span className="mt-1.5 text-[11px] text-gray-400 font-mono font-semibold">
+      <span className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 font-mono font-semibold">
         Página {pageNum}
       </span>
     </div>
@@ -489,16 +489,16 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
     return (
       <div 
         ref={containerRef}
-        className={`flex flex-col w-full h-full bg-gray-950 text-gray-100 relative overflow-hidden ${
+        className={`flex flex-col w-full h-full bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 relative overflow-hidden ${
           isFullscreen ? 'fixed inset-0 z-50' : ''
         }`}
       >
         {/* Top Control Bar for Native Mode */}
-        <div className="flex items-center justify-between px-3 py-2 bg-gray-950 border-b border-gray-800 text-xs shrink-0">
+        <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0">
           <div className="flex items-center gap-2 min-w-0">
-            <FileText className="w-4 h-4 text-purple-400 shrink-0" />
-            <span className="font-bold text-white truncate max-w-[150px] sm:max-w-md">{file.name}</span>
-            <span className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">
+            <FileText className="w-4 h-4 text-purple-500 dark:text-purple-400 shrink-0" />
+            <span className="font-bold text-gray-900 dark:text-white truncate max-w-[150px] sm:max-w-md">{file.name}</span>
+            <span className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-300 font-bold border border-blue-500/30">
               Modo Nativo (Navegador)
             </span>
           </div>
@@ -506,7 +506,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={toggleViewerMode}
-              className="px-2.5 py-1 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm"
+              className="px-2.5 py-1 rounded-xl bg-purple-50 dark:bg-purple-600/20 hover:bg-purple-100 dark:hover:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/40 font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs"
               title="Voltar para o Leitor Integrado com índice e miniaturas"
             >
               <ScrollText className="w-3.5 h-3.5" />
@@ -516,7 +516,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
             <a
               href={fileUrl}
               download={file.name}
-              className="p-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+              className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors"
               title="Baixar Arquivo PDF"
             >
               <Download className="w-4 h-4" />
@@ -526,7 +526,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
               href={fileUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+              className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors"
               title="Abrir em Nova Aba"
             >
               <ExternalLink className="w-4 h-4" />
@@ -534,7 +534,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
 
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+              className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors"
               title={isFullscreen ? 'Sair da Tela Cheia' : 'Tela Cheia'}
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -543,7 +543,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
         </div>
 
         {/* Embedded Native Browser Viewer */}
-        <div className="flex-1 w-full h-full relative bg-gray-900">
+        <div className="flex-1 w-full h-full relative bg-gray-100 dark:bg-gray-900">
           <iframe
             src={`${fileUrl}#page=${currentPage}&toolbar=1&navpanes=1`}
             className="w-full h-full border-0"
@@ -558,26 +558,26 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
   return (
     <div 
       ref={containerRef}
-      className={`flex flex-col w-full h-full bg-gray-950 text-gray-100 relative overflow-hidden ${
+      className={`flex flex-col w-full h-full bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 relative overflow-hidden ${
         isFullscreen ? 'fixed inset-0 z-50' : ''
       }`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
       {/* Top Mobile-Friendly Control Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-1.5 px-3 py-2 bg-gray-950 border-b border-gray-800/80 backdrop-blur-md z-20 shrink-0 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 px-3 py-2 bg-gray-50/95 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800/80 backdrop-blur-md z-20 shrink-0 text-xs">
         {/* Left: Page Navigator */}
         <div className="flex items-center gap-1 sm:gap-2">
           <button
             onClick={goToPreviousPage}
             disabled={currentPage <= 1}
-            className="p-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 disabled:opacity-30 text-white transition-all active:scale-95 shadow-sm"
+            className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 text-gray-800 dark:text-white border border-gray-200 dark:border-gray-700 transition-all active:scale-95 shadow-xs"
             title="Página Anterior (Seta Esquerda / PgUp)"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
 
-          <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-gray-800/80 border border-gray-700/60 font-mono text-[11px] sm:text-xs">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 font-mono text-[11px] sm:text-xs">
             <input
               type="number"
               min={1}
@@ -589,15 +589,15 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
                   setCurrentPage(val);
                 }
               }}
-              className="w-10 bg-transparent text-center font-bold text-purple-400 focus:outline-none focus:bg-gray-700 rounded"
+              className="w-10 bg-transparent text-center font-bold text-purple-600 dark:text-purple-400 focus:outline-none focus:bg-gray-100 dark:focus:bg-gray-700 rounded"
             />
-            <span className="text-gray-400">/ {numPages || '...'}</span>
+            <span className="text-gray-500 dark:text-gray-400">/ {numPages || '...'}</span>
           </div>
 
           <button
             onClick={goToNextPage}
             disabled={currentPage >= numPages}
-            className="p-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 disabled:opacity-30 text-white transition-all active:scale-95 shadow-sm"
+            className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 text-gray-800 dark:text-white border border-gray-200 dark:border-gray-700 transition-all active:scale-95 shadow-xs"
             title="Próxima Página (Seta Direita / PgDown / Espaço)"
           >
             <ChevronRight className="w-4 h-4" />
@@ -611,8 +611,8 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
             onClick={toggleScrollMode}
             className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold transition-all flex items-center gap-1 ${
               scrollMode === 'continuous'
-                ? 'bg-purple-600 border-purple-500 text-white shadow-sm'
-                : 'bg-gray-800/80 border-gray-700 text-gray-300 hover:bg-gray-700'
+                ? 'bg-purple-600 border-purple-500 text-white shadow-xs'
+                : 'bg-gray-100 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
             title={scrollMode === 'continuous' ? 'Alternar para Modo Página Única' : 'Alternar para Rolagem Contínua Vertical'}
           >
@@ -628,8 +628,8 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
             }}
             className={`px-2 py-1 rounded-xl border text-[11px] font-bold transition-colors ${
               fitMode === 'width' 
-                ? 'bg-blue-600 border-blue-500 text-white shadow-sm' 
-                : 'bg-gray-800/80 border-gray-700 text-gray-300 hover:bg-gray-700'
+                ? 'bg-blue-600 border-blue-500 text-white shadow-xs' 
+                : 'bg-gray-100 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
             title={fitMode === 'width' ? 'Ajustado à Largura' : 'Ajustado à Página'}
           >
@@ -638,7 +638,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
 
           <button
             onClick={handleZoomOut}
-            className="p-1.5 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+            className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors"
             title="Reduzir Zoom (-)"
           >
             <ZoomOut className="w-4 h-4" />
@@ -646,7 +646,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
 
           <button
             onClick={handleZoomIn}
-            className="p-1.5 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+            className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors"
             title="Aumentar Zoom (+)"
           >
             <ZoomIn className="w-4 h-4" />
@@ -654,7 +654,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
 
           <button
             onClick={handleRotate}
-            className="p-1.5 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors hidden sm:inline-flex"
+            className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors hidden sm:inline-flex"
             title="Girar 90° (R)"
           >
             <RotateCw className="w-4 h-4" />
@@ -666,7 +666,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
           {/* Switch to Native Browser Viewer Mode */}
           <button
             onClick={toggleViewerMode}
-            className="px-2 py-1 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-all"
+            className="px-2 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-600/20 hover:bg-indigo-100 dark:hover:bg-indigo-600/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-all"
             title="Abrir no Visualizador Nativo do Navegador (Chrome/Edge)"
           >
             <ExternalLink className="w-3.5 h-3.5" />
@@ -678,7 +678,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
             className={`p-1.5 rounded-xl transition-colors ${
               showThumbnails 
                 ? 'bg-purple-600 text-white' 
-                : 'bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white'
+                : 'bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700'
             }`}
             title="Ver Índice de Miniaturas"
           >
@@ -689,7 +689,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
             href={fileUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-1.5 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+            className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors"
             title="Abrir em Nova Aba"
           >
             <ExternalLink className="w-4 h-4" />
@@ -698,7 +698,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
           <a
             href={fileUrl}
             download={file.name}
-            className="p-1.5 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors hidden sm:inline-flex"
+            className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors hidden sm:inline-flex"
             title="Baixar Arquivo PDF"
           >
             <Download className="w-4 h-4" />
@@ -706,7 +706,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
 
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-1.5 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+            className="p-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 transition-colors"
             title={isFullscreen ? 'Sair da Tela Cheia' : 'Tela Cheia'}
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -718,20 +718,20 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
       <div 
         ref={scrollContainerRef}
         onWheel={handleWheel}
-        className="flex-1 relative overflow-y-auto overflow-x-auto p-2 sm:p-4 bg-gray-900/95 scroll-smooth"
+        className="flex-1 relative overflow-y-auto overflow-x-auto p-2 sm:p-4 bg-gray-100/90 dark:bg-gray-900/95 scroll-smooth"
       >
         {loading && (
           <div className="flex flex-col items-center justify-center gap-3 p-12 min-h-full">
             <Loader2 className="w-10 h-10 text-purple-500 animate-spin" />
-            <p className="text-xs text-gray-400 font-semibold animate-pulse">Carregando páginas do documento PDF...</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold animate-pulse">Carregando páginas do documento PDF...</p>
           </div>
         )}
 
         {error && (
           <div className="flex flex-col items-center justify-center p-6 text-center max-w-sm mx-auto min-h-full">
-            <FileText className="w-12 h-12 text-rose-400 mb-2" />
-            <h4 className="text-sm font-bold text-white mb-1">Visualização Indisponível no Leitor Integrado</h4>
-            <p className="text-xs text-gray-400 mb-4">{error}</p>
+            <FileText className="w-12 h-12 text-rose-500 dark:text-rose-400 mb-2" />
+            <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-1">Visualização Indisponível no Leitor Integrado</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{error}</p>
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleViewerMode}
@@ -743,7 +743,7 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
               <a
                 href={fileUrl}
                 download={file.name}
-                className="px-3 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-bold text-xs flex items-center gap-1.5"
+                className="px-3 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-white border border-gray-200 dark:border-gray-700 font-bold text-xs flex items-center gap-1.5"
               >
                 <Download className="w-4 h-4" />
                 <span>Baixar</span>
@@ -813,15 +813,15 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
 
       {/* Thumbnails Drawer / Sidebar */}
       {showThumbnails && numPages > 0 && (
-        <div className="absolute inset-y-0 right-0 w-64 max-w-[80vw] bg-gray-950/95 backdrop-blur-xl border-l border-gray-800 shadow-2xl z-30 flex flex-col animate-in slide-in-from-right duration-200">
-          <div className="flex items-center justify-between p-3 border-b border-gray-800">
+        <div className="absolute inset-y-0 right-0 w-64 max-w-[80vw] bg-white/95 dark:bg-gray-950/95 backdrop-blur-xl border-l border-gray-200 dark:border-gray-800 shadow-2xl z-30 flex flex-col animate-in slide-in-from-right duration-200">
+          <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-800">
             <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-purple-400" />
-              <span className="text-xs font-bold text-white">Índice ({numPages} págs)</span>
+              <Layers className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <span className="text-xs font-bold text-gray-900 dark:text-white">Índice ({numPages} págs)</span>
             </div>
             <button
               onClick={() => setShowThumbnails(false)}
-              className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800"
+              className="p-1 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               <X className="w-4 h-4" />
             </button>
@@ -838,8 +838,8 @@ export const PdfReader: React.FC<PdfReaderProps> = ({
                 }}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold transition-all ${
                   currentPage === pageNum
-                    ? 'bg-purple-600/30 border-purple-500 text-purple-300 ring-2 ring-purple-500/50 shadow-md'
-                    : 'bg-gray-900 border-gray-800 text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                    ? 'bg-purple-100 dark:bg-purple-600/30 border-purple-400 dark:border-purple-500 text-purple-700 dark:text-purple-300 ring-2 ring-purple-500/50 shadow-xs'
+                    : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'
                 }`}
               >
                 <FileText className="w-6 h-6 mb-1 opacity-60" />
