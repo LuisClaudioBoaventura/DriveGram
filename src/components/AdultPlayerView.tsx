@@ -27,7 +27,8 @@ import {
   X,
   Camera,
   Check,
-  Cast
+  Cast,
+  Search
 } from 'lucide-react';
 import { AdultVideo, AdultPerformer, DriveItem } from '../types/index.js';
 import { PerformerDetailModal } from './PerformerDetailModal.js';
@@ -81,11 +82,12 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
   const [showPlaylistDrawer, setShowPlaylistDrawer] = useState<boolean>(false);
   const [isFav, setIsFav] = useState<boolean>(!!video.isFavorite);
   const [isAddPerformerOpen, setIsAddPerformerOpen] = useState<boolean>(false);
-  const [newPerformerInput, setNewPerformerInput] = useState<string>('');
+  const [performerSearchQuery, setPerformerSearchQuery] = useState<string>('');
   const [selectedPerformerForDetail, setSelectedPerformerForDetail] = useState<AdultPerformer | null>(null);
   const [justCapturedCover, setJustCapturedCover] = useState<boolean>(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
   const [isCastModalOpen, setIsCastModalOpen] = useState<boolean>(false);
+  const addPerformerPopoverRef = useRef<HTMLDivElement>(null);
 
   const [localPerformers, setLocalPerformers] = useState<string[]>(() => {
     return video.performers ? video.performers.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -100,6 +102,18 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
       video.performers ? video.performers.split(',').map(s => s.trim()).filter(Boolean) : []
     );
   }, [video.id, video.performers]);
+
+  useEffect(() => {
+    if (!isAddPerformerOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (addPerformerPopoverRef.current && !addPerformerPopoverRef.current.contains(e.target as Node)) {
+        setIsAddPerformerOpen(false);
+        setPerformerSearchQuery('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isAddPerformerOpen]);
 
   const currentIndex = playlist.findIndex(v => v.id === video.id);
   const hasPrev = currentIndex > 0;
@@ -144,18 +158,35 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
     }
   };
 
-  const handleAddPerformer = async (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    if (!localPerformers.some(p => p.toLowerCase() === trimmed.toLowerCase())) {
-      setLocalPerformers(prev => [...prev, trimmed]);
+  const handleSelectPerformer = async (performerOrName: AdultPerformer | string) => {
+    const name = typeof performerOrName === 'string' ? performerOrName.trim() : performerOrName.name.trim();
+    if (!name) return;
+    if (!localPerformers.some(p => p.toLowerCase() === name.toLowerCase())) {
+      setLocalPerformers(prev => [...prev, name]);
     }
-    setNewPerformerInput('');
+    setPerformerSearchQuery('');
     setIsAddPerformerOpen(false);
     if (onAddPerformerToVideo) {
-      await onAddPerformerToVideo(video.id, trimmed);
+      await onAddPerformerToVideo(video.id, name);
     }
   };
+
+  // Performers registered in vault that can be linked to this video
+  const availablePerformers = performers.filter(p => {
+    const isAlreadyLinked = localPerformers.some(
+      lp => lp.toLowerCase() === p.name.toLowerCase() || (p.aka && lp.toLowerCase() === p.aka.toLowerCase())
+    );
+    if (isAlreadyLinked) return false;
+
+    const q = performerSearchQuery.trim().toLowerCase();
+    if (!q) return true;
+
+    return (
+      p.name.toLowerCase().includes(q) ||
+      (p.aka && p.aka.toLowerCase().includes(q)) ||
+      (p.nationality && p.nationality.toLowerCase().includes(q))
+    );
+  });
 
   const handleCaptureFrameAsCover = async () => {
     if (!onUpdateCoverImage) return;
@@ -520,97 +551,124 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
               )}
             </div>
 
-            {/* Add Performer Button */}
-            <div className="relative shrink-0">
+            {/* Add/Link Performer Button */}
+            <div className="relative shrink-0" ref={addPerformerPopoverRef}>
               <button
-                onClick={() => setIsAddPerformerOpen(!isAddPerformerOpen)}
+                onClick={() => {
+                  setIsAddPerformerOpen(!isAddPerformerOpen);
+                  setPerformerSearchQuery('');
+                }}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-600/20 dark:hover:bg-rose-600 text-rose-700 dark:text-rose-300 hover:text-rose-900 dark:hover:text-white border border-rose-200 dark:border-rose-500/30 text-xs font-bold transition-all active:scale-95 shadow-sm"
+                title="Buscar ator já cadastrado para vincular a este vídeo"
               >
                 <UserPlus className="w-3.5 h-3.5" />
-                <span>+ Adicionar Performer</span>
+                <span>+ Vincular Performer</span>
               </button>
 
-              {/* Add Performer Popover Dropdown */}
+              {/* Search & Select Performer Popover */}
               {isAddPerformerOpen && (
-                <div className="absolute right-0 bottom-full mb-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-3xl p-3 shadow-2xl z-40 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute right-0 bottom-full mb-2 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-3xl p-3.5 shadow-2xl z-40 space-y-3 animate-in fade-in zoom-in-95 duration-150">
                   <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-2">
                     <span className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                      <UserPlus className="w-3.5 h-3.5 text-rose-500" />
+                      <Search className="w-3.5 h-3.5 text-rose-500" />
                       <span>Vincular Performer</span>
                     </span>
                     <button
-                      onClick={() => setIsAddPerformerOpen(false)}
-                      className="text-gray-400 hover:text-gray-900 dark:hover:text-white text-xs"
+                      onClick={() => {
+                        setIsAddPerformerOpen(false);
+                        setPerformerSearchQuery('');
+                      }}
+                      className="text-gray-400 hover:text-gray-900 dark:hover:text-white p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                      title="Fechar"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
-                  {/* Input for new name */}
-                  <div className="flex gap-1.5">
+                  {/* Search input to look up registered performers */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                     <input
                       type="text"
-                      value={newPerformerInput}
-                      onChange={(e) => setNewPerformerInput(e.target.value)}
-                      placeholder="Nome do ator..."
+                      value={performerSearchQuery}
+                      onChange={(e) => setPerformerSearchQuery(e.target.value)}
+                      placeholder="Buscar ator cadastrado..."
                       autoFocus
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === 'Enter' && availablePerformers.length > 0) {
                           e.preventDefault();
-                          handleAddPerformer(newPerformerInput);
+                          handleSelectPerformer(availablePerformers[0]);
+                        } else if (e.key === 'Escape') {
+                          setIsAddPerformerOpen(false);
+                          setPerformerSearchQuery('');
                         }
                       }}
-                      className="flex-1 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-rose-500"
+                      className="w-full pl-9 pr-8 py-2 rounded-xl bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-colors"
                     />
-                    <button
-                      type="button"
-                      disabled={!newPerformerInput.trim()}
-                      onClick={() => handleAddPerformer(newPerformerInput)}
-                      className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow disabled:opacity-40"
-                    >
-                      +
-                    </button>
+                    {performerSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setPerformerSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-0.5"
+                        title="Limpar busca"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
 
-                  {/* Existing Performers Quick Select */}
-                  {performers.length > 0 && (
-                    <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                      <span className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 block">
-                        Ou selecione da lista:
-                      </span>
-                      {performers
-                        .filter(p => !localPerformers.some(lp => lp.toLowerCase() === p.name.toLowerCase()))
-                        .map(p => (
-                          <div
-                            key={p.id}
-                            onClick={() => handleAddPerformer(p.name)}
-                            className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-600/20 hover:text-rose-700 dark:hover:text-white cursor-pointer transition-colors text-xs text-gray-700 dark:text-gray-300"
-                          >
-                            <img
-                              src={p.photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80'}
-                              alt={p.name}
-                              className="w-5 h-5 rounded-full object-cover shrink-0"
-                            />
-                            <span className="font-bold truncate flex-1">{p.name}</span>
-                            {p.aka && <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate">({p.aka})</span>}
-                          </div>
-                        ))}
-                    </div>
-                  )}
+                  {/* List of registered performers */}
+                  <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 block px-1">
+                      {performerSearchQuery.trim() ? `Resultados (${availablePerformers.length}):` : `Atores Cadastrados (${availablePerformers.length}):`}
+                    </span>
 
-                  {/* Create with full modal button */}
-                  {onOpenNewPerformerModal && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAddPerformerOpen(false);
-                        onOpenNewPerformerModal();
-                      }}
-                      className="w-full py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white text-[11px] font-bold border border-gray-200 dark:border-gray-700 transition-colors"
-                    >
-                      Cadastrar Novo Ator com Foto
-                    </button>
-                  )}
+                    {availablePerformers.length > 0 ? (
+                      availablePerformers.map(p => (
+                        <div
+                          key={p.id}
+                          onClick={() => handleSelectPerformer(p)}
+                          className="flex items-center gap-2.5 p-2 rounded-2xl hover:bg-rose-50 dark:hover:bg-rose-600/20 hover:text-rose-700 dark:hover:text-white cursor-pointer transition-colors text-xs text-gray-700 dark:text-gray-300 group select-none"
+                          title={`Vincular ${p.name} a este vídeo`}
+                        >
+                          <img
+                            src={p.photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80'}
+                            alt={p.name}
+                            className="w-7 h-7 rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-700 group-hover:border-rose-400"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <span className="font-bold truncate block group-hover:text-rose-600 dark:group-hover:text-white">
+                              {p.name}
+                            </span>
+                            {p.aka && (
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate block">
+                                ({p.aka})
+                              </span>
+                            )}
+                          </div>
+                          {p.isFavorite && (
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="py-4 text-center text-xs text-gray-400 dark:text-gray-500 space-y-1">
+                        {performers.length === 0 ? (
+                          <>
+                            <p className="font-semibold text-gray-500 dark:text-gray-400">Nenhum ator cadastrado</p>
+                            <p className="text-[10px]">Cadastre atores no catálogo do Red Locker para vinculá-los.</p>
+                          </>
+                        ) : performerSearchQuery.trim() ? (
+                          <>
+                            <p className="font-semibold text-gray-500 dark:text-gray-400">Nenhum ator encontrado</p>
+                            <p className="text-[10px]">Nenhum ator cadastrado corresponde à busca.</p>
+                          </>
+                        ) : (
+                          <p className="text-[11px] py-1">Todos os atores cadastrados já estão vinculados a este vídeo.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
