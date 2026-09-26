@@ -970,6 +970,8 @@ export function App() {
                 setSelectedVideoForView(v);
                 if (pl && pl.length > 0) {
                   setActiveVideoPlaylist({ items: pl, title, isShuffle: isShuff });
+                } else {
+                  setActiveVideoPlaylist(null);
                 }
               }}
               onOpenNewModal={() => setIsVideoModalOpen(true)}
@@ -997,6 +999,7 @@ export function App() {
               onSelectVideo={(v) => {
                 personalVideos.setActiveVideo(v);
                 setSelectedPersonalVideoForView(v);
+                setActiveVideoPlaylist(null);
               }}
               onOpenNewModal={() => setIsPersonalVideoModalOpen(true)}
               onEditVideo={(v) => setEditingPersonalVideo(v)}

@@ -189,9 +189,30 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
       if (videoRef.current) {
         onUpdateProgress(video.id, videoRef.current.currentTime, false);
       }
-      onSelectVideo(next);
+      // If next movie was already completed or near the end, reset position to start from beginning
+      const isNextFinished = next.isCompleted || (next.durationSeconds && (next.lastPositionSeconds || 0) >= next.durationSeconds - 10);
+      if (isNextFinished) {
+        const resetNext = { ...next, lastPositionSeconds: 0, isCompleted: false };
+        onUpdateProgress(next.id, 0, false);
+        onSelectVideo(resetNext);
+      } else {
+        onSelectVideo(next);
+      }
     }
   }, [cancelCountdown, nextMovieToPlay, getNextMovie, onSelectVideo, onUpdateProgress, video.id]);
+
+  const handleRestartCurrentMovie = useCallback(() => {
+    cancelCountdown();
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {});
+    }
+    setCurrentTime(0);
+    onUpdateProgress(video.id, 0, false);
+    if (onSelectVideo && !videoRef.current) {
+      onSelectVideo({ ...video, lastPositionSeconds: 0, isCompleted: false });
+    }
+  }, [cancelCountdown, onSelectVideo, onUpdateProgress, video]);
 
   const handlePlayPrev = useCallback(() => {
     cancelCountdown();
@@ -720,17 +741,25 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-3 pt-1">
+                  <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
                     <button
                       onClick={handlePlayNext}
-                      className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all hover:scale-105 active:scale-95"
+                      className="w-full sm:flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
                     >
                       <Play className="w-4 h-4 fill-current" />
-                      <span>Assistir Agora</span>
+                      <span>Assistir Próximo</span>
+                    </button>
+                    <button
+                      onClick={handleRestartCurrentMovie}
+                      className="w-full sm:flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 hover:text-white text-gray-200 font-bold text-xs border border-gray-700 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                      title="Reiniciar este filme desde o começo (00:00)"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-red-400" />
+                      <span>Começar do Início</span>
                     </button>
                     <button
                       onClick={cancelCountdown}
-                      className="px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold text-xs transition-colors"
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-transparent hover:bg-gray-800 text-gray-400 hover:text-gray-200 font-semibold text-xs transition-colors cursor-pointer"
                     >
                       Cancelar
                     </button>
@@ -806,17 +835,25 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 pt-1">
+                  <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
                     <button
                       onClick={handlePlayNext}
-                      className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all hover:scale-105 active:scale-95"
+                      className="w-full sm:flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
                     >
                       <Play className="w-4 h-4 fill-current" />
-                      <span>Assistir Agora</span>
+                      <span>Assistir Próximo</span>
+                    </button>
+                    <button
+                      onClick={handleRestartCurrentMovie}
+                      className="w-full sm:flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 hover:text-white text-gray-200 font-bold text-xs border border-gray-700 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                      title="Reiniciar este filme desde o começo (00:00)"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-red-400" />
+                      <span>Começar do Início</span>
                     </button>
                     <button
                       onClick={cancelCountdown}
-                      className="px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold text-xs transition-colors"
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-transparent hover:bg-gray-800 text-gray-400 hover:text-gray-200 font-semibold text-xs transition-colors cursor-pointer"
                     >
                       Cancelar
                     </button>
@@ -837,9 +874,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
         {/* Video Information & Chapters Hub */}
         {!isPiPHidden && (
-          <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 text-gray-700 dark:text-gray-300">
+          <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 text-gray-700 dark:text-gray-300 min-w-0">
           {/* Metadata Section */}
-          <div className="md:col-span-2 space-y-4 bg-white dark:bg-gray-900/60 p-6 rounded-3xl border border-gray-200 dark:border-gray-800/80 shadow-sm">
+          <div className="md:col-span-2 space-y-4 bg-white dark:bg-gray-900/60 p-6 rounded-3xl border border-gray-200 dark:border-gray-800/80 shadow-sm min-w-0 overflow-hidden">
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className="px-2.5 py-1 rounded-lg bg-red-100 dark:bg-red-600/20 text-red-700 dark:text-red-400 text-xs font-bold border border-red-200 dark:border-red-500/20">
@@ -919,28 +956,28 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </div>
 
           {/* Timestamps / Chapters Panel */}
-          <div className="space-y-4 bg-white dark:bg-gray-900/70 p-5 sm:p-6 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm dark:shadow-xl backdrop-blur-sm">
+          <div className="md:col-span-1 space-y-4 bg-white dark:bg-gray-900/70 p-5 sm:p-6 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm dark:shadow-xl backdrop-blur-sm min-w-0 overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <Bookmark className="w-4 h-4 text-red-500" />
-                <span>Capítulos / Timestamps ({localTimestamps.length})</span>
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 min-w-0">
+                <Bookmark className="w-4 h-4 text-red-500 shrink-0" />
+                <span className="truncate">Capítulos / Timestamps ({localTimestamps.length})</span>
               </h3>
 
               {subtitles.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setIsGenerateMarkersModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-600/20 dark:hover:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/40 text-xs font-bold transition-all active:scale-95 shadow-sm"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-600/20 dark:hover:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/40 text-xs font-bold transition-all active:scale-95 shadow-sm shrink-0"
                   title="Gerar capítulos e marcadores a partir da legenda em 1 clique"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                  <span>✨ Gerar Marcadores da Legenda</span>
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                  <span>Gerar Marcadores</span>
                 </button>
               )}
             </div>
 
             {/* Quick Add Timestamp Input */}
-            <div className="flex flex-col sm:flex-row gap-2 pt-1 pb-2">
+            <div className="flex flex-col gap-2 pt-1 pb-2 w-full min-w-0">
               <input
                 type="text"
                 value={newTimestampLabel}
@@ -951,17 +988,17 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     handleAddTimestamp();
                   }
                 }}
-                placeholder="Nome do capítulo ou cena (ex: Início da Batalha)..."
-                className="flex-1 px-3.5 py-2 text-xs rounded-xl bg-gray-50 dark:bg-gray-950/90 border border-gray-200 dark:border-gray-700/80 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors"
+                placeholder="Nome do capítulo ou cena..."
+                className="w-full min-w-0 px-3.5 py-2.5 text-xs rounded-xl bg-gray-50 dark:bg-gray-950/90 border border-gray-200 dark:border-gray-700/80 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors"
               />
               <button
                 type="button"
                 onClick={handleAddTimestamp}
-                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/20 transition-all active:scale-95 shrink-0"
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/20 transition-all active:scale-95 cursor-pointer shrink-0"
                 title="Criar marcador no tempo atual da reprodução"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>+ Marcar Tempo Atual</span>
+                <span>Marcar Tempo Atual</span>
               </button>
             </div>
 
@@ -971,7 +1008,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 {localTimestamps.map(ts => (
                   <div
                     key={ts.id}
-                    className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-950/60 hover:bg-red-50 dark:hover:bg-red-600/15 border border-gray-200 dark:border-gray-800/80 hover:border-red-300 dark:hover:border-red-500/40 text-left transition-all group"
+                    className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-950/60 hover:bg-red-50 dark:hover:bg-red-600/15 border border-gray-200 dark:border-gray-800/80 hover:border-red-300 dark:hover:border-red-500/40 text-left transition-all group min-w-0"
                   >
                     <button
                       type="button"
@@ -1004,12 +1041,12 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-950/40 border border-gray-200 dark:border-gray-800/60 text-center">
+              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-950/40 border border-gray-200 dark:border-gray-800/60 text-center min-w-0">
                 <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">
                   Nenhum capítulo marcado ainda.
                 </p>
                 <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-                  Pause ou dê play no filme no momento desejado, digite o nome e clique em <strong>"+ Marcar Tempo Atual"</strong>.
+                  Pause ou dê play no filme no momento desejado, digite o nome e clique em <strong>"Marcar Tempo Atual"</strong>.
                 </p>
               </div>
             )}
