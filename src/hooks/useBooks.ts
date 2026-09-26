@@ -42,6 +42,23 @@ export function useBooks() {
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isFloatingOpen, setIsFloatingOpen] = useState<boolean>(false);
 
+  // Refs for consistent auto-save across intervals and closures
+  const activeBookRef = useRef<Book | null>(activeBook);
+  const activeChapterRef = useRef<BookChapter | null>(activeChapter);
+  const currentTimeRef = useRef<number>(currentTime);
+
+  useEffect(() => {
+    activeBookRef.current = activeBook;
+  }, [activeBook]);
+
+  useEffect(() => {
+    activeChapterRef.current = activeChapter;
+  }, [activeChapter]);
+
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+
   const fetchBooks = useCallback(async () => {
     try {
       const res = await fetch('/api/books');
@@ -52,17 +69,45 @@ export function useBooks() {
           chapters: sortChaptersNumerically(b.chapters || [])
         }));
         setBooks(sortedBooks);
-        if (sortedBooks.length > 0 && !activeBook) {
-          setActiveBook(sortedBooks[0]);
-          if (sortedBooks[0].chapters?.[0]) {
-            setActiveChapter(sortedBooks[0].chapters[0]);
+
+        // Se houver um livro ativo no player, sincroniza seus capítulos e dados sem trocar de livro
+        const currentActive = activeBookRef.current;
+        if (currentActive) {
+          const refreshedBook = sortedBooks.find(b => b.id === currentActive.id);
+          if (refreshedBook) {
+            setActiveBook(prev => {
+              if (!prev || prev.id !== refreshedBook.id) return prev;
+              return {
+                ...refreshedBook,
+                lastPlayedChapterId: prev.lastPlayedChapterId || refreshedBook.lastPlayedChapterId,
+                lastPositionSeconds: prev.lastPositionSeconds ?? refreshedBook.lastPositionSeconds
+              };
+            });
+            activeBookRef.current = {
+              ...refreshedBook,
+              lastPlayedChapterId: currentActive.lastPlayedChapterId || refreshedBook.lastPlayedChapterId,
+              lastPositionSeconds: currentActive.lastPositionSeconds ?? refreshedBook.lastPositionSeconds
+            };
+
+            if (activeChapterRef.current) {
+              const currentChap = activeChapterRef.current;
+              const refreshedChap = refreshedBook.chapters?.find(c => 
+                c.id === currentChap.id || 
+                (c.fileId && c.fileId === currentChap.fileId) ||
+                (c.order !== undefined && c.order === currentChap.order)
+              );
+              if (refreshedChap) {
+                setActiveChapter(refreshedChap);
+                activeChapterRef.current = refreshedChap;
+              }
+            }
           }
         }
       }
     } catch (e) {
       console.warn('Backend unavailable for books');
     }
-  }, [activeBook]);
+  }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -143,23 +188,6 @@ export function useBooks() {
     }
   };
 
-  // Refs for consistent auto-save across intervals and closures
-  const activeBookRef = useRef<Book | null>(activeBook);
-  const activeChapterRef = useRef<BookChapter | null>(activeChapter);
-  const currentTimeRef = useRef<number>(currentTime);
-
-  useEffect(() => {
-    activeBookRef.current = activeBook;
-  }, [activeBook]);
-
-  useEffect(() => {
-    activeChapterRef.current = activeChapter;
-  }, [activeChapter]);
-
-  useEffect(() => {
-    currentTimeRef.current = currentTime;
-  }, [currentTime]);
-
   const savePlaybackPosition = useCallback(async () => {
     const book = activeBookRef.current;
     const chapter = activeChapterRef.current;
@@ -206,6 +234,7 @@ export function useBooks() {
     const sortedChapters = sortChaptersNumerically(book.chapters || []);
     const sortedBook: Book = { ...book, chapters: sortedChapters };
     setActiveBook(sortedBook);
+    activeBookRef.current = sortedBook;
     setIsFloatingOpen(true);
     if (sortedChapters.length > 0) {
       // Pick last played chapter, or first uncompleted chapter, or first chapter (lowest numerical order)
@@ -215,14 +244,18 @@ export function useBooks() {
         sortedChapters[0];
 
       setActiveChapter(targetChapter);
+      activeChapterRef.current = targetChapter;
       const startSec = targetChapter.lastPositionSeconds || sortedBook.lastPositionSeconds || 0;
       setCurrentTime(startSec);
+      currentTimeRef.current = startSec;
       if (audioRef.current) {
         audioRef.current.currentTime = startSec;
       }
     } else {
       setActiveChapter(null);
+      activeChapterRef.current = null;
       setCurrentTime(0);
+      currentTimeRef.current = 0;
     }
     if (autoPlay) {
       setIsPlaying(true);
@@ -236,25 +269,30 @@ export function useBooks() {
 
   const selectChapter = useCallback((chapter: BookChapter, autoPlay = true) => {
     setActiveChapter(chapter);
+    activeChapterRef.current = chapter;
     setIsFloatingOpen(true);
     const startSec = chapter.lastPositionSeconds || 0;
     setCurrentTime(startSec);
+    currentTimeRef.current = startSec;
     if (audioRef.current) {
       audioRef.current.currentTime = startSec;
     }
 
-    if (activeBookRef.current) {
-      const book = activeBookRef.current;
-      const updatedChapters = (book.chapters || []).map(c => 
-        c.id === chapter.id ? { ...c, lastPositionSeconds: startSec } : c
+    const currentBook = activeBookRef.current;
+    if (currentBook) {
+      const updatedChapters = (currentBook.chapters || []).map(c => 
+        (c.id === chapter.id || (c.fileId && c.fileId === chapter.fileId))
+          ? { ...c, lastPositionSeconds: startSec }
+          : c
       );
       const updatedBook: Book = {
-        ...book,
+        ...currentBook,
         lastPlayedChapterId: chapter.id,
         lastPositionSeconds: startSec,
         chapters: updatedChapters
       };
       setActiveBook(updatedBook);
+      activeBookRef.current = updatedBook;
       setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
       fetch(`/api/books/${updatedBook.id}`, {
         method: 'PUT',
@@ -346,9 +384,17 @@ export function useBooks() {
   }, [savePlaybackPosition]);
 
   const getNextChapter = useCallback((): BookChapter | null => {
-    if (!activeBook || !activeChapter) return null;
-    const chapters = activeBook.chapters || [];
-    const idx = chapters.findIndex(c => c.id === activeChapter.id);
+    const book = activeBookRef.current || activeBook;
+    const currentChap = activeChapterRef.current || activeChapter;
+    if (!book || !currentChap) return null;
+    const chapters = book.chapters || [];
+    let idx = chapters.findIndex(c => c.id === currentChap.id);
+    if (idx < 0 && currentChap.fileId) {
+      idx = chapters.findIndex(c => c.fileId === currentChap.fileId);
+    }
+    if (idx < 0 && currentChap.order !== undefined) {
+      idx = chapters.findIndex(c => c.order === currentChap.order);
+    }
     if (idx >= 0 && idx < chapters.length - 1) {
       return chapters[idx + 1];
     }
@@ -356,9 +402,17 @@ export function useBooks() {
   }, [activeBook, activeChapter]);
 
   const getPreviousChapter = useCallback((): BookChapter | null => {
-    if (!activeBook || !activeChapter) return null;
-    const chapters = activeBook.chapters || [];
-    const idx = chapters.findIndex(c => c.id === activeChapter.id);
+    const book = activeBookRef.current || activeBook;
+    const currentChap = activeChapterRef.current || activeChapter;
+    if (!book || !currentChap) return null;
+    const chapters = book.chapters || [];
+    let idx = chapters.findIndex(c => c.id === currentChap.id);
+    if (idx < 0 && currentChap.fileId) {
+      idx = chapters.findIndex(c => c.fileId === currentChap.fileId);
+    }
+    if (idx < 0 && currentChap.order !== undefined) {
+      idx = chapters.findIndex(c => c.order === currentChap.order);
+    }
     if (idx > 0) {
       return chapters[idx - 1];
     }
@@ -385,18 +439,23 @@ export function useBooks() {
   }, [getPreviousChapter, selectChapter]);
 
   const handleAudioEnded = useCallback(() => {
-    if (activeBook && activeChapter) {
+    const book = activeBookRef.current || activeBook;
+    const currentChap = activeChapterRef.current || activeChapter;
+    if (book && currentChap) {
       // Mark active chapter completed and reset position
-      const updatedChapters = (activeBook.chapters || []).map(chap => 
-        chap.id === activeChapter.id ? { ...chap, isCompleted: true, lastPositionSeconds: 0 } : chap
+      const updatedChapters = (book.chapters || []).map(chap => 
+        (chap.id === currentChap.id || (chap.fileId && chap.fileId === currentChap.fileId))
+          ? { ...chap, isCompleted: true, lastPositionSeconds: 0 }
+          : chap
       );
       const allDone = updatedChapters.length > 0 && updatedChapters.every(c => c.isCompleted);
-      const updatedBook = {
-        ...activeBook,
-        isCompleted: allDone ? true : activeBook.isCompleted,
+      const updatedBook: Book = {
+        ...book,
+        isCompleted: allDone ? true : book.isCompleted,
         chapters: updatedChapters
       };
       setActiveBook(updatedBook);
+      activeBookRef.current = updatedBook;
       setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
       fetch(`/api/books/${updatedBook.id}`, {
         method: 'PUT',

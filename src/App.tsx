@@ -111,16 +111,21 @@ export function App() {
   const adultVault = useAdultVault();
 
   // Escuta o evento global de metadados atualizados para sincronizar instantaneamente todas as bibliotecas da interface
+  const handleGlobalMetadataUpdatedRef = useRef<() => void>();
+  handleGlobalMetadataUpdatedRef.current = () => {
+    fs.refresh();
+    courses.refreshCourses();
+    books.refreshBooks();
+    comics.fetchComics();
+    videos.fetchVideos();
+    personalVideos.refresh();
+    series.refreshAllSeries?.();
+    audioShows.refreshAllPodcasts?.();
+  };
+
   useEffect(() => {
     const handleGlobalMetadataUpdated = () => {
-      fs.refresh();
-      courses.refreshCourses();
-      books.refreshBooks();
-      comics.fetchComics();
-      videos.fetchVideos();
-      personalVideos.refresh();
-      series.refreshAllSeries?.();
-      audioShows.refreshAllPodcasts?.();
+      handleGlobalMetadataUpdatedRef.current?.();
     };
 
     window.addEventListener('drivegram-metadata-updated', handleGlobalMetadataUpdated);

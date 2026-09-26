@@ -958,16 +958,27 @@ class Database {
     const books = this.data.books;
     const files = this.data.files.filter(f => !f.isTrash);
 
+    const audioExts = ['mp3', 'm4a', 'flac', 'wav', 'ogg', 'aac', 'opus', 'wma', 'm4b'];
+    const ebookExts = ['epub', 'pdf', 'mobi', 'azw', 'azw3'];
+
     for (let book of books) {
       if (!book.folderId) continue;
       
-      const bookAudioFiles = files.filter(f => f.parentId === book.folderId && f.type === 'audio');
-      const bookPdfFiles = files.filter(f => f.parentId === book.folderId && (
-        f.type === 'pdf' || 
-        f.type === 'ebook' || 
-        ['epub', 'pdf', 'mobi', 'azw', 'azw3'].includes((f.extension || '').toLowerCase()) || 
-        /\.(epub|pdf|mobi|azw3?)$/i.test(f.name || '')
-      ));
+      const subFolders = (this.data.folders || []).filter(f => !f.isTrash && f.parentId === book.folderId);
+      const validFolderIds = new Set([book.folderId, ...subFolders.map(sf => sf.id)]);
+
+      const bookAudioFiles = files.filter(f => 
+        f.parentId && validFolderIds.has(f.parentId) && 
+        (f.type === 'audio' || audioExts.includes((f.extension || '').toLowerCase()) || f.mimeType?.startsWith('audio/'))
+      );
+      const bookPdfFiles = files.filter(f => 
+        f.parentId && validFolderIds.has(f.parentId) && (
+          f.type === 'pdf' || 
+          f.type === 'ebook' || 
+          ebookExts.includes((f.extension || '').toLowerCase()) || 
+          /\.(epub|pdf|mobi|azw3?)$/i.test(f.name || '')
+        )
+      );
       
       const existingChapters = book.chapters || [];
 
@@ -976,10 +987,15 @@ class Database {
           bookAudioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
         }
         book.chapters = bookAudioFiles.map((audio, idx) => {
-          const existing = existingChapters.find(c => c.fileId === audio.id || c.title === audio.name.replace(/\.[^/.]+$/, ""));
+          const cleanName = audio.name.replace(/\.[^/.]+$/, "");
+          const existing = existingChapters.find(c => 
+            c.fileId === audio.id || 
+            (c.title && c.title.toLowerCase() === cleanName.toLowerCase()) ||
+            c.order === (idx + 1)
+          );
           return {
             id: existing?.id || 'chap-' + book.id + '-' + audio.id,
-            title: audio.name.replace(/\.[^/.]+$/, ""),
+            title: existing?.title || cleanName,
             duration: existing?.duration || '20:00',
             fileId: audio.id,
             order: idx + 1,
