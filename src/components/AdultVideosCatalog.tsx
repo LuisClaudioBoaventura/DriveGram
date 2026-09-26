@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Film, 
   Play, 
@@ -21,6 +21,9 @@ import {
   Heart,
   User,
   Users,
+  UserMinus,
+  UserX,
+  X,
   Globe2,
   Download,
   RefreshCw
@@ -51,6 +54,17 @@ interface AdultVideosCatalogProps {
   onShowToast?: (message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
+// Helper to get number of assigned performers/actors for a video
+export const getAdultVideoActorCount = (video: AdultVideo): number => {
+  if (!video.performers || typeof video.performers !== 'string' || !video.performers.trim()) return 0;
+  return video.performers
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean).length;
+};
+
+export type AdultVideoActorFilter = 'all' | 'max1' | 'none' | 'single' | 'multiple';
+
 export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
   videos,
   performers = [],
@@ -78,6 +92,7 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
   const [performerSearch, setPerformerSearch] = useState('');
   const [performerFilter, setPerformerFilter] = useState<'all' | 'favorites' | 'female' | 'male' | 'trans'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [actorFilter, setActorFilter] = useState<AdultVideoActorFilter>('all');
   const [selectedPerformerForDetail, setSelectedPerformerForDetail] = useState<AdultPerformer | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isDiscreetMode, setIsDiscreetMode] = useState<boolean>(() => {
@@ -112,22 +127,68 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
     localStorage.setItem('drivegram_adult_discreet', next ? 'true' : 'false');
   };
 
-  const favoriteVideos = videos.filter(v => !!v.isFavorite);
+  // Pre-calculate counts of videos by actor assignment
+  const actorCounts = useMemo(() => {
+    let none = 0;
+    let single = 0;
+    let multiple = 0;
 
-  const filteredVideos = videos.filter(video => {
-    const matchesSearch = video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (video.performers && video.performers.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (video.studio && video.studio.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (video.aka && video.aka.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (video.tags && video.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase())));
-
-    if (selectedCategory === 'favorites') {
-      return matchesSearch && !!video.isFavorite;
+    for (const v of videos) {
+      const count = getAdultVideoActorCount(v);
+      if (count === 0) none++;
+      else if (count === 1) single++;
+      else multiple++;
     }
 
-    const matchesCat = selectedCategory === 'all' || video.category === selectedCategory;
-    return matchesSearch && matchesCat;
-  });
+    return {
+      all: videos.length,
+      max1: none + single,
+      none,
+      single,
+      multiple
+    };
+  }, [videos]);
+
+  const favoriteVideos = useMemo(() => videos.filter(v => !!v.isFavorite), [videos]);
+
+  const hasActiveFilters = searchQuery.trim() !== '' || selectedCategory !== 'all' || actorFilter !== 'all';
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('all');
+    setActorFilter('all');
+  };
+
+  const filteredVideos = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+
+    return videos.filter(video => {
+      const matchesSearch = !q ||
+        video.title.toLowerCase().includes(q) ||
+        (video.performers && video.performers.toLowerCase().includes(q)) ||
+        (video.studio && video.studio.toLowerCase().includes(q)) ||
+        (video.aka && video.aka.toLowerCase().includes(q)) ||
+        (video.tags && video.tags.some(t => t.toLowerCase().includes(q)));
+
+      if (!matchesSearch) return false;
+
+      if (selectedCategory === 'favorites') {
+        if (!video.isFavorite) return false;
+      } else if (selectedCategory !== 'all') {
+        if (video.category !== selectedCategory) return false;
+      }
+
+      if (actorFilter !== 'all') {
+        const count = getAdultVideoActorCount(video);
+        if (actorFilter === 'max1' && count > 1) return false;
+        if (actorFilter === 'none' && count !== 0) return false;
+        if (actorFilter === 'single' && count !== 1) return false;
+        if (actorFilter === 'multiple' && count < 2) return false;
+      }
+
+      return true;
+    });
+  }, [videos, searchQuery, selectedCategory, actorFilter]);
 
   // Filter performers
   const filteredPerformers = performers.filter(p => {
@@ -158,8 +219,10 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
     }).length;
   };
 
-  // Featured video selection
-  const featuredVideo = (selectedCategory === 'favorites' ? favoriteVideos[0] : (videos.find(v => v.isFavorite) || videos[0]));
+  // Featured video selection (respects active filtering)
+  const featuredVideo = (selectedCategory === 'favorites' 
+    ? favoriteVideos[0] 
+    : (filteredVideos.find(v => v.isFavorite) || filteredVideos[0]));
 
   const handlePlayAllFavorites = (shuffle = false) => {
     if (favoriteVideos.length === 0) return;
@@ -395,15 +458,15 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
                       {featuredVideo.title}
                     </h2>
 
-                    {featuredVideo.performers && (
+                    {featuredVideo.performers ? (
                       <p className="text-xs font-bold text-rose-400 mt-1">
                         Elenco: {featuredVideo.performers} {featuredVideo.aka && <span className="text-gray-300 font-normal ml-1">({featuredVideo.aka})</span>}
                       </p>
-                    )}
-
-                    {!featuredVideo.performers && featuredVideo.aka && (
-                      <p className="text-xs text-gray-300 mt-1">
-                        AKA / Nomes: <span className="text-rose-300 font-medium">{featuredVideo.aka}</span>
+                    ) : (
+                      <p className="text-xs font-medium text-amber-400/90 mt-1 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                        <span>Sem ator atribuído</span>
+                        {featuredVideo.aka && <span className="text-gray-300 font-normal ml-1">({featuredVideo.aka})</span>}
                       </p>
                     )}
 
@@ -448,58 +511,160 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
             )}
 
             {/* Filter & Search Toolbar */}
-            <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white dark:bg-drive-darkSurface p-3 rounded-2xl border border-gray-200 dark:border-drive-darkBorder shadow-sm">
-              {/* Search Input */}
-              <div className="relative w-full md:w-80">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar título, elenco, AKA, estúdio..."
-                  className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-transparent focus:border-rose-500 focus:outline-none"
-                />
-              </div>
+            <div className="bg-white dark:bg-drive-darkSurface p-3 sm:p-4 rounded-2xl border border-gray-200 dark:border-drive-darkBorder shadow-sm space-y-3">
+              {/* Row 1: Search & Categories */}
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                {/* Search Input */}
+                <div className="relative w-full md:w-80 shrink-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Buscar título, elenco, AKA, estúdio..."
+                    className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-drive-darkBg rounded-xl text-xs border border-transparent focus:border-rose-500 focus:outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-0.5"
+                      title="Limpar busca"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
-              {/* Category Filter Chips with FAVORITES */}
-              <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none">
-                <button
-                  onClick={() => setSelectedCategory('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                    selectedCategory === 'all'
-                      ? 'bg-rose-600 text-white shadow-md'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-white'
-                  }`}
-                >
-                  Todos ({videos.length})
-                </button>
-
-                {/* ⭐ Favoritos Filter Tab */}
-                <button
-                  onClick={() => setSelectedCategory('favorites')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
-                    selectedCategory === 'favorites'
-                      ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-white shadow-md shadow-amber-500/20'
-                      : 'bg-amber-500/10 text-amber-500 dark:text-amber-400 hover:bg-amber-500/20'
-                  }`}
-                >
-                  <Star className={`w-3.5 h-3.5 ${selectedCategory === 'favorites' || favoriteVideos.length > 0 ? 'fill-current' : ''}`} />
-                  <span>Favoritos ({favoriteVideos.length})</span>
-                </button>
-
-                {categories.map(cat => (
+                {/* Category Filter Chips with FAVORITES */}
+                <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none">
                   <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
+                    onClick={() => setSelectedCategory('all')}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                      selectedCategory === cat
+                      selectedCategory === 'all'
                         ? 'bg-rose-600 text-white shadow-md'
                         : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-white'
                     }`}
                   >
-                    {cat}
+                    Todos ({videos.length})
                   </button>
-                ))}
+
+                  {/* ⭐ Favoritos Filter Tab */}
+                  <button
+                    onClick={() => setSelectedCategory('favorites')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                      selectedCategory === 'favorites'
+                        ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-white shadow-md shadow-amber-500/20'
+                        : 'bg-amber-500/10 text-amber-500 dark:text-amber-400 hover:bg-amber-500/20'
+                    }`}
+                  >
+                    <Star className={`w-3.5 h-3.5 ${selectedCategory === 'favorites' || favoriteVideos.length > 0 ? 'fill-current' : ''}`} />
+                    <span>Favoritos ({favoriteVideos.length})</span>
+                  </button>
+
+                  {categories.map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                        selectedCategory === cat
+                          ? 'bg-rose-600 text-white shadow-md'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Row 2: Actor/Elenco Filter Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none w-full sm:w-auto">
+                  <div className="flex items-center gap-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 mr-1 shrink-0">
+                    <Users className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Elenco:</span>
+                  </div>
+
+                  {/* Todos os elencos */}
+                  <button
+                    onClick={() => setActorFilter('all')}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                      actorFilter === 'all'
+                        ? 'bg-rose-600 text-white shadow-sm'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Todos ({actorCounts.all})
+                  </button>
+
+                  {/* ⭐ Requested Filter: ≤ 1 Ator (Sem ou 1 Ator) */}
+                  <button
+                    onClick={() => setActorFilter(prev => prev === 'max1' ? 'all' : 'max1')}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                      actorFilter === 'max1'
+                        ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-md shadow-rose-600/25 ring-2 ring-rose-400/50'
+                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 border border-rose-500/20'
+                    }`}
+                    title="Mostrar vídeos que não têm nenhum ator atribuído ou que têm apenas 1 ator atribuído (≤ 1 ator)"
+                  >
+                    <UserMinus className="w-3.5 h-3.5" />
+                    <span>≤ 1 Ator (Sem ou 1) ({actorCounts.max1})</span>
+                  </button>
+
+                  {/* Sem Ator (0) */}
+                  <button
+                    onClick={() => setActorFilter(prev => prev === 'none' ? 'all' : 'none')}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 ${
+                      actorFilter === 'none'
+                        ? 'bg-amber-500 text-black shadow-sm font-black'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                    title="Filtrar vídeos sem nenhum ator atribuído (0 atores)"
+                  >
+                    <UserX className="w-3.5 h-3.5" />
+                    <span>Sem Ator ({actorCounts.none})</span>
+                  </button>
+
+                  {/* Apenas 1 Ator (1) */}
+                  <button
+                    onClick={() => setActorFilter(prev => prev === 'single' ? 'all' : 'single')}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 ${
+                      actorFilter === 'single'
+                        ? 'bg-rose-600 text-white shadow-sm'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                    title="Filtrar vídeos com exatamente 1 ator atribuído"
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    <span>1 Ator ({actorCounts.single})</span>
+                  </button>
+
+                  {/* 2+ Atores */}
+                  <button
+                    onClick={() => setActorFilter(prev => prev === 'multiple' ? 'all' : 'multiple')}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 ${
+                      actorFilter === 'multiple'
+                        ? 'bg-rose-600 text-white shadow-sm'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                    title="Filtrar vídeos com 2 ou mais atores atribuídos"
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>2+ Atores ({actorCounts.multiple})</span>
+                  </button>
+                </div>
+
+                {/* Reset Filters button if any filter is active */}
+                {hasActiveFilters && (
+                  <button
+                    onClick={handleResetFilters}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold transition-colors shrink-0"
+                    title="Restaurar todos os filtros para o padrão"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Limpar Filtros</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -507,7 +672,7 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
             {filteredVideos.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {/* ⭐ Card Especial de Favoritos */}
-                {selectedCategory === 'all' && favoriteVideos.length > 0 && !searchQuery.trim() && (
+                {selectedCategory === 'all' && actorFilter === 'all' && favoriteVideos.length > 0 && !searchQuery.trim() && (
                   <div
                     onClick={() => setSelectedCategory('favorites')}
                     className="group relative flex flex-col justify-between rounded-2xl overflow-hidden cursor-pointer bg-gradient-to-br from-amber-950 via-rose-950/80 to-slate-950 border-2 border-amber-500/50 hover:border-amber-400 p-4 shadow-xl hover:shadow-2xl hover:shadow-amber-500/20 transition-all duration-300 select-none hover:-translate-y-1"
@@ -560,147 +725,196 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
                   </div>
                 )}
 
-                {filteredVideos.map(video => (
-                  <div
-                    key={video.id}
-                    className="group relative flex flex-col rounded-2xl overflow-hidden bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:border-rose-500/50 hover:shadow-xl transition-all duration-300"
-                  >
-                    {/* Poster */}
+                {filteredVideos.map(video => {
+                  const actorCount = getAdultVideoActorCount(video);
+                  return (
                     <div
-                      onClick={() => onSelectVideo(video, filteredVideos)}
-                      className="relative aspect-[2/3] w-full overflow-hidden bg-black/60 cursor-pointer select-none"
+                      key={video.id}
+                      className="group relative flex flex-col rounded-2xl overflow-hidden bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:border-rose-500/50 hover:shadow-xl transition-all duration-300"
                     >
-                      <img
-                        src={video.coverImage || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60'}
-                        alt={video.title}
-                        draggable={false}
-                        className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none ${isDiscreetMode ? 'blur-md group-hover:blur-none transition-all' : ''}`}
-                      />
-
-                      {/* Category badge */}
-                      <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
-                        <span className="px-2 py-0.5 rounded-md bg-rose-600/90 text-white text-[9px] font-black uppercase shadow">
-                          {video.category || 'Filme'}
-                        </span>
-                      </div>
-
-                      {/* Quick Favorite Star Button (Top Right) */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleFavorite(video.id);
-                        }}
-                        className={`absolute top-2 right-2 p-1.5 rounded-xl backdrop-blur-md transition-all shadow-md z-20 ${
-                          video.isFavorite
-                            ? 'bg-amber-500 text-black scale-105'
-                            : 'bg-black/60 text-white/70 hover:text-amber-400 hover:bg-black/90 opacity-100 sm:opacity-0 group-hover:opacity-100'
-                        }`}
-                        title={video.isFavorite ? 'Remover dos Favoritos' : 'Adicionar à Playlist de Favoritos'}
+                      {/* Poster */}
+                      <div
+                        onClick={() => onSelectVideo(video, filteredVideos)}
+                        className="relative aspect-[2/3] w-full overflow-hidden bg-black/60 cursor-pointer select-none"
                       >
-                        <Star className={`w-3.5 h-3.5 ${video.isFavorite ? 'fill-black' : ''}`} />
-                      </button>
+                        <img
+                          src={video.coverImage || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60'}
+                          alt={video.title}
+                          draggable={false}
+                          className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none ${isDiscreetMode ? 'blur-md group-hover:blur-none transition-all' : ''}`}
+                        />
 
-                      {/* Play Hover Trigger */}
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
-                        <div className="w-11 h-11 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg shadow-rose-600/50">
-                          <Play className="w-5 h-5 ml-0.5 fill-current" />
+                        {/* Category & Actor Badges on Poster */}
+                        <div className="absolute top-2 left-2 flex flex-col gap-1 z-10 pointer-events-none">
+                          <span className="px-2 py-0.5 rounded-md bg-rose-600/90 text-white text-[9px] font-black uppercase shadow">
+                            {video.category || 'Filme'}
+                          </span>
+                          {actorCount === 0 && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-black/80 backdrop-blur-xs border border-amber-500/60 text-amber-300 text-[8px] font-black uppercase shadow">
+                              Sem Ator
+                            </span>
+                          )}
+                          {actorCount === 1 && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-black/80 backdrop-blur-xs border border-rose-500/40 text-rose-200 text-[8px] font-bold uppercase shadow">
+                              1 Ator
+                            </span>
+                          )}
                         </div>
-                      </div>
 
-                      {/* Edit/Delete Overlay Actions (Bottom on hover) */}
-                      <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                        {(() => {
-                          const videoFile = allFiles?.find(f => f.id === video.fileId);
-                          if (!videoFile) return null;
-                          return (
+                        {/* Quick Favorite Star Button (Top Right) */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleFavorite(video.id);
+                          }}
+                          className={`absolute top-2 right-2 p-1.5 rounded-xl backdrop-blur-md transition-all shadow-md z-20 ${
+                            video.isFavorite
+                              ? 'bg-amber-500 text-black scale-105'
+                              : 'bg-black/60 text-white/70 hover:text-amber-400 hover:bg-black/90 opacity-100 sm:opacity-0 group-hover:opacity-100'
+                          }`}
+                          title={video.isFavorite ? 'Remover dos Favoritos' : 'Adicionar à Playlist de Favoritos'}
+                        >
+                          <Star className={`w-3.5 h-3.5 ${video.isFavorite ? 'fill-black' : ''}`} />
+                        </button>
+
+                        {/* Play Hover Trigger */}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
+                          <div className="w-11 h-11 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg shadow-rose-600/50">
+                            <Play className="w-5 h-5 ml-0.5 fill-current" />
+                          </div>
+                        </div>
+
+                        {/* Edit/Delete Overlay Actions (Bottom on hover) */}
+                        <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                          {(() => {
+                            const videoFile = allFiles?.find(f => f.id === video.fileId);
+                            if (!videoFile) return null;
+                            return (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDownloadTargetFile(videoFile);
+                                }}
+                                className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white shadow transition-colors"
+                                title="Baixar Vídeo para Cache Local"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                            );
+                          })()}
+
+                          {onEditVideo && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setDownloadTargetFile(videoFile);
+                                onEditVideo(video);
                               }}
                               className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white shadow transition-colors"
-                              title="Baixar Vídeo para Cache Local"
+                              title="Editar Dados"
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              <Edit3 className="w-3.5 h-3.5" />
                             </button>
-                          );
-                        })()}
-
-                        {onEditVideo && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEditVideo(video);
-                            }}
-                            className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white shadow transition-colors"
-                            title="Editar Dados"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {onDeleteVideo && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (confirm(`Excluir "${video.title}"?`)) {
-                                onDeleteVideo(video.id);
-                              }
-                            }}
-                            className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white shadow transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Info Body */}
-                    <div className="p-3 flex-1 flex flex-col justify-between space-y-1">
-                      <div>
-                        <h3
-                          onClick={() => onSelectVideo(video, filteredVideos)}
-                          className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate hover:text-rose-500 cursor-pointer transition-colors"
-                          title={video.title}
-                        >
-                          {video.title}
-                        </h3>
-                        {video.performers && (
-                          <p className="text-[10px] text-gray-400 truncate">
-                            {video.performers} {video.aka && <span className="text-gray-500 font-normal">({video.aka})</span>}
-                          </p>
-                        )}
-                        {video.studio && !video.performers && (
-                          <p className="text-[10px] text-gray-400 truncate">
-                            {video.studio} {video.aka && <span className="text-gray-500 font-normal">({video.aka})</span>}
-                          </p>
-                        )}
-                        {!video.studio && !video.performers && video.aka && (
-                          <p className="text-[10px] text-gray-500 truncate italic">
-                            AKA: {video.aka}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="pt-1 flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 dark:border-gray-800">
-                        <span className="truncate max-w-[90px]">{video.studio || video.year || '+18'}</span>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {video.isFavorite && (
-                            <span title="Favoritado">
-                              <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                            </span>
                           )}
-                          {video.isCompleted && (
-                            <span className="text-emerald-500 font-bold flex items-center gap-0.5">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Visto</span>
-                            </span>
+                          {onDeleteVideo && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Excluir "${video.title}"?`)) {
+                                  onDeleteVideo(video.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white shadow transition-colors"
+                              title="Excluir"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           )}
                         </div>
                       </div>
+
+                      {/* Info Body */}
+                      <div className="p-3 flex-1 flex flex-col justify-between space-y-1">
+                        <div>
+                          <h3
+                            onClick={() => onSelectVideo(video, filteredVideos)}
+                            className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate hover:text-rose-500 cursor-pointer transition-colors"
+                            title={video.title}
+                          >
+                            {video.title}
+                          </h3>
+
+                          {actorCount === 0 ? (
+                            <p className="text-[10px] text-amber-500 dark:text-amber-400 font-medium truncate flex items-center gap-1 mt-0.5" title="Nenhum ator atribuído a este vídeo">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                              <span>Sem ator atribuído</span>
+                              {video.studio && <span className="text-gray-400 font-normal truncate">• {video.studio}</span>}
+                            </p>
+                          ) : (
+                            video.performers && (
+                              <p className="text-[10px] text-gray-400 truncate mt-0.5" title={video.performers}>
+                                {video.performers} {video.aka && <span className="text-gray-500 font-normal">({video.aka})</span>}
+                              </p>
+                            )
+                          )}
+
+                          {video.studio && actorCount > 0 && !video.performers && (
+                            <p className="text-[10px] text-gray-400 truncate">
+                              {video.studio} {video.aka && <span className="text-gray-500 font-normal">({video.aka})</span>}
+                            </p>
+                          )}
+                          {!video.studio && actorCount === 0 && video.aka && (
+                            <p className="text-[10px] text-gray-500 truncate italic">
+                              AKA: {video.aka}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-1 flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 dark:border-gray-800">
+                          <span className="truncate max-w-[90px]">{video.studio || video.year || '+18'}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {video.isFavorite && (
+                              <span title="Favoritado">
+                                <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                              </span>
+                            )}
+                            {video.isCompleted && (
+                              <span className="text-emerald-500 font-bold flex items-center gap-0.5">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Visto</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+              </div>
+            ) : videos.length > 0 ? (
+              /* Empty Filtered Results */
+              <div className="flex flex-col items-center justify-center p-12 sm:p-16 text-center bg-white dark:bg-drive-darkSurface rounded-3xl border border-dashed border-gray-300 dark:border-gray-800 space-y-3">
+                <div className="w-16 h-16 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center">
+                  <Filter className="w-8 h-8" />
+                </div>
+                <h3 className="font-bold text-base text-gray-900 dark:text-white">
+                  Nenhum vídeo encontrado com os filtros selecionados
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md">
+                  {actorFilter === 'max1'
+                    ? 'Nenhum vídeo sem ator ou com apenas 1 ator atribuído corresponde à sua busca ou categoria.'
+                    : actorFilter === 'none'
+                    ? 'Nenhum vídeo sem ator atribuído corresponde aos critérios selecionados.'
+                    : actorFilter === 'single'
+                    ? 'Nenhum vídeo com exatamente 1 ator atribuído corresponde aos critérios selecionados.'
+                    : 'Tente alterar ou limpar os filtros de busca, categoria ou elenco para visualizar os vídeos.'}
+                </p>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-5 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-500/25 transition-all flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Limpar Todos os Filtros</span>
+                </button>
               </div>
             ) : selectedCategory === 'favorites' ? (
               /* Empty Favorites state */
