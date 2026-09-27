@@ -89,13 +89,67 @@ export function getOrEstimateAudioDurationString(
 
 /**
  * Extrai a duração total de um livro em segundos de forma resiliente,
- * analisando totalDuration ("1h 30m", "45 min", "1:30:00", etc.) ou
- * somando a duração dos seus capítulos.
+ * somando prioritariamente a duração de cada capítulo/áudio individual
+ * (com estimativa a partir de allFiles caso necessário) ou analisando totalDuration.
  */
-export function getBookTotalSeconds(book: { totalDuration?: string; chapters?: Array<{ duration?: string }> }): number {
+export function getBookTotalSeconds(
+  book: { totalDuration?: string; chapters?: Array<{ duration?: string; fileId?: string }> },
+  allFiles?: Array<{ id: string; size?: number; extension?: string; mimeType?: string; duration?: number }>
+): number {
   if (!book) return 0;
 
-  // 1. Se tem totalDuration formatado em texto
+  // 1. Se o livro possui capítulos individuais (áudios separados), soma os tempos individuais
+  if (book.chapters && Array.isArray(book.chapters) && book.chapters.length > 0) {
+    let chapterSeconds = 0;
+    let validCount = 0;
+
+    for (const chap of book.chapters) {
+      // Duração válida já gravada no capítulo (ignorando placeholders legados '20:00' e '25:00')
+      if (chap.duration && chap.duration.trim() && chap.duration !== '20:00' && chap.duration !== '25:00' && chap.duration !== '00:00') {
+        const sec = parseDurationStringToSeconds(chap.duration);
+        if (sec > 0) {
+          chapterSeconds += sec;
+          validCount++;
+          continue;
+        }
+      }
+
+      // Se temos allFiles e o capítulo possui fileId, extrai a duração ou estima pelo tamanho
+      if (allFiles && chap.fileId) {
+        const file = allFiles.find(f => f.id === chap.fileId);
+        if (file) {
+          if (file.duration && file.duration > 0) {
+            chapterSeconds += file.duration;
+            validCount++;
+            continue;
+          }
+          if (file.size && file.size > 0) {
+            const estSec = estimateAudioDurationSeconds(file.size, file.extension || file.mimeType);
+            if (estSec > 0) {
+              chapterSeconds += estSec;
+              validCount++;
+              continue;
+            }
+          }
+        }
+      }
+
+      // Fallback: se havia duração definida no capítulo, usa como última alternativa
+      if (chap.duration && chap.duration.trim()) {
+        const sec = parseDurationStringToSeconds(chap.duration);
+        if (sec > 0) {
+          chapterSeconds += sec;
+          validCount++;
+        }
+      }
+    }
+
+    if (validCount > 0 && chapterSeconds > 0) {
+      return chapterSeconds;
+    }
+  }
+
+  // 2. Se o livro não tem capítulos individuais com duração, analisa o totalDuration textual
   if (book.totalDuration && book.totalDuration.trim()) {
     const raw = book.totalDuration.trim();
     // Padrão "Xh Ym", "X h", "Y min", "Y m"
@@ -114,18 +168,6 @@ export function getBookTotalSeconds(book: { totalDuration?: string; chapters?: A
       const sec = parseDurationStringToSeconds(raw);
       if (sec > 0) return sec;
     }
-  }
-
-  // 2. Se o livro tem capítulos, soma a duração de cada capítulo
-  if (book.chapters && Array.isArray(book.chapters) && book.chapters.length > 0) {
-    const chapterSeconds = book.chapters.reduce((acc, chap) => {
-      if (chap.duration && chap.duration.trim()) {
-        const sec = parseDurationStringToSeconds(chap.duration);
-        if (sec > 0) return acc + sec;
-      }
-      return acc;
-    }, 0);
-    if (chapterSeconds > 0) return chapterSeconds;
   }
 
   return 0;

@@ -145,7 +145,7 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
       let totalChaptersCount = 0;
       sorted.forEach(b => {
         totalChaptersCount += (b.chapters?.length || 0);
-        totalSeconds += getBookTotalSeconds(b);
+        totalSeconds += getBookTotalSeconds(b, allFiles);
       });
 
       const totalDurationText = totalSeconds > 0 
@@ -164,7 +164,7 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
       });
     }
     return res.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  }, [books, sagas]);
+  }, [books, sagas, allFiles]);
 
   const activeSaga = selectedSagaName 
     ? computedSagas.find(s => s.name === selectedSagaName) || null 
@@ -594,11 +594,15 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                               Não iniciado
                             </span>
                           )}
-                          {book.totalDuration && (
-                            <span className="text-[11px] text-gray-400 font-mono">
-                              • {book.totalDuration}
-                            </span>
-                          )}
+                          {(() => {
+                            const bSecs = getBookTotalSeconds(book, allFiles);
+                            const bDuration = bSecs > 0 ? formatTotalBookDuration(bSecs) : (book.totalDuration && book.totalDuration.trim() && book.totalDuration !== '00:00' && book.totalDuration !== '20:00' && book.totalDuration !== '25:00' ? book.totalDuration : undefined);
+                            return bDuration ? (
+                              <span className="text-[11px] text-gray-400 font-mono">
+                                • {bDuration}
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -1037,6 +1041,11 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
             ? book.chapters?.find(c => c.id === book.lastPlayedChapterId) 
             : book.chapters?.find(c => (c.lastPositionSeconds || 0) > 0);
 
+          const bookSecs = getBookTotalSeconds(book, allFiles);
+          const bookTotalDuration = bookSecs > 0 
+            ? formatTotalBookDuration(bookSecs) 
+            : (book.totalDuration && book.totalDuration.trim() && book.totalDuration !== '00:00' && book.totalDuration !== '20:00' && book.totalDuration !== '25:00' ? book.totalDuration : undefined);
+
           return (
             <div
               key={book.id}
@@ -1087,6 +1096,16 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                   <div className="absolute bottom-3 left-3 z-10">
                     <span className="px-2 py-0.5 rounded-md bg-amber-500/90 backdrop-blur-md text-slate-950 text-[10px] font-extrabold shadow">
                       {book.saga}
+                    </span>
+                  </div>
+                )}
+
+                {/* Duration Badge */}
+                {bookTotalDuration && (
+                  <div className="absolute bottom-3 right-3 z-10">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-purple-300 text-[10px] font-mono font-bold shadow border border-purple-500/30">
+                      <Clock className="w-3 h-3 text-purple-400" />
+                      <span>{bookTotalDuration}</span>
                     </span>
                   </div>
                 )}
@@ -1194,6 +1213,23 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                       🎙️ Voz: {book.narrator}
                     </p>
                   )}
+                  {totalChapters > 0 && (
+                    <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      <span className="flex items-center gap-1 font-medium">
+                        <Headphones className="w-3 h-3 text-purple-500 shrink-0" />
+                        <span>{totalChapters} {totalChapters === 1 ? 'áudio' : 'áudios'}</span>
+                      </span>
+                      {bookTotalDuration && (
+                        <>
+                          <span className="text-gray-300 dark:text-gray-600">•</span>
+                          <span className="flex items-center gap-1 font-semibold text-purple-600 dark:text-purple-400 font-mono">
+                            <Clock className="w-3 h-3 shrink-0" />
+                            <span>{bookTotalDuration}</span>
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Progress & Duration Footer */}
@@ -1204,8 +1240,8 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                         <CheckCircle className="w-3.5 h-3.5 fill-current" />
                         <span>Lido / Concluído</span>
                       </span>
-                      <span className="font-mono text-gray-400 font-medium">
-                        {book.totalDuration || (totalChapters > 0 ? `${totalChapters} cap.` : 'E-Book')}
+                      <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                        {bookTotalDuration || (totalChapters > 0 ? `${totalChapters} cap.` : 'E-Book')}
                       </span>
                     </div>
                     <div className="w-full bg-emerald-100 dark:bg-emerald-950/40 h-1.5 rounded-full overflow-hidden">
@@ -1215,13 +1251,20 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                 ) : inProgress ? (
                   <div className="pt-2 border-t border-gray-100 dark:border-drive-darkBorder space-y-1.5 text-xs text-gray-500">
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1 truncate max-w-[160px]" title={activeChap ? `Retomar: ${activeChap.title}` : 'Continuar'}>
+                      <span className="font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1 truncate max-w-[150px]" title={activeChap ? `Retomar: ${activeChap.title}` : 'Continuar'}>
                         <Clock className="w-3 h-3 shrink-0" />
                         <span className="truncate">{activeChap ? activeChap.title : 'Em andamento'}</span>
                       </span>
-                      <span className="font-mono text-purple-600 dark:text-purple-400 font-bold shrink-0">
-                        {activeChap && (activeChap.lastPositionSeconds || 0) > 0 ? formatSeconds(activeChap.lastPositionSeconds || 0) : `${progressPercent}%`}
-                      </span>
+                      <div className="flex items-center gap-1 shrink-0 font-mono text-[11px]">
+                        {bookTotalDuration && (
+                          <span className="text-gray-400 font-medium" title="Tempo total do livro">
+                            {bookTotalDuration} •
+                          </span>
+                        )}
+                        <span className="text-purple-600 dark:text-purple-400 font-bold">
+                          {activeChap && (activeChap.lastPositionSeconds || 0) > 0 ? formatSeconds(activeChap.lastPositionSeconds || 0) : `${progressPercent}%`}
+                        </span>
+                      </div>
                     </div>
                     <div className="w-full bg-gray-100 dark:bg-drive-darkBg h-1.5 rounded-full overflow-hidden">
                       <div
@@ -1234,10 +1277,10 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                   <div className="pt-2 border-t border-gray-100 dark:border-drive-darkBorder space-y-2 text-xs text-gray-500">
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="font-semibold text-gray-700 dark:text-gray-300">
-                        {totalChapters > 0 ? `${totalChapters} capítulos` : 'E-Book'}
+                        {totalChapters > 0 ? `${totalChapters} ${totalChapters === 1 ? 'áudio' : 'capítulos'}` : 'E-Book'}
                       </span>
                       <span className="font-mono text-purple-600 dark:text-purple-400 font-bold">
-                        {book.totalDuration || (totalChapters > 0 ? `${totalChapters} cap.` : '')}
+                        {bookTotalDuration || (totalChapters > 0 ? `${totalChapters} cap.` : '')}
                       </span>
                     </div>
 

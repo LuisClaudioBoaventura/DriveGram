@@ -111,10 +111,21 @@ export function useBooks() {
       const res = await fetch('/api/books');
       if (res.ok) {
         const data = await res.json();
-        const sortedBooks = (data as Book[]).map(b => ({
-          ...b,
-          chapters: sortChaptersNumerically(b.chapters || [])
-        }));
+        const sortedBooks = (data as Book[]).map(b => {
+          const sortedChapters = sortChaptersNumerically(b.chapters || []);
+          let totalDuration = b.totalDuration;
+          if (sortedChapters.length > 0) {
+            const sumSec = getBookTotalSeconds({ ...b, chapters: sortedChapters });
+            if (sumSec > 0 && (!totalDuration || totalDuration.trim() === '' || totalDuration === '00:00' || totalDuration === '20:00' || totalDuration === '25:00')) {
+              totalDuration = formatTotalBookDuration(sumSec);
+            }
+          }
+          return {
+            ...b,
+            totalDuration,
+            chapters: sortedChapters
+          };
+        });
         setBooks(sortedBooks);
 
         // Se houver um livro ativo no player, sincroniza seus capítulos e dados sem trocar de livro
@@ -523,7 +534,14 @@ export function useBooks() {
 
   const updateBook = async (updated: Book) => {
     const sortedChapters = sortChaptersNumerically(updated.chapters || []);
-    const bookToSave: Book = { ...updated, chapters: sortedChapters };
+    let totalDuration = updated.totalDuration;
+    if (sortedChapters.length > 0) {
+      const sumSec = getBookTotalSeconds({ ...updated, chapters: sortedChapters });
+      if (sumSec > 0) {
+        totalDuration = formatTotalBookDuration(sumSec);
+      }
+    }
+    const bookToSave: Book = { ...updated, totalDuration, chapters: sortedChapters };
     setActiveBook(bookToSave);
     setBooks(prev => prev.map(b => b.id === bookToSave.id ? bookToSave : b));
     if (activeChapter) {

@@ -2294,6 +2294,12 @@ class Database {
       if (b.chapters && b.chapters.length > 1) {
         b.chapters.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' }));
       }
+      if (b.chapters && b.chapters.length > 0) {
+        const totalSec = b.chapters.reduce((acc, c) => acc + parseDurationStringToSeconds(c.duration), 0);
+        if (totalSec > 0 && (!b.totalDuration || b.totalDuration === '00:00' || b.totalDuration === '20:00' || b.totalDuration === '25:00')) {
+          b.totalDuration = formatTotalBookDuration(totalSec);
+        }
+      }
     }
     return books;
   }
@@ -2303,6 +2309,12 @@ class Database {
     const book = (this.data.books || []).find(b => b.id === id) || null;
     if (book && book.chapters && book.chapters.length > 1) {
       book.chapters.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' }));
+    }
+    if (book && book.chapters && book.chapters.length > 0) {
+      const totalSec = book.chapters.reduce((acc, c) => acc + parseDurationStringToSeconds(c.duration), 0);
+      if (totalSec > 0 && (!book.totalDuration || book.totalDuration === '00:00' || book.totalDuration === '20:00' || book.totalDuration === '25:00')) {
+        book.totalDuration = formatTotalBookDuration(totalSec);
+      }
     }
     return book;
   }
@@ -2321,6 +2333,13 @@ class Database {
       });
     }
     book.chapters = sanitizedChapters;
+
+    if (sanitizedChapters.length > 0) {
+      const totalSec = sanitizedChapters.reduce((acc, c) => acc + parseDurationStringToSeconds(c.duration), 0);
+      if (totalSec > 0) {
+        book.totalDuration = formatTotalBookDuration(totalSec);
+      }
+    }
 
     const idx = this.data.books.findIndex(b => b.id === book.id);
     if (idx >= 0) {
