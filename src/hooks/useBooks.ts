@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Book, BookChapter, BookSagaGroup } from '../types/index.js';
+import {
+  formatSecondsToDurationString,
+  formatTotalBookDuration,
+  parseDurationStringToSeconds
+} from '../utils/audioDurationUtils.js';
 
 export function sortChaptersNumerically(chapters: BookChapter[]): BookChapter[] {
   if (!chapters || chapters.length <= 1) return chapters || [];
@@ -58,6 +63,47 @@ export function useBooks() {
   useEffect(() => {
     currentTimeRef.current = currentTime;
   }, [currentTime]);
+
+  const handleLoadedMetadata = useCallback((realDurationSec: number) => {
+    if (!realDurationSec || isNaN(realDurationSec) || !isFinite(realDurationSec) || realDurationSec <= 0) return;
+    setDuration(realDurationSec);
+
+    const currentBook = activeBookRef.current;
+    const currentChap = activeChapterRef.current;
+    if (!currentBook || !currentChap) return;
+
+    const formattedDuration = formatSecondsToDurationString(Math.round(realDurationSec));
+    // Se a duração gravada estiver vazia, for placeholder ('20:00' / '25:00') ou diferir do tempo real
+    if (!currentChap.duration || currentChap.duration === '20:00' || currentChap.duration === '25:00' || currentChap.duration !== formattedDuration) {
+      const updatedChapters = (currentBook.chapters || []).map(c => 
+        (c.id === currentChap.id || (c.fileId && c.fileId === currentChap.fileId))
+          ? { ...c, duration: formattedDuration }
+          : c
+      );
+
+      const totalSec = updatedChapters.reduce((acc, c) => acc + parseDurationStringToSeconds(c.duration), 0);
+      const updatedTotalDuration = totalSec > 0 ? formatTotalBookDuration(totalSec) : currentBook.totalDuration;
+
+      const updatedBook: Book = {
+        ...currentBook,
+        totalDuration: updatedTotalDuration,
+        chapters: updatedChapters
+      };
+
+      const updatedChap = { ...currentChap, duration: formattedDuration };
+      setActiveChapter(updatedChap);
+      activeChapterRef.current = updatedChap;
+      setActiveBook(updatedBook);
+      activeBookRef.current = updatedBook;
+      setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+
+      fetch(`/api/books/${updatedBook.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedBook)
+      }).catch(() => {});
+    }
+  }, []);
 
   const fetchBooks = useCallback(async () => {
     try {
@@ -807,7 +853,8 @@ export function useBooks() {
     currentTime,
     setCurrentTime,
     duration,
-    setDuration,
+    setDuration: handleLoadedMetadata,
+    handleLoadedMetadata,
     volume,
     setVolume: handleVolumeChange,
     isMuted,

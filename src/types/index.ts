@@ -37,6 +37,7 @@ export interface DriveItem {
   type: FileType;
   extension: string;
   mimeType: string;
+  duration?: number; // Duração em segundos (se mídia de áudio/vídeo)
   isFavorite?: boolean;
   isTrash?: boolean;
   deletedAt?: string;

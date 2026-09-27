@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { Book, BookChapter, DriveItem, VideoTimestamp } from '../types/index.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
+import { getOrEstimateAudioDurationString } from '../utils/audioDurationUtils.js';
 import { ComicReader } from './ComicReader.js';
 import { EpubReader } from './EpubReader.js';
 import { PdfReader } from './PdfReader.js';
@@ -1080,27 +1081,32 @@ export const BookReaderView: React.FC<BookReaderViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      {(() => {
-                        const chapFile = chap.fileId 
-                          ? allFiles.find(f => f.id === chap.fileId) 
-                          : allFiles.find(f => f.parentId === book.folderId && f.name.toLowerCase().includes((chap.title || '').toLowerCase()));
-                        if (!chapFile) return null;
-                        return (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDownloadTargetFile(chapFile);
-                            }}
-                            className="p-1 rounded-lg text-gray-400 hover:text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-950/50 opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                            title="Baixar Capítulo para Cache Local"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
-                        );
-                      })()}
-                      <span className="text-[10px] text-gray-400 font-mono">{chap.duration || '20:00'}</span>
-                    </div>
+                    {(() => {
+                      const chapFile = chap.fileId 
+                        ? allFiles.find(f => f.id === chap.fileId) 
+                        : allFiles.find(f => f.parentId === book.folderId && f.name.toLowerCase().includes((chap.title || '').toLowerCase()));
+                      const displayDuration = chap.duration && chap.duration !== '20:00' && chap.duration !== '25:00'
+                        ? chap.duration
+                        : (chapFile ? getOrEstimateAudioDurationString(chapFile, chap.duration) : chap.duration || '00:00');
+
+                      return (
+                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                          {chapFile && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDownloadTargetFile(chapFile);
+                              }}
+                              className="p-1 rounded-lg text-gray-400 hover:text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-950/50 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                              title="Baixar Capítulo para Cache Local"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <span className="text-[10px] text-gray-400 font-mono">{displayDuration}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

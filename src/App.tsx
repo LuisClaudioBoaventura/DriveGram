@@ -681,7 +681,7 @@ export function App() {
               {selectedBookForView ? (
                 /* Active Audiobook / E-Book Reader Studio */
                 <BookReaderView
-                  book={selectedBookForView}
+                  book={(books.activeBook && books.activeBook.id === selectedBookForView.id) ? books.activeBook : selectedBookForView}
                   activeChapter={books.activeChapter}
                   onSelectChapter={(chap, autoPlay) => books.selectChapter(chap, autoPlay !== undefined ? autoPlay : true)}
                   onToggleChapterCompletion={books.toggleChapterCompletion}

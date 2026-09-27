@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, BookOpen, Headphones, Folder, Sparkles, Plus, Layers, User, Mic, Tag, Clock, HardDrive, Globe } from 'lucide-react';
 import { FolderItem, DriveItem, Book } from '../types/index.js';
 import { getLibraryEligibleFolders } from '../utils/libraryFolderUtils.js';
+import { estimateAudioDurationSeconds, formatTotalBookDuration } from '../utils/audioDurationUtils.js';
 import { GoogleBooksSearchSection } from './GoogleBooksSearchSection.js';
 
 interface BookModalProps {
@@ -97,10 +98,11 @@ export const BookModal: React.FC<BookModalProps> = ({
       }
 
       if (audioFiles.length > 0 && !totalDuration) {
-        const estimatedMinutes = audioFiles.length * 25;
-        const h = Math.floor(estimatedMinutes / 60);
-        const m = estimatedMinutes % 60;
-        setTotalDuration(h > 0 ? `${h}h ${m}m` : `${m} min`);
+        const totalSec = audioFiles.reduce((acc, f) => {
+          if (f.duration && f.duration > 0) return acc + f.duration;
+          return acc + estimateAudioDurationSeconds(f.size, f.extension || f.mimeType);
+        }, 0);
+        setTotalDuration(formatTotalBookDuration(totalSec));
       } else if (audioFiles.length === 0 && ebookFiles.length > 0) {
         setVersion('Edição Digital');
       }

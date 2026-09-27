@@ -29,6 +29,13 @@ import {
   StreamingMode, 
   CacheDurationConfig 
 } from '../src/types/index.js';
+import {
+  estimateAudioDurationSeconds,
+  formatSecondsToDurationString,
+  formatTotalBookDuration,
+  getOrEstimateAudioDurationString,
+  parseDurationStringToSeconds
+} from '../src/utils/audioDurationUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -993,10 +1000,11 @@ class Database {
             (c.title && c.title.toLowerCase() === cleanName.toLowerCase()) ||
             c.order === (idx + 1)
           );
+          const chapterDuration = getOrEstimateAudioDurationString(audio, existing?.duration);
           return {
             id: existing?.id || 'chap-' + book.id + '-' + audio.id,
             title: existing?.title || cleanName,
-            duration: existing?.duration || '20:00',
+            duration: chapterDuration,
             fileId: audio.id,
             order: idx + 1,
             isCompleted: existing?.isCompleted || false,
@@ -1005,6 +1013,15 @@ class Database {
             notes: existing?.notes
           };
         });
+
+        const totalSec = book.chapters.reduce((acc, c) => acc + parseDurationStringToSeconds(c.duration), 0);
+        if (totalSec > 0) {
+          book.totalDuration = formatTotalBookDuration(totalSec);
+        }
+        const totalBytes = bookAudioFiles.reduce((acc, f) => acc + (f.size || 0), 0) + bookPdfFiles.reduce((acc, f) => acc + (f.size || 0), 0);
+        if (totalBytes > 0 && (!book.fileSizeFormatted || book.fileSizeFormatted === '120 MB')) {
+          book.fileSizeFormatted = (totalBytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
       } else if (book.chapters && book.chapters.length > 1) {
         book.chapters.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' }))
           .forEach((ch, idx) => { ch.order = idx + 1; });
@@ -3987,17 +4004,23 @@ class Database {
         ? (totalBytes / (1024 * 1024)).toFixed(1) + ' MB' 
         : '120 MB';
 
-      const chapters: BookChapter[] = audioFiles.map((audio, idx) => ({
-        id: 'chap-' + Date.now() + '-' + idx,
-        title: audio.name.replace(/\.[^/.]+$/, ""),
-        duration: '25:00',
-        fileId: audio.id,
-        order: idx + 1,
-        isCompleted: false,
-        lastPositionSeconds: 0,
-        timestamps: audio.timestamps || [],
-        notes: ''
-      }));
+      const chapters: BookChapter[] = audioFiles.map((audio, idx) => {
+        const chapterDuration = getOrEstimateAudioDurationString(audio);
+        return {
+          id: 'chap-' + Date.now() + '-' + idx,
+          title: audio.name.replace(/\.[^/.]+$/, ""),
+          duration: chapterDuration,
+          fileId: audio.id,
+          order: idx + 1,
+          isCompleted: false,
+          lastPositionSeconds: 0,
+          timestamps: audio.timestamps || [],
+          notes: ''
+        };
+      });
+
+      const totalAudioSeconds = chapters.reduce((acc, c) => acc + parseDurationStringToSeconds(c.duration), 0);
+      const computedTotalDuration = totalAudioSeconds > 0 ? formatTotalBookDuration(totalAudioSeconds) : undefined;
 
       const parentFolder = allFolders.find(f => f.id === folder.parentId);
       const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Desenvolvimento Pessoal';
@@ -4009,7 +4032,7 @@ class Database {
         author: parsedAuthor,
         narrationType: chapters.length === 0 && ebookFiles.length > 0 ? 'Digital' : 'Humana',
         version: chapters.length === 0 && ebookFiles.length > 0 ? 'Edição Digital' : 'Estúdio de áudio',
-        totalDuration: chapters.length > 0 ? `${chapters.length * 25} min` : undefined,
+        totalDuration: computedTotalDuration,
         saga: 'N/A',
         fileSizeFormatted: autoSizeFormatted,
         category,

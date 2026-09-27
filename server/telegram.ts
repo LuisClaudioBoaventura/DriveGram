@@ -1788,6 +1788,7 @@ class TelegramService {
         let fileName = '';
         let fileSize = 0;
         let mimeType = 'application/octet-stream';
+        let mediaDuration: number | undefined;
 
         if ((msg.media as any).document) {
           const doc = (msg.media as any).document;
@@ -1795,6 +1796,10 @@ class TelegramService {
           mimeType = doc.mimeType || 'application/octet-stream';
           const nameAttr = doc.attributes?.find((a: any) => a.fileName);
           fileName = nameAttr ? nameAttr.fileName : `documento_${msg.id}`;
+          const durationAttr = doc.attributes?.find((a: any) => a.duration !== undefined);
+          if (durationAttr && typeof durationAttr.duration === 'number') {
+            mediaDuration = Math.round(durationAttr.duration);
+          }
         } else if ((msg.media as any).photo) {
           fileName = `foto_${msg.id}.jpg`;
           mimeType = 'image/jpeg';
@@ -1820,6 +1825,7 @@ class TelegramService {
           mimeType: mimeType,
           extension: ext,
           type: fileType,
+          duration: mediaDuration,
           telegramMeta: {
             messageId: msg.id,
             chatId: 'me',

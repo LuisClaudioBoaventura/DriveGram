@@ -29,6 +29,13 @@ import { castService } from './cast.js';
 import { comicService } from './comicService.js';
 import { parseYouTubeUrl, extractYouTubeVideoId } from './youtube-parser.js';
 import { FileType, DriveItem } from '../src/types/index.js';
+import {
+  estimateAudioDurationSeconds,
+  formatSecondsToDurationString,
+  formatTotalBookDuration,
+  getOrEstimateAudioDurationString,
+  parseDurationStringToSeconds
+} from '../src/utils/audioDurationUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -132,7 +139,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.19.5',
+    version: '1.20.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1969,17 +1976,23 @@ app.post('/api/books/from-folder', (req, res) => {
       ? (totalBytes / (1024 * 1024)).toFixed(1) + ' MB' 
       : '120 MB';
 
-    const chapters = audioFiles.map((audio, idx) => ({
-      id: 'chap-' + Date.now() + '-' + idx,
-      title: audio.name.replace(/\.[^/.]+$/, ""),
-      duration: '25:00',
-      fileId: audio.id,
-      order: idx + 1,
-      isCompleted: false,
-      lastPositionSeconds: 0,
-      timestamps: audio.timestamps || [],
-      notes: ''
-    }));
+    const chapters = audioFiles.map((audio, idx) => {
+      const chapterDuration = getOrEstimateAudioDurationString(audio);
+      return {
+        id: 'chap-' + Date.now() + '-' + idx,
+        title: audio.name.replace(/\.[^/.]+$/, ""),
+        duration: chapterDuration,
+        fileId: audio.id,
+        order: idx + 1,
+        isCompleted: false,
+        lastPositionSeconds: 0,
+        timestamps: audio.timestamps || [],
+        notes: ''
+      };
+    });
+
+    const totalAudioSeconds = chapters.reduce((acc, c) => acc + parseDurationStringToSeconds(c.duration), 0);
+    const computedTotalDuration = totalAudioSeconds > 0 ? formatTotalBookDuration(totalAudioSeconds) : undefined;
 
     const newBook = db.saveBook({
       id: 'book-' + Date.now(),
@@ -1988,7 +2001,7 @@ app.post('/api/books/from-folder', (req, res) => {
       narrationType: narrationType || (chapters.length === 0 && ebookFiles.length > 0 ? 'Digital' : 'Humana'),
       narrator: narrator || undefined,
       version: version || (chapters.length === 0 && ebookFiles.length > 0 ? 'Edição Digital' : 'Estúdio de áudio'),
-      totalDuration: totalDuration || (chapters.length > 0 ? `${chapters.length * 25} min` : undefined),
+      totalDuration: totalDuration || computedTotalDuration,
       saga: saga || 'N/A',
       sagaOrder: sagaOrder !== undefined ? Number(sagaOrder) : undefined,
       fileSizeFormatted: fileSizeFormatted || autoSizeFormatted,
