@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.19.4',
+    version: '1.19.5',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1204,9 +1204,21 @@ app.get('/api/stream/:id', async (req, res) => {
     // 2. Arquivo na Nuvem Telegram (Streaming direto ou Cache temporário)
     if (file.telegramMeta?.messageId && telegramService.getAuthState().isConnected) {
       const range = req.headers.range;
-      const fileSize = file.size || file.telegramMeta.fileSize || 0;
+      let fileSize = file.size || file.telegramMeta.fileSize || 0;
+
+      // Se fileSize não estiver salvo no DB, tenta recuperar do cache de metadados MTProto
+      if (fileSize === 0) {
+        const cachedLoc = telegramService.getCachedFileLocation(file.telegramMeta.messageId);
+        if (cachedLoc && cachedLoc.fileSize > 0) {
+          fileSize = cachedLoc.fileSize;
+          file.size = fileSize;
+          if (file.telegramMeta) file.telegramMeta.fileSize = fileSize;
+          db.updateFile(file.id, { size: fileSize, telegramMeta: file.telegramMeta });
+        }
+      }
+
       let start = 0;
-      let end = fileSize > 0 ? fileSize - 1 : 1024 * 1024;
+      let end = fileSize > 0 ? fileSize - 1 : 0;
 
       if (range) {
         const parts = range.replace(/bytes=/, "").split("-");
@@ -1216,7 +1228,54 @@ app.get('/api/stream/:id', async (req, res) => {
         } else if (fileSize > 0) {
           end = fileSize - 1;
         } else {
-          end = start + (512 * 1024);
+          end = 0; // Deixa o streamMediaDirect preencher com doc.size real
+        }
+      }
+
+      // Suporte ativo aos modos de streaming configurados (temp_cache ou local_cache)
+      const streamingMode = db.getStreamingMode();
+      if ((streamingMode === 'temp_cache' || streamingMode === 'local_cache') && !fs.existsSync(filePath)) {
+        const cacheUploadId = `stream-cache-${file.id}`;
+        if (!activeUploadsMap.has(cacheUploadId)) {
+          (async () => {
+            try {
+              activeUploadsMap.set(cacheUploadId, {
+                uploadId: cacheUploadId,
+                fileName: file.name,
+                size: fileSize,
+                transferred: 0,
+                progress: 0,
+                speed: 'Em segundo plano...',
+                stage: 'cloud',
+                stageLabel: `Armazenando em cache (${streamingMode === 'temp_cache' ? 'temporário' : 'local'})...`,
+                updatedAt: Date.now()
+              });
+
+              await telegramService.downloadMediaByMessageId(
+                file.telegramMeta!.messageId!,
+                filePath,
+                (pct, transferred, total) => {
+                  const item = activeUploadsMap.get(cacheUploadId);
+                  if (item) {
+                    item.progress = pct;
+                    item.transferred = transferred;
+                    item.size = total;
+                    item.updatedAt = Date.now();
+                  }
+                },
+                fileSize
+              );
+
+              if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+                db.touchFileCachedAt(file.id);
+                activeUploadsMap.delete(cacheUploadId);
+                console.log(`[DriveGram Stream Cache] Arquivo "${file.name}" gravado com sucesso no disco (${streamingMode})!`);
+              }
+            } catch (cacheErr: any) {
+              activeUploadsMap.delete(cacheUploadId);
+              console.warn(`[DriveGram Stream Cache] Download em background de "${file.name}" falhou:`, cacheErr?.message);
+            }
+          })();
         }
       }
 
@@ -5035,6 +5094,9 @@ function purgeExpiredCacheRoutine() {
 }
 
 // Run 10s after startup, then every 2 minutes
+setTimeout(purgeExpiredCacheRoutine, 10000);
+setInterval(purgeExpiredCacheRoutine, 2 * 60 * 1000);
+
 // ---------------- WEB SMART TV PLAYER ROUTE ----------------
 app.get('/tv', (req, res) => {
   const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() || req.socket.remoteAddress || '';

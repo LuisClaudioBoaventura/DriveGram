@@ -78,6 +78,7 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [currentTime, setCurrentTime] = useState<number>(0);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [duration, setDuration] = useState<number>(0);
   const [showPlaylistDrawer, setShowPlaylistDrawer] = useState<boolean>(false);
   const [isFav, setIsFav] = useState<boolean>(!!video.isFavorite);
@@ -378,20 +379,53 @@ export const AdultPlayerView: React.FC<AdultPlayerViewProps> = ({
         <div className="flex-1 w-full flex flex-col items-center">
           <div className="relative w-full max-h-[70vh] aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-800/90 flex items-center justify-center group">
             {(videoFile || video.fileId) ? (
-              <video
-                ref={videoRef}
-                key={videoFile?.id || video.fileId}
-                src={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
-                crossOrigin="anonymous"
-                controls
-                autoPlay
-                preload="auto"
-                playsInline
-                onTimeUpdate={handleTimeUpdate}
-                onPause={() => handlePauseOrEnded(false)}
-                onEnded={() => handlePauseOrEnded(true)}
-                className="w-full h-full max-h-[70vh] object-contain"
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  key={videoFile?.id || video.fileId}
+                  src={resolveApiUrl(`/api/stream/${videoFile?.id || video.fileId}`)}
+                  crossOrigin="anonymous"
+                  controls
+                  autoPlay
+                  preload="auto"
+                  playsInline
+                  onTimeUpdate={handleTimeUpdate}
+                  onPause={() => {
+                    setIsBuffering(false);
+                    handlePauseOrEnded(false);
+                  }}
+                  onEnded={() => {
+                    setIsBuffering(false);
+                    handlePauseOrEnded(true);
+                  }}
+                  onWaiting={() => setIsBuffering(true)}
+                  onPlaying={() => setIsBuffering(false)}
+                  onCanPlay={() => setIsBuffering(false)}
+                  onError={() => {
+                    setIsBuffering(false);
+                    if (videoRef.current && videoRef.current.currentTime > 0) {
+                      const savedTime = videoRef.current.currentTime;
+                      console.warn('[AdultPlayer] Stream pausado ou interrompido pela rede, reconectando em', savedTime);
+                      const baseSrc = videoRef.current.src.split(/[?&]_t=/)[0];
+                      const sep = baseSrc.includes('?') ? '&' : '?';
+                      videoRef.current.src = `${baseSrc}${sep}_t=${Date.now()}`;
+                      videoRef.current.currentTime = savedTime;
+                      videoRef.current.play().catch(() => {});
+                    }
+                  }}
+                  className="w-full h-full max-h-[70vh] object-contain"
+                />
+
+                {/* Buffering Indicator Overlay */}
+                {isBuffering && (
+                  <div className="absolute inset-0 z-20 pointer-events-none flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] transition-all animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2.5 bg-gray-950/85 px-4 py-2 rounded-full border border-rose-500/40 shadow-2xl text-white text-xs font-semibold">
+                      <div className="w-3.5 h-3.5 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-gray-200">Carregando buffer...</span>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center p-8 text-center text-gray-400">
                 <Film className="w-16 h-16 text-gray-600 mb-3" />

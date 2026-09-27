@@ -46,6 +46,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -672,8 +673,27 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               onPlay={() => setIsPlaying(true)}
               onPause={() => {
                 setIsPlaying(false);
+                setIsBuffering(false);
                 if (videoRef.current) {
                   onUpdateProgress(video.id, videoRef.current.currentTime, false);
+                }
+              }}
+              onWaiting={() => setIsBuffering(true)}
+              onPlaying={() => {
+                setIsPlaying(true);
+                setIsBuffering(false);
+              }}
+              onCanPlay={() => setIsBuffering(false)}
+              onError={() => {
+                setIsBuffering(false);
+                if (videoRef.current && videoRef.current.currentTime > 0) {
+                  const savedTime = videoRef.current.currentTime;
+                  console.warn('[VideoPlayer] Stream pausado ou interrompido pela rede, reconectando em', savedTime);
+                  const baseSrc = videoRef.current.src.split(/[?&]_t=/)[0];
+                  const sep = baseSrc.includes('?') ? '&' : '?';
+                  videoRef.current.src = `${baseSrc}${sep}_t=${Date.now()}`;
+                  videoRef.current.currentTime = savedTime;
+                  videoRef.current.play().catch(() => {});
                 }
               }}
               onTimeUpdate={handleTimeUpdate}
@@ -691,6 +711,16 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 />
               ))}
             </video>
+
+            {/* Buffering Indicator Overlay */}
+            {isBuffering && isPlaying && (
+              <div className="absolute inset-0 z-20 pointer-events-none flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] transition-all animate-in fade-in duration-200">
+                <div className="flex items-center gap-2.5 bg-gray-950/85 px-4 py-2 rounded-full border border-red-500/40 shadow-2xl text-white text-xs font-semibold">
+                  <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-gray-200">Carregando buffer...</span>
+                </div>
+              </div>
+            )}
 
             {/* Next Movie Autoplay Countdown Overlay */}
             {nextCountdown !== null && nextMovieToPlay && (

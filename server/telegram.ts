@@ -75,7 +75,21 @@ class TelegramService {
     cachedAt: number;
   }>();
 
-  private getCachedFileLocation(messageId: number) {
+  // ---- In-Memory Stream Chunk Cache (LRU) & Prefetch Pipeline ----
+  // Keeps recent video chunks in memory to instantly serve browser range probes,
+  // audio/video headers (moov/ftyp), short seeks and pause/resume without Telegram MTProto round-trips.
+  public static readonly STREAM_CHUNK_SIZE = 512 * 1024; // 512 KB per MTProto chunk
+  private static readonly MAX_CACHED_STREAM_CHUNKS = 160; // 160 * 512 KB = ~80 MB RAM max
+  private static readonly STREAM_PREFETCH_AHEAD = 2; // Prefetch 2 chunks ahead (1 MB read-ahead)
+  private static readonly STREAM_CHUNK_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+  private streamChunkCache = new Map<string, {
+    buffer: Buffer;
+    lastAccessed: number;
+  }>();
+  private inFlightStreamChunks = new Map<string, Promise<Buffer | null>>();
+
+  public getCachedFileLocation(messageId: number) {
     const entry = this.fileLocationCache.get(messageId);
     if (!entry) return null;
     if (Date.now() - entry.cachedAt > TelegramService.FILE_LOCATION_CACHE_TTL_MS) {
@@ -87,6 +101,114 @@ class TelegramService {
 
   public evictFileLocationCache(messageId: number): void {
     this.fileLocationCache.delete(messageId);
+    this.evictStreamChunkCacheForMessage(messageId);
+  }
+
+  private getStreamChunkCacheKey(messageId: number, offset: number): string {
+    return `${messageId}:${offset}`;
+  }
+
+  private getCachedStreamChunk(key: string): Buffer | null {
+    const entry = this.streamChunkCache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.lastAccessed > TelegramService.STREAM_CHUNK_CACHE_TTL_MS) {
+      this.streamChunkCache.delete(key);
+      return null;
+    }
+    entry.lastAccessed = Date.now();
+    return entry.buffer;
+  }
+
+  private putCachedStreamChunk(key: string, buffer: Buffer): void {
+    // Evict oldest if full (LRU)
+    if (this.streamChunkCache.size >= TelegramService.MAX_CACHED_STREAM_CHUNKS) {
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+      for (const [k, v] of this.streamChunkCache.entries()) {
+        if (v.lastAccessed < oldestTime) {
+          oldestTime = v.lastAccessed;
+          oldestKey = k;
+        }
+      }
+      if (oldestKey) {
+        this.streamChunkCache.delete(oldestKey);
+      }
+    }
+    this.streamChunkCache.set(key, {
+      buffer,
+      lastAccessed: Date.now()
+    });
+  }
+
+  public evictStreamChunkCacheForMessage(messageId: number): void {
+    const prefix = `${messageId}:`;
+    for (const k of this.streamChunkCache.keys()) {
+      if (k.startsWith(prefix)) {
+        this.streamChunkCache.delete(k);
+      }
+    }
+    for (const k of this.inFlightStreamChunks.keys()) {
+      if (k.startsWith(prefix)) {
+        this.inFlightStreamChunks.delete(k);
+      }
+    }
+  }
+
+  /**
+   * Fetches a single 512KB chunk with LRU cache and in-flight request deduplication.
+   */
+  private async fetchSingleStreamChunk(
+    client: any,
+    Api: any,
+    fileLocation: any,
+    messageId: number,
+    offset: number,
+    sender: any,
+    dcId: number | undefined
+  ): Promise<Buffer | null> {
+    const key = this.getStreamChunkCacheKey(messageId, offset);
+
+    // 1. Memory LRU Cache Hit
+    const cached = this.getCachedStreamChunk(key);
+    if (cached) return cached;
+
+    // 2. In-flight request deduplication (reuse promise if already being fetched)
+    const inFlight = this.inFlightStreamChunks.get(key);
+    if (inFlight) return inFlight;
+
+    // 3. Initiate new fetch
+    const fetchPromise = (async () => {
+      try {
+        const req = new Api.upload.GetFile({
+          precise: true,
+          location: fileLocation,
+          offset: toBigInt(offset),
+          limit: TelegramService.STREAM_CHUNK_SIZE,
+        });
+
+        const result: any = sender
+          ? await client.invokeWithSender(req, sender)
+          : await client.invoke(req);
+
+        if (!result || !result.bytes || result.bytes.length === 0) {
+          return null; // EOF
+        }
+
+        const chunkBuf: Buffer = result.bytes;
+        this.putCachedStreamChunk(key, chunkBuf);
+        return chunkBuf;
+      } catch (err: any) {
+        if (err.errorMessage === 'FILEREF_UPGRADE_NEEDED' || err.name === 'FileMigrateError') {
+          this.evictFileLocationCache(messageId);
+        }
+        throw err;
+      } finally {
+        this.inFlightStreamChunks.delete(key);
+      }
+    })();
+
+    this.inFlightStreamChunks.set(key, fetchPromise);
+    return fetchPromise;
   }
 
   public isInitialSyncDone(): boolean {
@@ -1375,6 +1497,11 @@ class TelegramService {
     if (!client || !this.authState.isConnected) return false;
 
     try {
+      if (end <= 0 && fileSize > 0) {
+        end = fileSize - 1;
+      } else if (end <= 0) {
+        end = start + (20 * 1024 * 1024); // Fallback generoso de 20MB para streams com range sem fim
+      }
       const contentLength = (end - start) + 1;
 
       // ---- FileLocation Cache ----
@@ -1443,7 +1570,7 @@ class TelegramService {
       // Telegram MTProto upload.getFile strictly requires offset to be divisible by limit (CHUNK_SIZE)
       // unless precise: true is used, and chunks must be powers of 2.
       // 512 KB chunks = fewer round-trips per video segment vs. the previous 128 KB.
-      const CHUNK_SIZE = 512 * 1024; // 512 KB chunks (power of 2, 4KB multiple)
+      const CHUNK_SIZE = TelegramService.STREAM_CHUNK_SIZE;
       const alignedStart = Math.floor(start / CHUNK_SIZE) * CHUNK_SIZE;
       const skipPrefix = start - alignedStart;
 
@@ -1472,23 +1599,32 @@ class TelegramService {
         while (bytesSent < contentLength) {
           if (res.destroyed || (res as any).closed || res.writableEnded) break;
 
-          let chunk: Buffer;
+          // Pipeline Prefetch: dispara requisições antecipadas dos próximos chunks em paralelo
+          for (let p = 1; p <= TelegramService.STREAM_PREFETCH_AHEAD; p++) {
+            const nextOffset = currentOffset + (p * CHUNK_SIZE);
+            if (nextOffset < alignedStart + contentLength + (CHUNK_SIZE * 2)) {
+              const prefetchKey = this.getStreamChunkCacheKey(messageId, nextOffset);
+              if (!this.streamChunkCache.has(prefetchKey) && !this.inFlightStreamChunks.has(prefetchKey)) {
+                this.fetchSingleStreamChunk(client, Api, fileLocation, messageId, nextOffset, sender, dcId).catch(() => {});
+              }
+            }
+          }
+
+          let chunk: Buffer | null = null;
           try {
-            const req = new Api.upload.GetFile({
-              precise: true,
-              location: fileLocation,
-              offset: toBigInt(currentOffset),
-              limit: CHUNK_SIZE,
-            });
+            chunk = await this.fetchSingleStreamChunk(
+              client,
+              Api,
+              fileLocation,
+              messageId,
+              currentOffset,
+              sender,
+              dcId
+            );
 
-            const result: any = sender
-              ? await client.invokeWithSender(req, sender)
-              : await client.invoke(req);
-
-            if (!result || !result.bytes || result.bytes.length === 0) {
+            if (!chunk || chunk.length === 0) {
               break; // EOF
             }
-            chunk = result.bytes;
           } catch (invokeErr: any) {
             if (invokeErr.errorMessage === 'FILEREF_UPGRADE_NEEDED' || invokeErr.name === 'FileMigrateError') {
               // Invalidate the cache: fileReference is stale and needs to be refreshed
@@ -1526,8 +1662,22 @@ class TelegramService {
                   if (remaining <= 0) break;
                   const toSend = dataToSend.length > remaining ? dataToSend.subarray(0, remaining) : dataToSend;
                   sendHeadersIfNeeded();
-                  res.write(toSend);
+                  const canWrite = res.write(toSend);
                   bytesSent += toSend.length;
+
+                  if (!canWrite && !res.destroyed && !res.writableEnded) {
+                    await new Promise<void>((resolve) => {
+                      const onDrain = () => { cleanup(); resolve(); };
+                      const onClose = () => { cleanup(); resolve(); };
+                      const cleanup = () => {
+                        res.removeListener('drain', onDrain);
+                        res.removeListener('close', onClose);
+                      };
+                      res.once('drain', onDrain);
+                      res.once('close', onClose);
+                    });
+                  }
+
                   if (bytesSent >= contentLength) break;
                 }
                 if (!res.writableEnded && !res.destroyed) res.end();
@@ -1560,8 +1710,22 @@ class TelegramService {
           const chunkToSend = dataToSend.length > remaining ? dataToSend.subarray(0, remaining) : dataToSend;
 
           sendHeadersIfNeeded();
-          res.write(chunkToSend);
+          const canWriteMore = res.write(chunkToSend);
           bytesSent += chunkToSend.length;
+
+          // Backpressure handling: aguarda drain antes de continuar buscando novos chunks do Telegram
+          if (!canWriteMore && !res.destroyed && !res.writableEnded) {
+            await new Promise<void>((resolve) => {
+              const onDrain = () => { cleanup(); resolve(); };
+              const onClose = () => { cleanup(); resolve(); };
+              const cleanup = () => {
+                res.removeListener('drain', onDrain);
+                res.removeListener('close', onClose);
+              };
+              res.once('drain', onDrain);
+              res.once('close', onClose);
+            });
+          }
 
           if (chunk.length < CHUNK_SIZE) {
             break; // last chunk reached
