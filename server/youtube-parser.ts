@@ -417,45 +417,96 @@ async function paginateYouTubeContinuations(
 
   while (token && page < maxPages && seenIds.size < maxVideos) {
     page++;
-    try {
-      const browseUrl = apiKey
-        ? `https://www.youtube.com/youtubei/v1/browse?key=${apiKey}`
-        : 'https://www.youtube.com/youtubei/v1/browse';
 
-      const bRes = await fetch(browseUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': fetchHeaders['User-Agent'],
-          'X-YouTube-Client-Name': '1',
-          'X-YouTube-Client-Version': clientVersion
-        },
-        body: JSON.stringify({
-          context: {
-            client: {
-              clientName: 'WEB',
-              clientVersion: clientVersion,
-              hl: 'pt-BR',
-              gl: 'BR'
-            }
+    // Polite delay between pagination requests to avoid triggering YouTube rate-limiting / socket resets
+    await new Promise(r => setTimeout(r, 250));
+
+    let bData: any = null;
+    let pageVideos: YouTubeVideoItem[] = [];
+    const maxRetries = 2;
+    let lastError: any = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        // Exponential backoff on transient network error (e.g. ECONNRESET, timeout)
+        await new Promise(r => setTimeout(r, 800 * attempt));
+      }
+
+      try {
+        const browseUrl = apiKey
+          ? `https://www.youtube.com/youtubei/v1/browse?key=${apiKey}`
+          : 'https://www.youtube.com/youtubei/v1/browse';
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        const bRes = await fetch(browseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': fetchHeaders['User-Agent'],
+            'X-YouTube-Client-Name': '1',
+            'X-YouTube-Client-Version': clientVersion
           },
-          continuation: token
-        })
-      });
+          body: JSON.stringify({
+            context: {
+              client: {
+                clientName: 'WEB',
+                clientVersion: clientVersion,
+                hl: 'pt-BR',
+                gl: 'BR'
+              }
+            },
+            continuation: token
+          }),
+          signal: controller.signal
+        });
 
-      if (!bRes.ok) break;
+        clearTimeout(timeoutId);
 
-      const bData = await bRes.json();
-      const pageVideos = extractVideosFromPayload(bData, seenIds, defaultAuthor, listId);
-      if (pageVideos.length === 0) break;
+        if (!bRes.ok) {
+          if ((bRes.status === 429 || bRes.status >= 500) && attempt < maxRetries) {
+            continue;
+          }
+          break;
+        }
 
-      allVideos.push(...pageVideos);
+        bData = await bRes.json();
+        pageVideos = extractVideosFromPayload(bData, seenIds, defaultAuthor, listId);
+        lastError = null;
+        break; // Sucesso na requisição
+      } catch (err: any) {
+        lastError = err;
+        const isNetworkError =
+          err?.name === 'AbortError' ||
+          err?.code === 'ECONNRESET' ||
+          err?.cause?.code === 'ECONNRESET' ||
+          err?.cause?.code === 'ETIMEDOUT' ||
+          err?.cause?.code === 'ECONNREFUSED' ||
+          err?.message?.includes('fetch failed') ||
+          err?.message?.includes('network') ||
+          err?.message?.includes('socket') ||
+          err?.message?.includes('reset');
 
-      token = extractContinuationToken(bData);
-    } catch (err) {
-      console.warn(`Pagination error on page ${page}:`, err);
+        if (isNetworkError && attempt < maxRetries) {
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (lastError) {
+      const errDetail = lastError?.cause?.code || lastError?.code || lastError?.message || 'conexão instável';
+      console.log(`[YouTube Parser] Paginação de vídeos encerrada na página ${page} (${errDetail}). Prosseguindo com ${allVideos.length} vídeos já indexados.`);
       break;
     }
+
+    if (!bData || pageVideos.length === 0) {
+      break;
+    }
+
+    allVideos.push(...pageVideos);
+    token = extractContinuationToken(bData);
   }
 
   return allVideos;

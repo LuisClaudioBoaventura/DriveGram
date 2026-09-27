@@ -132,7 +132,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.19.3',
+    version: '1.19.4',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -2673,8 +2673,8 @@ export async function refreshSingleSeriesInternal(series: any): Promise<{ series
         series.description = parsed.description;
       }
     }
-  } catch (err) {
-    console.warn(`[AutoSync] YouTube fetch failed for series "${series.title}":`, err);
+  } catch (err: any) {
+    console.warn(`[AutoSync] YouTube fetch failed for series "${series.title}":`, err?.message || err);
   }
 
   if (fetchedVideos.length === 0) {
@@ -5413,6 +5413,9 @@ const httpServer = app.listen(Number(PORT), '0.0.0.0', () => {
 httpServer.timeout = 1800000; // 30 minutos
 httpServer.keepAliveTimeout = 65000;
 httpServer.headersTimeout = 66000;
+if ('requestTimeout' in httpServer) {
+  (httpServer as any).requestTimeout = 1800000; // 30 minutos (Node 18+)
+}
 
 // Captura erros de bind (ex: porta em uso) diretamente no servidor HTTP
 httpServer.on('error', (err: any) => {

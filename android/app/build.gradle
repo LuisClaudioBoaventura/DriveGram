@@ -7,8 +7,8 @@ android {
         applicationId "com.drivegram.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 61
-        versionName "1.19.3"
+        versionCode 62
+        versionName "1.19.4"
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
         }
