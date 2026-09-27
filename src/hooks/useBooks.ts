@@ -3,6 +3,7 @@ import { Book, BookChapter, BookSagaGroup } from '../types/index.js';
 import {
   formatSecondsToDurationString,
   formatTotalBookDuration,
+  getBookTotalSeconds,
   parseDurationStringToSeconds
 } from '../utils/audioDurationUtils.js';
 
@@ -731,25 +732,13 @@ export function useBooks() {
       let totalChaptersCount = 0;
       sorted.forEach(b => {
         totalChaptersCount += (b.chapters?.length || 0);
-        if (b.totalDuration) {
-          const matchHours = b.totalDuration.match(/(\d+)\s*h/);
-          const matchMins = b.totalDuration.match(/(\d+)\s*m/);
-          if (matchHours || matchMins) {
-            const h = matchHours ? parseInt(matchHours[1]) : 0;
-            const m = matchMins ? parseInt(matchMins[1]) : 0;
-            totalSeconds += (h * 3600 + m * 60);
-          }
-        }
+        const bookSec = getBookTotalSeconds(b);
+        totalSeconds += bookSec;
       });
 
-      let totalDurationText = '';
-      if (totalSeconds > 0) {
-        const h = Math.floor(totalSeconds / 3600);
-        const m = Math.floor((totalSeconds % 3600) / 60);
-        totalDurationText = h > 0 ? `${h}h ${m}m` : `${m} min`;
-      } else if (totalChaptersCount > 0) {
-        totalDurationText = `${totalChaptersCount} capítulos`;
-      }
+      const totalDurationText = totalSeconds > 0 
+        ? formatTotalBookDuration(totalSeconds) 
+        : (totalChaptersCount > 0 ? `${totalChaptersCount} capítulos` : undefined);
 
       result.push({
         name,

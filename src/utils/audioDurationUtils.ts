@@ -87,3 +87,48 @@ export function getOrEstimateAudioDurationString(
   return formatSecondsToDurationString(estSec);
 }
 
+/**
+ * Extrai a duração total de um livro em segundos de forma resiliente,
+ * analisando totalDuration ("1h 30m", "45 min", "1:30:00", etc.) ou
+ * somando a duração dos seus capítulos.
+ */
+export function getBookTotalSeconds(book: { totalDuration?: string; chapters?: Array<{ duration?: string }> }): number {
+  if (!book) return 0;
+
+  // 1. Se tem totalDuration formatado em texto
+  if (book.totalDuration && book.totalDuration.trim()) {
+    const raw = book.totalDuration.trim();
+    // Padrão "Xh Ym", "X h", "Y min", "Y m"
+    const matchHours = raw.match(/(\d+)\s*h(?:oras?)?/i);
+    const matchMins = raw.match(/(\d+)\s*m(?:in(?:utos?)?)?/i);
+    const matchSecs = raw.match(/(\d+)\s*s(?:eg(?:undos?)?)?/i);
+    if (matchHours || matchMins || matchSecs) {
+      const h = matchHours ? parseInt(matchHours[1], 10) : 0;
+      const m = matchMins ? parseInt(matchMins[1], 10) : 0;
+      const s = matchSecs ? parseInt(matchSecs[1], 10) : 0;
+      const sec = h * 3600 + m * 60 + s;
+      if (sec > 0) return sec;
+    }
+    // Padrão com dois pontos "HH:MM:SS" ou "MM:SS"
+    if (raw.includes(':')) {
+      const sec = parseDurationStringToSeconds(raw);
+      if (sec > 0) return sec;
+    }
+  }
+
+  // 2. Se o livro tem capítulos, soma a duração de cada capítulo
+  if (book.chapters && Array.isArray(book.chapters) && book.chapters.length > 0) {
+    const chapterSeconds = book.chapters.reduce((acc, chap) => {
+      if (chap.duration && chap.duration.trim()) {
+        const sec = parseDurationStringToSeconds(chap.duration);
+        if (sec > 0) return acc + sec;
+      }
+      return acc;
+    }, 0);
+    if (chapterSeconds > 0) return chapterSeconds;
+  }
+
+  return 0;
+}
+
+

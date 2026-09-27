@@ -33,6 +33,7 @@ import {
   estimateAudioDurationSeconds,
   formatSecondsToDurationString,
   formatTotalBookDuration,
+  getBookTotalSeconds,
   getOrEstimateAudioDurationString,
   parseDurationStringToSeconds
 } from '../src/utils/audioDurationUtils.js';
@@ -2412,17 +2413,27 @@ class Database {
       });
 
       const authorsSet = new Set<string>();
+      let totalSeconds = 0;
+      let totalChaptersCount = 0;
       sorted.forEach(b => {
         if (b.author && b.author.trim() && b.author !== 'Autor Desconhecido') {
           authorsSet.add(b.author.trim());
         }
+        totalChaptersCount += (b.chapters?.length || 0);
+        totalSeconds += getBookTotalSeconds(b);
       });
+
+      const totalDurationText = totalSeconds > 0 
+        ? formatTotalBookDuration(totalSeconds) 
+        : (totalChaptersCount > 0 ? `${totalChaptersCount} capítulos` : undefined);
 
       sagas.push({
         name,
         coverImage: covers[name] || sorted[0]?.coverImage,
         bookCount: sorted.length,
         completedCount: sorted.filter(b => b.isCompleted || (b.chapters && b.chapters.length > 0 && b.chapters.every(c => c.isCompleted))).length,
+        totalDuration: totalDurationText || undefined,
+        totalDurationSeconds: totalSeconds,
         authors: Array.from(authorsSet),
         books: sorted
       });

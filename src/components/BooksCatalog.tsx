@@ -31,6 +31,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { Book, DriveItem, BookSagaGroup } from '../types/index.js';
+import { getBookTotalSeconds, formatTotalBookDuration } from '../utils/audioDurationUtils.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 import { EditBookSagaCoverModal } from './EditBookSagaCoverModal.js';
@@ -144,25 +145,12 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
       let totalChaptersCount = 0;
       sorted.forEach(b => {
         totalChaptersCount += (b.chapters?.length || 0);
-        if (b.totalDuration) {
-          const matchHours = b.totalDuration.match(/(\d+)\s*h/);
-          const matchMins = b.totalDuration.match(/(\d+)\s*m/);
-          if (matchHours || matchMins) {
-            const h = matchHours ? parseInt(matchHours[1]) : 0;
-            const m = matchMins ? parseInt(matchMins[1]) : 0;
-            totalSeconds += (h * 3600 + m * 60);
-          }
-        }
+        totalSeconds += getBookTotalSeconds(b);
       });
 
-      let totalDurationText = '';
-      if (totalSeconds > 0) {
-        const h = Math.floor(totalSeconds / 3600);
-        const m = Math.floor((totalSeconds % 3600) / 60);
-        totalDurationText = h > 0 ? `${h}h ${m}m` : `${m} min`;
-      } else if (totalChaptersCount > 0) {
-        totalDurationText = `${totalChaptersCount} capítulos`;
-      }
+      const totalDurationText = totalSeconds > 0 
+        ? formatTotalBookDuration(totalSeconds) 
+        : (totalChaptersCount > 0 ? `${totalChaptersCount} capítulos` : undefined);
 
       res.push({
         name,
@@ -755,7 +743,8 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                             {saga.bookCount} {saga.bookCount === 1 ? 'Volume' : 'Volumes'}
                           </span>
                           {saga.totalDuration && (
-                            <span className="px-2 py-0.5 rounded-lg bg-black/60 text-gray-200 text-[10px] font-bold backdrop-blur-sm">
+                            <span className="px-2 py-0.5 rounded-lg bg-black/60 text-gray-200 text-[10px] font-bold backdrop-blur-sm flex items-center gap-1 shadow-sm">
+                              <Clock className="w-3 h-3 text-purple-400" />
                               {saga.totalDuration}
                             </span>
                           )}
@@ -793,6 +782,17 @@ export const BooksCatalog: React.FC<BooksCatalogProps> = ({
                             Por {saga.authors.join(', ')}
                           </p>
                         )}
+
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
+                          {saga.totalDuration && (
+                            <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400 font-semibold" title="Duração total somada da saga">
+                              <Clock className="w-3.5 h-3.5" />
+                              {saga.totalDuration}
+                            </span>
+                          )}
+                          {saga.totalDuration && <span>•</span>}
+                          <span>{saga.bookCount} {saga.bookCount === 1 ? 'livro' : 'livros'}</span>
+                        </div>
 
                         <p className="text-[11px] text-gray-400 mt-1 line-clamp-1">
                           {saga.books.map(b => b.title).join(' • ')}
