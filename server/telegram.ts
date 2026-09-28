@@ -1384,7 +1384,8 @@ class TelegramService {
     title: string,
     tag: string = 'youtube_cover'
   ): Promise<{ messageId?: number; filePath?: string; success: boolean }> {
-    const coversDir = path.join(path.dirname(__filename), '..', 'uploads', 'covers');
+    const uploadsBase = process.env.DRIVEGRAM_UPLOADS_DIR || process.env.UPLOADS_DIR || path.join(path.dirname(__filename), '..', 'uploads');
+    const coversDir = path.join(uploadsBase, 'covers');
     if (!fs.existsSync(coversDir)) {
       fs.mkdirSync(coversDir, { recursive: true });
     }
@@ -1401,13 +1402,22 @@ class TelegramService {
       if (imageUrlOrBuffer.startsWith('data:image')) {
         const base64Data = imageUrlOrBuffer.split(',')[1];
         if (base64Data) buffer = Buffer.from(base64Data, 'base64');
+      } else if (imageUrlOrBuffer.startsWith('/api/covers/local/')) {
+        const cleanName = path.basename(imageUrlOrBuffer.split('?')[0]);
+        const locPath = path.join(coversDir, cleanName);
+        if (fs.existsSync(locPath)) {
+          buffer = fs.readFileSync(locPath);
+        }
       } else if (imageUrlOrBuffer.startsWith('http://') || imageUrlOrBuffer.startsWith('https://')) {
         try {
-          const res = await fetch(imageUrlOrBuffer, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGram/1.0'
-            }
-          });
+          const headers: Record<string, string> = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+          };
+          if (imageUrlOrBuffer.includes('media-amazon.com') || imageUrlOrBuffer.includes('imdb')) {
+            headers['Referer'] = 'https://www.imdb.com/';
+          }
+          const res = await fetch(imageUrlOrBuffer, { headers });
           if (res.ok) {
             buffer = Buffer.from(await res.arrayBuffer());
           }
@@ -1430,10 +1440,23 @@ class TelegramService {
     const client = await this.ensureClient();
     if (client && this.authState.isConnected) {
       try {
-        const message = await client.sendFile('me', {
-          file: localFilePath,
-          caption: `🖼️ #drivegram_cover #${tag}\n📌 ${title}\n📅 ${new Date().toLocaleString('pt-BR')}`
-        });
+        let message: any;
+        try {
+          message = await client.sendFile('me', {
+            file: localFilePath,
+            caption: `🖼️ #drivegram_cover #${tag}\n📌 ${title}\n📅 ${new Date().toLocaleString('pt-BR')}`
+          });
+        } catch (photoErr: any) {
+          if (photoErr?.errorMessage === 'IMAGE_PROCESS_FAILED') {
+            message = await client.sendFile('me', {
+              file: localFilePath,
+              forceDocument: true,
+              caption: `🖼️ #drivegram_cover #${tag}\n📌 ${title}\n📅 ${new Date().toLocaleString('pt-BR')}`
+            });
+          } else {
+            throw photoErr;
+          }
+        }
 
         // Also save indexed cache by messageId
         const tgCachedPath = path.join(coversDir, `cover_tg_${message.id}_${diskFileName}`);

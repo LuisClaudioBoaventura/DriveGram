@@ -48,12 +48,22 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
   const [sagaToEditCover, setSagaToEditCover] = useState<MovieSagaGroup | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  const FALLBACK_MOVIE_COVER = 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60';
+  const handleCoverError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const target = e.currentTarget;
+    if (target.src !== FALLBACK_MOVIE_COVER) {
+      target.src = FALLBACK_MOVIE_COVER;
+    }
+  };
+
   const handleSync = async () => {
     if (!onSyncRootFolder || isSyncing) return;
     setIsSyncing(true);
     onShowToast?.('⚡ Varrendo pasta Filmes & Cinema e sincronizando com o catálogo...', 'info');
     try {
       const res = await onSyncRootFolder();
+      // Disparar sincronização em segundo plano dos cartazes para o Telegram
+      fetch('/api/videos/sync-covers', { method: 'POST' }).catch(() => {});
       if (res && res.importedCount > 0) {
         onShowToast?.(`✨ Sincronização concluída: ${res.importedCount} novos filmes importados!`, 'success');
       } else if (res && res.updatedCount > 0) {
@@ -192,8 +202,9 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
               {/* Poster Preview */}
               <div className="relative w-36 sm:w-44 aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border-2 border-red-500/40 shrink-0 bg-black/60 group">
                 <img
-                  src={featuredVideo.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                  src={featuredVideo.coverImage || FALLBACK_MOVIE_COVER}
                   alt={featuredVideo.title}
+                  onError={handleCoverError}
                   draggable={false}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
                 />
@@ -397,8 +408,9 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
               {/* Stacked or Single Poster */}
               <div className="relative w-28 sm:w-36 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl border border-red-500/40 bg-black/60 shrink-0 group">
                 <img
-                  src={activeSaga.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                  src={activeSaga.coverImage || FALLBACK_MOVIE_COVER}
                   alt={activeSaga.name}
+                  onError={handleCoverError}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
                 <button
@@ -516,8 +528,9 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                         className="relative w-16 sm:w-20 aspect-[2/3] rounded-xl overflow-hidden bg-black/60 cursor-pointer shrink-0 shadow"
                       >
                         <img
-                          src={movie.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                          src={movie.coverImage || FALLBACK_MOVIE_COVER}
                           alt={movie.title}
+                          onError={handleCoverError}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                         />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -674,8 +687,9 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                         {leftMovie && (
                           <div className="relative aspect-[2/3] h-36 rounded-lg overflow-hidden shadow-xl border border-white/10 opacity-70 scale-95 transition-all">
                             <img
-                              src={leftMovie.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                              src={leftMovie.coverImage || FALLBACK_MOVIE_COVER}
                               alt={leftMovie.title}
+                              onError={handleCoverError}
                               className="w-full h-full object-cover"
                             />
                           </div>
@@ -686,6 +700,7 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                           <img
                             src={chosenCover}
                             alt={saga.name}
+                            onError={handleCoverError}
                             className="w-full h-full object-cover"
                           />
                         </div>
@@ -693,8 +708,9 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                         {rightMovie && (
                           <div className="relative aspect-[2/3] h-36 rounded-lg overflow-hidden shadow-xl border border-white/10 opacity-70 scale-95 transition-all">
                             <img
-                              src={rightMovie.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                              src={rightMovie.coverImage || FALLBACK_MOVIE_COVER}
                               alt={rightMovie.title}
+                              onError={handleCoverError}
                               className="w-full h-full object-cover"
                             />
                           </div>
@@ -901,8 +917,9 @@ export const VideosCatalog: React.FC<VideosCatalogProps> = ({
                       className="relative aspect-[2/3] w-full overflow-hidden bg-black/60 cursor-pointer select-none"
                     >
                       <img
-                        src={video.coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60'}
+                        src={video.coverImage || FALLBACK_MOVIE_COVER}
                         alt={video.title}
+                        onError={handleCoverError}
                         draggable={false}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
                       />

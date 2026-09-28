@@ -139,7 +139,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.20.2',
+    version: '1.20.3',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -2384,12 +2384,34 @@ app.get('/api/videos/:id', (req, res) => {
   res.json(video);
 });
 
-app.post('/api/videos', (req, res) => {
-  const video = db.saveVideo(req.body);
-  res.status(201).json(video);
+app.post('/api/videos', async (req, res) => {
+  try {
+    let videoData = { ...req.body };
+    if (
+      videoData.coverImage && 
+      (videoData.coverImage.startsWith('http://') || videoData.coverImage.startsWith('https://')) && 
+      !videoData.coverImage.startsWith('/api/covers/telegram/') &&
+      !videoData.coverImage.includes('images.unsplash.com')
+    ) {
+      try {
+        const covRes = await telegramService.uploadCoverToTelegram(videoData.coverImage, videoData.title || 'Filme', 'movie_poster');
+        if (covRes.messageId) {
+          videoData.coverImage = `/api/covers/telegram/${covRes.messageId}?fallback=${encodeURIComponent(req.body.coverImage)}`;
+        } else if (covRes.filePath) {
+          videoData.coverImage = `/api/covers/local/${covRes.filePath}?fallback=${encodeURIComponent(req.body.coverImage)}`;
+        }
+      } catch (e: any) {
+        console.warn('[Video] Could not upload cover to Telegram:', e.message);
+      }
+    }
+    const video = db.saveVideo(videoData);
+    res.status(201).json(video);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao criar vídeo' });
+  }
 });
 
-app.post('/api/videos/from-folder', (req, res) => {
+app.post('/api/videos/from-folder', async (req, res) => {
   try {
     const { 
       folderId, title, titlePt, category, genre, year, director, description, coverImage,
@@ -2404,6 +2426,25 @@ app.post('/api/videos/from-folder', (req, res) => {
     const files = db.getFiles(folderId);
     const videoFile = files.find(f => f.type === 'video');
 
+    let finalCover = coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60';
+    if (
+      finalCover && 
+      (finalCover.startsWith('http://') || finalCover.startsWith('https://')) && 
+      !finalCover.startsWith('/api/covers/telegram/') &&
+      !finalCover.includes('images.unsplash.com')
+    ) {
+      try {
+        const covRes = await telegramService.uploadCoverToTelegram(finalCover, title || folder.name, 'movie_poster');
+        if (covRes.messageId) {
+          finalCover = `/api/covers/telegram/${covRes.messageId}?fallback=${encodeURIComponent(coverImage || finalCover)}`;
+        } else if (covRes.filePath) {
+          finalCover = `/api/covers/local/${covRes.filePath}?fallback=${encodeURIComponent(coverImage || finalCover)}`;
+        }
+      } catch (e: any) {
+        console.warn('[Video from folder] Could not upload cover to Telegram:', e.message);
+      }
+    }
+
     const newVideo = db.saveVideo({
       title: title || folder.name.replace(/^[🎬🎥🎞️📽️\s]+/, '').trim(),
       titlePt,
@@ -2412,7 +2453,7 @@ app.post('/api/videos/from-folder', (req, res) => {
       year,
       director,
       description: description || folder.description || '',
-      coverImage: coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60',
+      coverImage: finalCover,
       folderId,
       fileId: videoFile?.id,
       timestamps: videoFile?.timestamps || [],
@@ -2440,6 +2481,7 @@ app.post('/api/videos/from-folder', (req, res) => {
 app.post('/api/videos/sync-root', (_req, res) => {
   try {
     const result = db.syncVideosFromRootFolder();
+    setTimeout(syncExistingMoviePostersToTelegram, 1000);
     res.json(result);
   } catch (e: any) {
     console.error('Error syncing videos from root folder:', e);
@@ -2447,9 +2489,40 @@ app.post('/api/videos/sync-root', (_req, res) => {
   }
 });
 
-app.put('/api/videos/:id', (req, res) => {
-  const updated = db.saveVideo({ ...req.body, id: req.params.id });
-  res.json(updated);
+app.post('/api/videos/sync-covers', async (_req, res) => {
+  try {
+    await syncExistingMoviePostersToTelegram();
+    res.json({ success: true, videos: db.getVideos() });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar cartazes no Telegram' });
+  }
+});
+
+app.put('/api/videos/:id', async (req, res) => {
+  try {
+    let videoData = { ...req.body, id: req.params.id };
+    if (
+      videoData.coverImage && 
+      (videoData.coverImage.startsWith('http://') || videoData.coverImage.startsWith('https://')) && 
+      !videoData.coverImage.startsWith('/api/covers/telegram/') &&
+      !videoData.coverImage.includes('images.unsplash.com')
+    ) {
+      try {
+        const covRes = await telegramService.uploadCoverToTelegram(videoData.coverImage, videoData.title || 'Filme', 'movie_poster');
+        if (covRes.messageId) {
+          videoData.coverImage = `/api/covers/telegram/${covRes.messageId}?fallback=${encodeURIComponent(req.body.coverImage)}`;
+        } else if (covRes.filePath) {
+          videoData.coverImage = `/api/covers/local/${covRes.filePath}?fallback=${encodeURIComponent(req.body.coverImage)}`;
+        }
+      } catch (e: any) {
+        console.warn('[Video update] Could not upload cover to Telegram:', e.message);
+      }
+    }
+    const updated = db.saveVideo(videoData);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao atualizar vídeo' });
+  }
 });
 
 app.delete('/api/videos/:id', (req, res) => {
@@ -2517,6 +2590,27 @@ app.get('/api/omdb/movie', async (req, res) => {
 
     if (data.Response === 'False') {
       return res.status(404).json({ error: data.Error || 'Filme não encontrado no OMDb' });
+    }
+
+    // Salvar o cartaz automaticamente no Telegram para garantir alta disponibilidade e evitar erros de carregamento
+    if (data.Poster && data.Poster !== 'N/A' && (data.Poster.startsWith('http://') || data.Poster.startsWith('https://'))) {
+      const originalPoster = data.Poster;
+      try {
+        const movieTitle = data.Title || title || 'Filme';
+        const coverResult = await telegramService.uploadCoverToTelegram(
+          originalPoster,
+          movieTitle,
+          'movie_poster'
+        );
+        if (coverResult.messageId) {
+          data.Poster = `/api/covers/telegram/${coverResult.messageId}?fallback=${encodeURIComponent(originalPoster)}`;
+          data.telegramPosterMessageId = coverResult.messageId;
+        } else if (coverResult.filePath) {
+          data.Poster = `/api/covers/local/${coverResult.filePath}?fallback=${encodeURIComponent(originalPoster)}`;
+        }
+      } catch (covErr: any) {
+        console.warn('[OMDb Poster] Could not upload poster to Telegram:', covErr.message);
+      }
     }
 
     res.json(data);
@@ -5057,6 +5151,7 @@ async function syncExistingYouTubeCoversToTelegram() {
     }
 
     if (updatedCount > 0) {
+      db.saveDatabase(data);
       console.log(`[DriveGram YouTube Cover Sync] Synced ${updatedCount} YouTube covers to Telegram.`);
     }
   } catch (e) {
@@ -5064,8 +5159,50 @@ async function syncExistingYouTubeCoversToTelegram() {
   }
 }
 
-// Run 3s after startup to sync covers
+// ---------------- AUTO-SYNC MOVIE POSTERS TO TELEGRAM ----------------
+async function syncExistingMoviePostersToTelegram() {
+  try {
+    const data = db.getData();
+    let updatedCount = 0;
+
+    for (const v of data.videos || []) {
+      const cover = v.coverImage;
+      if (
+        cover && 
+        (
+          ((cover.startsWith('http://') || cover.startsWith('https://')) && !cover.includes('images.unsplash.com')) ||
+          cover.startsWith('/api/covers/local/')
+        ) && 
+        !cover.startsWith('/api/covers/telegram/')
+      ) {
+        const rawUrl = cover;
+        try {
+          const res = await telegramService.uploadCoverToTelegram(rawUrl, v.title || 'Filme', 'movie_poster');
+          if (res.messageId) {
+            v.coverImage = `/api/covers/telegram/${res.messageId}?fallback=${encodeURIComponent(rawUrl)}`;
+            updatedCount++;
+          } else if (res.filePath && !cover.startsWith('/api/covers/local/')) {
+            v.coverImage = `/api/covers/local/${res.filePath}?fallback=${encodeURIComponent(rawUrl)}`;
+            updatedCount++;
+          }
+        } catch (covErr: any) {
+          console.warn(`[DriveGram Movie Poster Sync] Failed for "${v.title}":`, covErr.message);
+        }
+      }
+    }
+
+    if (updatedCount > 0) {
+      db.saveDatabase(data);
+      console.log(`[DriveGram Movie Poster Sync] Successfully synced ${updatedCount} movie poster(s) to Telegram.`);
+    }
+  } catch (e) {
+    console.warn('[DriveGram Movie Poster Sync] Error during movie poster sync:', e);
+  }
+}
+
+// Run after startup to sync covers
 setTimeout(syncExistingYouTubeCoversToTelegram, 3000);
+setTimeout(syncExistingMoviePostersToTelegram, 4500);
 
 // ---------------- 30-DAY TRASH AUTO-PURGE ROUTINE ----------------
 async function purgeExpiredTrashRoutine() {

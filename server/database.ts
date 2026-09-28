@@ -756,6 +756,10 @@ class Database {
     }
   }
 
+  public saveDatabase(data?: DatabaseSchema) {
+    this.save(data || this.data);
+  }
+
   public getData(): DatabaseSchema {
     return this.data;
   }

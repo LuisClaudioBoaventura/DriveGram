@@ -374,7 +374,14 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
                         <div className="flex items-center gap-3 overflow-hidden">
                           <div className="w-9 h-13 rounded-lg overflow-hidden bg-black/40 border border-gray-300 dark:border-gray-700 shrink-0">
                             {item.Poster && item.Poster !== 'N/A' ? (
-                              <img src={item.Poster} alt={item.Title} className="w-full h-full object-cover" />
+                              <img 
+                                src={item.Poster} 
+                                alt={item.Title} 
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                                className="w-full h-full object-cover" 
+                              />
                             ) : (
                               <Film className="w-full h-full p-2 text-gray-400" />
                             )}
@@ -407,7 +414,16 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
           <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
             {/* Cover Preview */}
             <div className="relative w-36 aspect-[2/3] rounded-2xl overflow-hidden shadow-xl border-2 border-red-500/40 shrink-0 bg-black/40 group">
-              <img src={coverImage} alt="Cover Preview" className="w-full h-full object-cover" />
+              <img 
+                src={coverImage} 
+                alt="Cover Preview" 
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  const fallbackUrl = 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60';
+                  if (target.src !== fallbackUrl) target.src = fallbackUrl;
+                }}
+                className="w-full h-full object-cover" 
+              />
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[11px] font-bold gap-1 transition-opacity p-2 text-center">
                 <span>Capa Selecionada</span>
               </div>

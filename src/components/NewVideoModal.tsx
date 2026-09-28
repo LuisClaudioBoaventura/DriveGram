@@ -205,6 +205,7 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
     }
     if (movie.Poster && movie.Poster !== 'N/A') {
       setCustomCoverUrl(movie.Poster);
+      setCoverImage(movie.Poster);
       setIsCustomCover(true);
     }
     if (movie.imdbID) {
@@ -423,7 +424,14 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
                         <div className="flex items-center gap-3 overflow-hidden">
                           <div className="w-9 h-13 rounded-lg overflow-hidden bg-black/40 border border-gray-300 dark:border-gray-700 shrink-0">
                             {item.Poster && item.Poster !== 'N/A' ? (
-                              <img src={item.Poster} alt={item.Title} className="w-full h-full object-cover" />
+                              <img 
+                                src={item.Poster} 
+                                alt={item.Title} 
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                                className="w-full h-full object-cover" 
+                              />
                             ) : (
                               <Film className="w-full h-full p-2 text-gray-400" />
                             )}
@@ -713,7 +721,16 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
                 />
                 {customCoverUrl && (
                   <div className="w-24 h-36 rounded-xl overflow-hidden border border-gray-300 dark:border-gray-700 shadow-md">
-                    <img src={customCoverUrl} alt="Preview" className="w-full h-full object-cover" />
+                    <img 
+                      src={customCoverUrl} 
+                      alt="Preview" 
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        const fallbackUrl = 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60';
+                        if (target.src !== fallbackUrl) target.src = fallbackUrl;
+                      }}
+                      className="w-full h-full object-cover" 
+                    />
                   </div>
                 )}
               </div>
