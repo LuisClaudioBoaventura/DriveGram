@@ -762,16 +762,35 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
             {/* Tab: URL */}
             {coverTab === 'url' && (
               <div className="space-y-2">
-                <input
-                  type="url"
-                  value={customCoverUrl}
-                  onChange={(e) => {
-                    setCustomCoverUrl(e.target.value);
-                    if (e.target.value.trim()) setCoverImage(e.target.value.trim());
-                  }}
-                  placeholder="https://exemplo.com/poster.jpg"
-                  className="w-full px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-red-500 focus:outline-none"
-                />
+                {customCoverUrl.startsWith('data:image/') ? (
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-emerald-500/30">
+                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5" />
+                      Cartaz em Base64 incorporado (Armazenamento direto sem erros)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomCoverUrl('');
+                        setCoverImage(PRESET_COVERS[0]);
+                      }}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Trocar Imagem
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={customCoverUrl}
+                    onChange={(e) => {
+                      setCustomCoverUrl(e.target.value);
+                      if (e.target.value.trim()) setCoverImage(e.target.value.trim());
+                    }}
+                    placeholder="https://exemplo.com/poster.jpg"
+                    className="w-full px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-red-500 focus:outline-none"
+                  />
+                )}
               </div>
             )}
 

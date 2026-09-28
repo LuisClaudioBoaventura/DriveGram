@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Film, 
   X, 
@@ -15,7 +15,8 @@ import {
   ChevronUp, 
   Clock, 
   User, 
-  Info 
+  Info,
+  Upload
 } from 'lucide-react';
 import { FolderItem, MovieVideo, OMDbSearchResultItem, OMDbMovieDetail } from '../types/index.js';
 import { getLibraryEligibleFolders } from '../utils/libraryFolderUtils.js';
@@ -108,6 +109,23 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
   const [actors, setActors] = useState('');
   const [rated, setRated] = useState('');
   const [runtime, setRuntime] = useState('');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setCustomCoverUrl(reader.result);
+        setCoverImage(reader.result);
+        setIsCustomCover(true);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Sync API Key from storage when modal opens
   useEffect(() => {
@@ -701,24 +719,64 @@ export const NewVideoModal: React.FC<NewVideoModalProps> = ({
                 <ImageIcon className="w-3.5 h-3.5 text-red-500" />
                 <span>Pôster / Foto de Capa</span>
               </span>
-              <button
-                type="button"
-                onClick={() => setIsCustomCover(!isCustomCover)}
-                className="text-[11px] text-red-500 hover:underline font-normal"
-              >
-                {isCustomCover ? 'Escolher da Galeria' : 'Inserir Link Customizado'}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-[11px] text-gray-500 hover:text-red-500 flex items-center gap-1 font-normal"
+                >
+                  <Upload className="w-3 h-3" />
+                  <span>Upload do PC</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCustomCover(!isCustomCover)}
+                  className="text-[11px] text-red-500 hover:underline font-normal"
+                >
+                  {isCustomCover ? 'Escolher da Galeria' : 'Inserir Link Customizado'}
+                </button>
+              </div>
             </label>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
 
             {isCustomCover ? (
               <div className="space-y-2">
-                <input
-                  type="url"
-                  value={customCoverUrl}
-                  onChange={(e) => setCustomCoverUrl(e.target.value)}
-                  placeholder="https://exemplo.com/poster.jpg"
-                  className="w-full px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-red-500 focus:outline-none"
-                />
+                {customCoverUrl.startsWith('data:image/') ? (
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-drive-darkBg border border-emerald-500/30">
+                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5" />
+                      Cartaz em Base64 incorporado (Armazenamento direto sem erros)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomCoverUrl('');
+                        setCoverImage(PRESET_COVERS[0]);
+                      }}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Trocar Imagem
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={customCoverUrl}
+                    onChange={(e) => {
+                      setCustomCoverUrl(e.target.value);
+                      if (e.target.value.trim()) setCoverImage(e.target.value.trim());
+                    }}
+                    placeholder="https://exemplo.com/poster.jpg"
+                    className="w-full px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 text-xs font-medium focus:ring-2 focus:ring-red-500 focus:outline-none"
+                  />
+                )}
                 {customCoverUrl && (
                   <div className="w-24 h-36 rounded-xl overflow-hidden border border-gray-300 dark:border-gray-700 shadow-md">
                     <img 

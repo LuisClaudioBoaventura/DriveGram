@@ -139,7 +139,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.20.3',
+    version: '1.20.4',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -2351,6 +2351,105 @@ app.delete('/api/comic-categories/:category', (req, res) => {
   res.json(updated);
 });
 
+// ---------------- BASE64 IMAGE CONVERTER HELPER ----------------
+export async function downloadImageAsBase64(imageUrl: string): Promise<string | null> {
+  if (!imageUrl || typeof imageUrl !== 'string') return null;
+  if (imageUrl.startsWith('data:image/')) return imageUrl;
+
+  // Local cover file
+  if (imageUrl.startsWith('/api/covers/local/')) {
+    try {
+      const uploadsBase = process.env.DRIVEGRAM_UPLOADS_DIR || process.env.UPLOADS_DIR || path.join(path.dirname(__filename), '..', 'uploads');
+      const cleanName = path.basename(imageUrl.split('?')[0]);
+      const locPath = path.join(uploadsBase, 'covers', cleanName);
+      if (fs.existsSync(locPath)) {
+        const buf = fs.readFileSync(locPath);
+        const ext = path.extname(cleanName).toLowerCase().replace('.', '');
+        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        return `data:${mime};base64,${buf.toString('base64')}`;
+      }
+    } catch (e) {}
+  }
+
+  // Telegram cover: check cache first
+  if (imageUrl.startsWith('/api/covers/telegram/')) {
+    try {
+      const match = imageUrl.match(/\/api\/covers\/telegram\/(\d+)/);
+      if (match && match[1]) {
+        const msgId = match[1];
+        const uploadsBase = process.env.DRIVEGRAM_UPLOADS_DIR || process.env.UPLOADS_DIR || path.join(path.dirname(__filename), '..', 'uploads');
+        const coversDir = path.join(uploadsBase, 'covers');
+        if (fs.existsSync(coversDir)) {
+          const files = fs.readdirSync(coversDir);
+          const found = files.find(f => f.startsWith(`cover_tg_${msgId}_`) || f.includes(`_${msgId}_`));
+          if (found) {
+            const buf = fs.readFileSync(path.join(coversDir, found));
+            const ext = path.extname(found).toLowerCase().replace('.', '');
+            const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+            return `data:${mime};base64,${buf.toString('base64')}`;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // External URL
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    const tryUrls = [
+      imageUrl,
+      `https://wsrv.nl/?url=${encodeURIComponent(imageUrl)}`,
+      `https://images.weserv.nl/?url=${encodeURIComponent(imageUrl)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`
+    ];
+
+    for (const u of tryUrls) {
+      try {
+        const res = await fetch(u, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            'Referer': 'https://www.imdb.com/'
+          },
+          signal: AbortSignal.timeout(6000)
+        });
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.length > 50) {
+            let mime = (res.headers.get('content-type') || '').split(';')[0].trim();
+            if (!mime.startsWith('image/')) {
+              if (buf[0] === 0xff && buf[1] === 0xd8) mime = 'image/jpeg';
+              else if (buf[0] === 0x89 && buf[1] === 0x50) mime = 'image/png';
+              else if (buf[0] === 0x52 && buf[1] === 0x49) mime = 'image/webp';
+              else mime = 'image/jpeg';
+            }
+            return `data:${mime};base64,${buf.toString('base64')}`;
+          }
+        }
+      } catch (e) {
+        // try next fallback URL
+      }
+    }
+  }
+
+  return null;
+}
+
+app.post('/api/utils/image-to-base64', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'URL é obrigatória' });
+    }
+    const base64 = await downloadImageAsBase64(url);
+    if (!base64) {
+      return res.status(502).json({ error: 'Não foi possível converter a imagem para base64' });
+    }
+    res.json({ base64 });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao converter imagem' });
+  }
+});
+
 // ---------------- FILMES & VÍDEOS ----------------
 app.get('/api/videos', (_req, res) => {
   res.json(db.getVideos());
@@ -2364,12 +2463,16 @@ app.get('/api/videos/sagas/covers', (_req, res) => {
   res.json(db.getSagaCovers());
 });
 
-app.put('/api/videos/sagas/:name/cover', (req, res) => {
+app.put('/api/videos/sagas/:name/cover', async (req, res) => {
   try {
     const sagaName = decodeURIComponent(req.params.name);
-    const { coverImage } = req.body;
+    let { coverImage } = req.body;
     if (!coverImage || typeof coverImage !== 'string') {
       return res.status(400).json({ error: 'coverImage é obrigatório' });
+    }
+    if (!coverImage.startsWith('data:image/') && !coverImage.includes('images.unsplash.com')) {
+      const b64 = await downloadImageAsBase64(coverImage);
+      if (b64) coverImage = b64;
     }
     db.setSagaCover(sagaName, coverImage);
     res.json({ success: true, name: sagaName, coverImage });
@@ -2389,20 +2492,15 @@ app.post('/api/videos', async (req, res) => {
     let videoData = { ...req.body };
     if (
       videoData.coverImage && 
-      (videoData.coverImage.startsWith('http://') || videoData.coverImage.startsWith('https://')) && 
-      !videoData.coverImage.startsWith('/api/covers/telegram/') &&
+      !videoData.coverImage.startsWith('data:image/') && 
       !videoData.coverImage.includes('images.unsplash.com')
     ) {
-      try {
-        const covRes = await telegramService.uploadCoverToTelegram(videoData.coverImage, videoData.title || 'Filme', 'movie_poster');
-        if (covRes.messageId) {
-          videoData.coverImage = `/api/covers/telegram/${covRes.messageId}?fallback=${encodeURIComponent(req.body.coverImage)}`;
-        } else if (covRes.filePath) {
-          videoData.coverImage = `/api/covers/local/${covRes.filePath}?fallback=${encodeURIComponent(req.body.coverImage)}`;
-        }
-      } catch (e: any) {
-        console.warn('[Video] Could not upload cover to Telegram:', e.message);
+      const b64 = await downloadImageAsBase64(videoData.coverImage);
+      if (b64) {
+        videoData.coverImage = b64;
       }
+      // Backup para Telegram em segundo plano se conectado
+      telegramService.uploadCoverToTelegram(videoData.coverImage, videoData.title || 'Filme', 'movie_poster').catch(() => {});
     }
     const video = db.saveVideo(videoData);
     res.status(201).json(video);
@@ -2429,20 +2527,14 @@ app.post('/api/videos/from-folder', async (req, res) => {
     let finalCover = coverImage || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=60';
     if (
       finalCover && 
-      (finalCover.startsWith('http://') || finalCover.startsWith('https://')) && 
-      !finalCover.startsWith('/api/covers/telegram/') &&
+      !finalCover.startsWith('data:image/') && 
       !finalCover.includes('images.unsplash.com')
     ) {
-      try {
-        const covRes = await telegramService.uploadCoverToTelegram(finalCover, title || folder.name, 'movie_poster');
-        if (covRes.messageId) {
-          finalCover = `/api/covers/telegram/${covRes.messageId}?fallback=${encodeURIComponent(coverImage || finalCover)}`;
-        } else if (covRes.filePath) {
-          finalCover = `/api/covers/local/${covRes.filePath}?fallback=${encodeURIComponent(coverImage || finalCover)}`;
-        }
-      } catch (e: any) {
-        console.warn('[Video from folder] Could not upload cover to Telegram:', e.message);
+      const b64 = await downloadImageAsBase64(finalCover);
+      if (b64) {
+        finalCover = b64;
       }
+      telegramService.uploadCoverToTelegram(finalCover, title || folder.name, 'movie_poster').catch(() => {});
     }
 
     const newVideo = db.saveVideo({
@@ -2481,7 +2573,7 @@ app.post('/api/videos/from-folder', async (req, res) => {
 app.post('/api/videos/sync-root', (_req, res) => {
   try {
     const result = db.syncVideosFromRootFolder();
-    setTimeout(syncExistingMoviePostersToTelegram, 1000);
+    setTimeout(syncExistingMoviePostersToBase64, 1000);
     res.json(result);
   } catch (e: any) {
     console.error('Error syncing videos from root folder:', e);
@@ -2491,10 +2583,10 @@ app.post('/api/videos/sync-root', (_req, res) => {
 
 app.post('/api/videos/sync-covers', async (_req, res) => {
   try {
-    await syncExistingMoviePostersToTelegram();
+    await syncExistingMoviePostersToBase64();
     res.json({ success: true, videos: db.getVideos() });
   } catch (e: any) {
-    res.status(500).json({ error: e.message || 'Erro ao sincronizar cartazes no Telegram' });
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar cartazes em base64' });
   }
 });
 
@@ -2503,20 +2595,14 @@ app.put('/api/videos/:id', async (req, res) => {
     let videoData = { ...req.body, id: req.params.id };
     if (
       videoData.coverImage && 
-      (videoData.coverImage.startsWith('http://') || videoData.coverImage.startsWith('https://')) && 
-      !videoData.coverImage.startsWith('/api/covers/telegram/') &&
+      !videoData.coverImage.startsWith('data:image/') && 
       !videoData.coverImage.includes('images.unsplash.com')
     ) {
-      try {
-        const covRes = await telegramService.uploadCoverToTelegram(videoData.coverImage, videoData.title || 'Filme', 'movie_poster');
-        if (covRes.messageId) {
-          videoData.coverImage = `/api/covers/telegram/${covRes.messageId}?fallback=${encodeURIComponent(req.body.coverImage)}`;
-        } else if (covRes.filePath) {
-          videoData.coverImage = `/api/covers/local/${covRes.filePath}?fallback=${encodeURIComponent(req.body.coverImage)}`;
-        }
-      } catch (e: any) {
-        console.warn('[Video update] Could not upload cover to Telegram:', e.message);
+      const b64 = await downloadImageAsBase64(videoData.coverImage);
+      if (b64) {
+        videoData.coverImage = b64;
       }
+      telegramService.uploadCoverToTelegram(videoData.coverImage, videoData.title || 'Filme', 'movie_poster').catch(() => {});
     }
     const updated = db.saveVideo(videoData);
     res.json(updated);
@@ -2552,6 +2638,19 @@ app.get('/api/omdb/search', async (req, res) => {
 
     if (data.Response === 'False') {
       return res.json({ results: [], totalResults: 0, error: data.Error || 'Nenhum filme encontrado' });
+    }
+
+    if (data.Search && Array.isArray(data.Search)) {
+      const convertedSearch = await Promise.allSettled(
+        data.Search.map(async (item: any) => {
+          if (item.Poster && item.Poster !== 'N/A' && (item.Poster.startsWith('http://') || item.Poster.startsWith('https://'))) {
+            const b64 = await downloadImageAsBase64(item.Poster);
+            if (b64) item.Poster = b64;
+          }
+          return item;
+        })
+      );
+      data.Search = convertedSearch.map((r, i) => (r.status === 'fulfilled' ? r.value : data.Search[i]));
     }
 
     res.json({
@@ -2592,24 +2691,28 @@ app.get('/api/omdb/movie', async (req, res) => {
       return res.status(404).json({ error: data.Error || 'Filme não encontrado no OMDb' });
     }
 
-    // Salvar o cartaz automaticamente no Telegram para garantir alta disponibilidade e evitar erros de carregamento
+    // Salvar o cartaz automaticamente em Base64 para garantir carregamento instantâneo e offline sem erros
     if (data.Poster && data.Poster !== 'N/A' && (data.Poster.startsWith('http://') || data.Poster.startsWith('https://'))) {
       const originalPoster = data.Poster;
       try {
+        const base64Poster = await downloadImageAsBase64(originalPoster);
+        if (base64Poster) {
+          data.Poster = base64Poster;
+          data.posterBase64 = base64Poster;
+        }
+        // Backup para Telegram em segundo plano se conectado
         const movieTitle = data.Title || title || 'Filme';
-        const coverResult = await telegramService.uploadCoverToTelegram(
-          originalPoster,
+        telegramService.uploadCoverToTelegram(
+          base64Poster || originalPoster,
           movieTitle,
           'movie_poster'
-        );
-        if (coverResult.messageId) {
-          data.Poster = `/api/covers/telegram/${coverResult.messageId}?fallback=${encodeURIComponent(originalPoster)}`;
-          data.telegramPosterMessageId = coverResult.messageId;
-        } else if (coverResult.filePath) {
-          data.Poster = `/api/covers/local/${coverResult.filePath}?fallback=${encodeURIComponent(originalPoster)}`;
-        }
+        ).then(coverResult => {
+          if (coverResult?.messageId) {
+            data.telegramPosterMessageId = coverResult.messageId;
+          }
+        }).catch(() => {});
       } catch (covErr: any) {
-        console.warn('[OMDb Poster] Could not upload poster to Telegram:', covErr.message);
+        console.warn('[OMDb Poster Base64] Error converting poster:', covErr.message);
       }
     }
 
@@ -5159,8 +5262,8 @@ async function syncExistingYouTubeCoversToTelegram() {
   }
 }
 
-// ---------------- AUTO-SYNC MOVIE POSTERS TO TELEGRAM ----------------
-async function syncExistingMoviePostersToTelegram() {
+// ---------------- AUTO-SYNC MOVIE POSTERS TO BASE64 ----------------
+async function syncExistingMoviePostersToBase64() {
   try {
     const data = db.getData();
     let updatedCount = 0;
@@ -5169,40 +5272,50 @@ async function syncExistingMoviePostersToTelegram() {
       const cover = v.coverImage;
       if (
         cover && 
-        (
-          ((cover.startsWith('http://') || cover.startsWith('https://')) && !cover.includes('images.unsplash.com')) ||
-          cover.startsWith('/api/covers/local/')
-        ) && 
-        !cover.startsWith('/api/covers/telegram/')
+        !cover.startsWith('data:image/') && 
+        !cover.includes('images.unsplash.com')
       ) {
-        const rawUrl = cover;
         try {
-          const res = await telegramService.uploadCoverToTelegram(rawUrl, v.title || 'Filme', 'movie_poster');
-          if (res.messageId) {
-            v.coverImage = `/api/covers/telegram/${res.messageId}?fallback=${encodeURIComponent(rawUrl)}`;
+          const b64 = await downloadImageAsBase64(cover);
+          if (b64) {
+            v.coverImage = b64;
             updatedCount++;
-          } else if (res.filePath && !cover.startsWith('/api/covers/local/')) {
-            v.coverImage = `/api/covers/local/${res.filePath}?fallback=${encodeURIComponent(rawUrl)}`;
-            updatedCount++;
+            // Backup opcional em segundo plano no Telegram se conectado
+            telegramService.uploadCoverToTelegram(b64, v.title || 'Filme', 'movie_poster').catch(() => {});
           }
         } catch (covErr: any) {
-          console.warn(`[DriveGram Movie Poster Sync] Failed for "${v.title}":`, covErr.message);
+          console.warn(`[DriveGram Movie Poster Base64 Sync] Failed for "${v.title}":`, covErr.message);
+        }
+      }
+    }
+
+    // Também sincronizar capas de sagas se houver
+    if (data.sagaCovers) {
+      for (const [sagaName, sCover] of Object.entries(data.sagaCovers)) {
+        if (sCover && !sCover.startsWith('data:image/') && !sCover.includes('images.unsplash.com')) {
+          try {
+            const b64 = await downloadImageAsBase64(sCover);
+            if (b64) {
+              data.sagaCovers[sagaName] = b64;
+              updatedCount++;
+            }
+          } catch (e) {}
         }
       }
     }
 
     if (updatedCount > 0) {
       db.saveDatabase(data);
-      console.log(`[DriveGram Movie Poster Sync] Successfully synced ${updatedCount} movie poster(s) to Telegram.`);
+      console.log(`[DriveGram Movie Poster Base64 Sync] Successfully saved ${updatedCount} movie poster(s) in Base64.`);
     }
   } catch (e) {
-    console.warn('[DriveGram Movie Poster Sync] Error during movie poster sync:', e);
+    console.warn('[DriveGram Movie Poster Base64 Sync] Error during movie poster sync:', e);
   }
 }
 
 // Run after startup to sync covers
 setTimeout(syncExistingYouTubeCoversToTelegram, 3000);
-setTimeout(syncExistingMoviePostersToTelegram, 4500);
+setTimeout(syncExistingMoviePostersToBase64, 4500);
 
 // ---------------- 30-DAY TRASH AUTO-PURGE ROUTINE ----------------
 async function purgeExpiredTrashRoutine() {
