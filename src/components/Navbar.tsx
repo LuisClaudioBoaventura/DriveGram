@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { 
   Search, 
   Send, 
-  RefreshCw, 
   Moon, 
   Sun, 
   HardDrive, 
@@ -160,35 +159,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Hub de Gerenciamento de Nuvem, Streaming, Cache & Configurações */}
-          {(() => {
-            const isManifestUpdating = telegramState.manifestSyncProgress?.status === 'checking' || 
-              telegramState.manifestSyncProgress?.status === 'downloading' || 
-              telegramState.manifestSyncProgress?.status === 'reconciling' || 
-              telegramState.manifestSyncProgress?.status === 'uploading';
-
-            return (
-              <button
-                onClick={onOpenSync}
-                title={isManifestUpdating ? `Atualizando manifesto JSON (${telegramState.manifestSyncProgress?.progress ?? 0}%) - Clique para acompanhar` : "Gerenciamento de Nuvem, Streaming & Cache"}
-                className={`hidden sm:inline-flex items-center gap-1.5 p-2 rounded-xl border transition-all active:scale-95 ${
-                  isManifestUpdating
-                    ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-400 text-blue-600 dark:text-blue-300 ring-2 ring-blue-400/30 animate-pulse'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border-gray-200 dark:border-drive-darkBorder hover:border-blue-400'
-                }`}
-              >
-                {isManifestUpdating ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
-                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-300 pr-0.5">
-                      {telegramState.manifestSyncProgress?.progress ?? 0}%
-                    </span>
-                  </>
-                ) : (
-                  <Cloud className="w-4 h-4 text-blue-500" />
-                )}
-              </button>
-            );
-          })()}
+          <button
+            onClick={onOpenSync}
+            title="Gerenciamento de Nuvem, Streaming & Cache"
+            className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 transition-all active:scale-95"
+          >
+            <Cloud className="w-4 h-4 text-blue-500" />
+          </button>
 
           {/* Abrir Pasta Local de Arquivos (Uploads/Downloads) Trigger */}
           {onOpenUploadsFolder && (

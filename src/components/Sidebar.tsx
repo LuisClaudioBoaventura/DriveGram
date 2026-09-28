@@ -23,7 +23,6 @@ import {
   ChevronLeft,
   Youtube,
   FolderOpen,
-  RefreshCw,
   X
 } from 'lucide-react';
 import { TelegramAuthState } from '../types/index.js';
@@ -605,34 +604,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              {(() => {
-                const isManifestUpdating = telegramState.manifestSyncProgress?.status === 'checking' || 
-                  telegramState.manifestSyncProgress?.status === 'downloading' || 
-                  telegramState.manifestSyncProgress?.status === 'reconciling' || 
-                  telegramState.manifestSyncProgress?.status === 'uploading';
-
-                return (
-                  <button
-                    onClick={onOpenSync}
-                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-white font-semibold text-xs shadow-md transition-all ${
-                      isManifestUpdating
-                        ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/30 animate-pulse'
-                        : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'
-                    }`}
-                  >
-                    {isManifestUpdating ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-200" />
-                    ) : (
-                      <Database className="w-3.5 h-3.5" />
-                    )}
-                    <span>
-                      {isManifestUpdating
-                        ? `Sincronizando (${telegramState.manifestSyncProgress?.progress ?? 0}%)...`
-                        : 'Gerenciar Nuvem & Backup'}
-                    </span>
-                  </button>
-                );
-              })()}
+              <button
+                onClick={onOpenSync}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>Gerenciar Nuvem & Backup</span>
+              </button>
 
               {onOpenUploadsFolder && (
                 <button
