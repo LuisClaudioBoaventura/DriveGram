@@ -1314,6 +1314,7 @@ export function App() {
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
         telegramState={tg.authState}
+        manifestProgress={tg.manifestProgress || tg.authState.manifestSyncProgress}
         onSyncToTelegram={tg.syncMetadata}
         onRestoreFromTelegram={tg.restoreFromTelegram}
         onRefreshItems={() => {

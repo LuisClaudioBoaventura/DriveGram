@@ -8,11 +8,18 @@ import { EventEmitter } from 'events';
 import { StringSession } from 'telegram/sessions/index.js';
 import bigInt from 'big-integer';
 import QRCode from 'qrcode';
-import { TelegramAuthState, DriveGramSyncManifest, SavedAuditItem, SavedAuditResult, FileType } from '../src/types/index.js';
+import { TelegramAuthState, DriveGramSyncManifest, SavedAuditItem, SavedAuditResult, FileType, ManifestSyncProgress, ManifestSyncLog, ManifestSyncStatus } from '../src/types/index.js';
 import { db } from './database.js';
 
 export const telegramEvents = new EventEmitter();
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
 const toBigInt = (v: any) => {
   const fn = typeof bigInt === 'function' ? bigInt : (bigInt as any).default;
@@ -41,6 +48,12 @@ class TelegramService {
     savedMessagesChatId: 'me',
     totalSavedFiles: 0,
     storageUsedBytes: 0
+  };
+  private manifestSyncProgress: ManifestSyncProgress = {
+    status: 'idle',
+    phase: 'Manifesto JSON pronto para sincronização',
+    progress: 100,
+    logs: []
   };
   private phoneCodeHash: string = '';
   private currentPhone: string = '';
@@ -421,6 +434,49 @@ class TelegramService {
     }
   }
 
+  public getManifestSyncProgress(): ManifestSyncProgress {
+    if (!this.manifestSyncProgress.lastSyncResult) {
+      const settings = db.getData().settings;
+      const allFiles = db.getAllFiles();
+      const allFolders = db.getAllFolders();
+      const manifestJson = JSON.stringify(db.exportManifest());
+      this.manifestSyncProgress.lastSyncResult = {
+        timestamp: settings.lastSyncDate || new Date().toISOString(),
+        message: 'Manifesto JSON local pronto.',
+        messageId: settings.lastMetadataMessageId,
+        fileCount: allFiles.length,
+        folderCount: allFolders.length,
+        manifestSizeBytes: Buffer.byteLength(manifestJson)
+      };
+    }
+    return { ...this.manifestSyncProgress };
+  }
+
+  public updateManifestProgress(partial: Partial<ManifestSyncProgress>, logMsg?: string) {
+    const logs = [...(this.manifestSyncProgress.logs || [])];
+    if (logMsg) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('pt-BR');
+      let type: 'info' | 'success' | 'warn' | 'error' = 'info';
+      if (partial.status === 'completed' || partial.status === 'idle') type = 'success';
+      if (partial.status === 'error') type = 'error';
+      logs.push({
+        timestamp: timeStr,
+        message: logMsg,
+        type
+      });
+      if (logs.length > 50) logs.shift();
+    }
+
+    this.manifestSyncProgress = {
+      ...this.manifestSyncProgress,
+      ...partial,
+      logs
+    };
+
+    telegramEvents.emit('manifest-progress', this.manifestSyncProgress);
+  }
+
   public getAuthState(): TelegramAuthState {
     const totalFiles = db.getAllFiles();
     const uploadsDir = path.join(path.dirname(__filename), '..', 'uploads');
@@ -431,7 +487,8 @@ class TelegramService {
       streamingMode: db.getStreamingMode(),
       cacheDuration: db.getCacheDuration(),
       localCacheSizeBytes: db.getLocalCacheSizeBytes(uploadsDir),
-      metadataRetentionCount: db.getMetadataRetentionCount()
+      metadataRetentionCount: db.getMetadataRetentionCount(),
+      manifestSyncProgress: this.getManifestSyncProgress()
     };
   }
 
@@ -848,10 +905,13 @@ class TelegramService {
    * Utiliza streaming para arquivo temporário com downloadMediaByMessageId, evitando estouro de buffer
    * ou travamentos no client.downloadMedia com manifestos grandes (>10MB).
    */
-  public async downloadManifestFromMessage(messageId: number): Promise<DriveGramSyncManifest | null> {
+  public async downloadManifestFromMessage(
+    messageId: number,
+    progressCallback?: (progressPct: number, transferred: number, total: number) => void
+  ): Promise<DriveGramSyncManifest | null> {
     const tempPath = path.join(DATA_DIR, `temp_manifest_${messageId}_${Date.now()}.json`);
     try {
-      await this.downloadMediaByMessageId(messageId, tempPath);
+      await this.downloadMediaByMessageId(messageId, tempPath, progressCallback);
       if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size === 0) {
         return null;
       }
@@ -900,6 +960,7 @@ class TelegramService {
       const bookCount = manifest.books ? manifest.books.length : 0;
 
       const manifestJson = JSON.stringify(manifest, null, 2);
+      const manifestSizeBytes = Buffer.byteLength(manifestJson);
       // Hash baseado no conteúdo estrutural sem timestamp volátil de exportação
       const { exportedAt: _exp, ...contentToHash } = manifest;
       const manifestHash = crypto.createHash('md5').update(JSON.stringify(contentToHash)).digest('hex');
@@ -913,9 +974,24 @@ class TelegramService {
       this.isSyncingMetadata = true;
       console.log('[DriveGram Auto-Backup] Salvando alterações de metadados nas Mensagens Salvas do Telegram...');
 
+      this.updateManifestProgress({
+        status: 'uploading',
+        source: force ? 'manual' : 'debounce-auto',
+        phase: `Preparando e enviando manifesto JSON (${formatBytes(manifestSizeBytes)}) para o Telegram...`,
+        progress: 15,
+        transferredBytes: 0,
+        totalBytes: manifestSizeBytes,
+        startedAt: new Date().toISOString()
+      }, `Iniciando upload do manifesto JSON (${formatBytes(manifestSizeBytes)} • ${localFileCount} arquivos)...`);
+
       const client = await this.ensureClient();
       if (!client || !this.authState.isConnected) {
         db.updateSettings({ lastSyncDate: new Date().toISOString() });
+        this.updateManifestProgress({
+          status: 'idle',
+          phase: 'Metadados salvos localmente (Aguardando login no Telegram para backup em nuvem).',
+          progress: 100
+        });
         return { success: true, message: 'Metadados salvos localmente e preparados para envio em nuvem (Conecte o Telegram para backup automático nas Mensagens Salvas).' };
       }
 
@@ -931,6 +1007,20 @@ class TelegramService {
             const recRes = db.reconcileManifest(remoteManifest);
             db.updateSettings({ lastMetadataMessageId: remoteMsg.id });
             this.isInitialSyncCompleted = true;
+            this.updateManifestProgress({
+              status: 'completed',
+              phase: `Proteção anti-sobrescrita ativada: ${recRes.addedFiles} arquivos recuperados da nuvem!`,
+              progress: 100,
+              completedAt: new Date().toISOString(),
+              lastSyncResult: {
+                timestamp: new Date().toISOString(),
+                message: `Proteção anti-sobrescrita ativada: ${recRes.addedFiles} arquivos recuperados.`,
+                messageId: remoteMsg.id,
+                fileCount: recRes.addedFiles,
+                folderCount: recRes.addedFolders,
+                manifestSizeBytes: Buffer.byteLength(JSON.stringify(remoteManifest))
+              }
+            }, `Proteção ativada: ${recRes.addedFiles} arquivos recuperados da nuvem.`);
             return {
               success: true,
               message: `Proteção anti-sobrescrita ativada: ${recRes.addedFiles} arquivos e ${recRes.addedFolders} pastas recuperados da nuvem!`
@@ -946,9 +1036,29 @@ class TelegramService {
       const tempManifestPath = path.join(DATA_DIR, 'drivegram_metadata.json');
       await fs.promises.writeFile(tempManifestPath, manifestJson, 'utf-8');
 
+      const ulStart = Date.now();
       const sent = await client.sendFile('me', {
         file: tempManifestPath,
         caption: caption,
+        workers: 4,
+        progressCallback: (p: any) => {
+          if (typeof p === 'number') {
+            const pct = Math.min(Math.round(p * 100), 99);
+            const transferred = Math.round(manifestSizeBytes * p);
+            const elapsedSec = Math.max(0.1, (Date.now() - ulStart) / 1000);
+            const speed = `${((transferred / (1024 * 1024)) / elapsedSec).toFixed(2)} MB/s`;
+            const overallProgress = Math.min(95, Math.round(15 + (pct * 0.8)));
+            this.updateManifestProgress({
+              status: 'uploading',
+              source: force ? 'manual' : 'debounce-auto',
+              phase: `Enviando manifesto JSON (${pct}% • ${formatBytes(transferred)} / ${formatBytes(manifestSizeBytes)})...`,
+              progress: overallProgress,
+              transferredBytes: transferred,
+              totalBytes: manifestSizeBytes,
+              speed
+            });
+          }
+        }
       });
 
       this.lastSentMetadataMessageId = sent.id;
@@ -958,6 +1068,22 @@ class TelegramService {
         lastSyncDate: new Date().toISOString(),
         lastMetadataMessageId: sent.id
       });
+
+      this.updateManifestProgress({
+        status: 'completed',
+        source: force ? 'manual' : 'debounce-auto',
+        phase: 'Manifesto JSON atualizado e salvo com sucesso nas Mensagens Salvas!',
+        progress: 100,
+        completedAt: new Date().toISOString(),
+        lastSyncResult: {
+          timestamp: new Date().toISOString(),
+          message: 'Manifesto JSON atualizado e salvo com sucesso no Telegram.',
+          messageId: sent.id,
+          fileCount: manifest.files.length,
+          folderCount: manifest.folders.length,
+          manifestSizeBytes
+        }
+      }, `Manifesto JSON salvo nas Mensagens Salvas (Msg ID: ${sent.id}).`);
 
       telegramEvents.emit('metadata-updated', {
         source: 'sync',
@@ -973,6 +1099,13 @@ class TelegramService {
       return { success: true, message: 'Metadados sincronizados e salvos com sucesso no seu Telegram (Mensagens Salvas)!', messageId: sent.id };
     } catch (e: any) {
       console.error('Error syncing metadata to Telegram:', e);
+      this.updateManifestProgress({
+        status: 'error',
+        source: force ? 'manual' : 'debounce-auto',
+        phase: `Erro ao enviar manifesto: ${e?.message || 'Falha de conexão'}`,
+        error: e?.message,
+        progress: 0
+      }, `Erro ao salvar manifesto na nuvem: ${e?.message || e}`);
       return { success: false, message: e.message || 'Falha ao sincronizar metadados no Telegram' };
     } finally {
       this.isSyncingMetadata = false;
@@ -1054,18 +1187,70 @@ class TelegramService {
       return { success: false, message: 'Telegram não conectado para restauração em nuvem.' };
     }
 
+    this.updateManifestProgress({
+      status: 'checking',
+      source: 'restore',
+      phase: 'Procurando backups de metadados nas Mensagens Salvas...',
+      progress: 10,
+      startedAt: new Date().toISOString()
+    }, 'Iniciando restauração manual do manifesto JSON...');
+
     try {
       const latestMsg = await this.findLatestMetadataMessage(client);
 
       if (!latestMsg) {
+        this.updateManifestProgress({
+          status: 'error',
+          source: 'restore',
+          phase: 'Nenhum manifesto de backup encontrado nas Mensagens Salvas.',
+          error: 'Nenhum backup encontrado',
+          progress: 0
+        }, 'Nenhum manifesto de metadados encontrado nas Mensagens Salvas.');
         return { success: false, message: 'Nenhum manifesto de backup do DriveGram foi encontrado nas suas Mensagens Salvas.' };
       }
 
-      const manifest = await this.downloadManifestFromMessage(latestMsg.id);
+      this.updateManifestProgress({
+        status: 'downloading',
+        source: 'restore',
+        phase: `Baixando manifesto da nuvem (Msg ID: ${latestMsg.id})...`,
+        progress: 25,
+        transferredBytes: 0,
+        totalBytes: 0
+      }, `Manifesto localizado (Msg ID: ${latestMsg.id}). Baixando...`);
+
+      const dlStart = Date.now();
+      const manifest = await this.downloadManifestFromMessage(latestMsg.id, (pct, transferred, total) => {
+        const elapsedSec = Math.max(0.1, (Date.now() - dlStart) / 1000);
+        const speed = `${((transferred / (1024 * 1024)) / elapsedSec).toFixed(2)} MB/s`;
+        const overallProgress = Math.min(80, Math.round(25 + (pct * 0.55)));
+        this.updateManifestProgress({
+          status: 'downloading',
+          source: 'restore',
+          phase: `Baixando manifesto (${pct}% • ${formatBytes(transferred)} / ${formatBytes(total)})...`,
+          progress: overallProgress,
+          transferredBytes: transferred,
+          totalBytes: total,
+          speed
+        });
+      });
 
       if (!manifest) {
+        this.updateManifestProgress({
+          status: 'error',
+          source: 'restore',
+          phase: 'Não foi possível baixar ou analisar o arquivo de metadados.',
+          error: 'Falha no download/parse',
+          progress: 0
+        }, 'Erro: arquivo de metadados corrompido ou inacessível.');
         return { success: false, message: 'Não foi possível baixar ou analisar o arquivo de metadados.' };
       }
+
+      this.updateManifestProgress({
+        status: 'reconciling',
+        source: 'restore',
+        phase: 'Restaurando catálogo local e pastas com base no manifesto...',
+        progress: 85
+      }, 'Aplicando importação do manifesto JSON...');
 
       db.importManifest(manifest);
       db.updateSettings({ lastMetadataMessageId: latestMsg.id });
@@ -1073,6 +1258,23 @@ class TelegramService {
 
       const courseCount = manifest.courses ? manifest.courses.length : 0;
       const bookCount = manifest.books ? manifest.books.length : 0;
+      const manifestSizeBytes = Buffer.byteLength(JSON.stringify(manifest));
+
+      this.updateManifestProgress({
+        status: 'completed',
+        source: 'restore',
+        phase: `Restauração concluída! ${manifest.files.length} arquivos e ${manifest.folders.length} pastas recuperados.`,
+        progress: 100,
+        completedAt: new Date().toISOString(),
+        lastSyncResult: {
+          timestamp: new Date().toISOString(),
+          message: 'Manifesto restaurado com sucesso.',
+          messageId: latestMsg.id,
+          fileCount: manifest.files.length,
+          folderCount: manifest.folders.length,
+          manifestSizeBytes
+        }
+      }, `Restauração concluída: ${manifest.files.length} arquivos e ${manifest.folders.length} pastas recuperados.`);
 
       return { 
         success: true, 
@@ -1080,6 +1282,13 @@ class TelegramService {
       };
     } catch (e: any) {
       console.error('Error restoring metadata:', e);
+      this.updateManifestProgress({
+        status: 'error',
+        source: 'restore',
+        phase: `Erro ao restaurar: ${e?.message || 'Falha'}`,
+        error: e?.message,
+        progress: 0
+      }, `Falha ao restaurar metadados: ${e?.message || e}`);
       return { success: false, message: e.message || 'Erro ao restaurar dados do Telegram' };
     }
   }
@@ -1097,8 +1306,21 @@ class TelegramService {
     this.activeStartupSyncPromise = (async () => {
       const client = await this.ensureClient();
       if (!client || !this.authState.isConnected) {
+        this.updateManifestProgress({
+          status: 'idle',
+          phase: 'Telegram desconectado. Aguardando login para sincronizar manifesto.',
+          progress: 0
+        });
         return { success: false, message: 'Telegram não conectado para sincronização ativa de inicialização.' };
       }
+
+      this.updateManifestProgress({
+        status: 'checking',
+        source: 'startup',
+        phase: '1/4 • Verificando backups de metadados nas Mensagens Salvas...',
+        progress: 10,
+        startedAt: new Date().toISOString()
+      }, 'Iniciando sincronização ativa do manifesto JSON...');
 
       try {
         console.log('[DriveGram Startup Sync] Verificando backups no Telegram (Mensagens Salvas)...');
@@ -1107,11 +1329,26 @@ class TelegramService {
         if (!latestMsg) {
           console.log('[DriveGram Startup Sync] Nenhum backup prévio encontrado nas Mensagens Salvas.');
           const localFiles = db.getAllFiles();
+          const localFolders = db.getAllFolders();
 
           // Se a base local estiver vazia, NÃO envia backup vazio para a nuvem!
           if (localFiles.length === 0) {
             console.log('[DriveGram Startup Sync] Armazenamento local vazio. Aguardando conteúdo antes de criar backup na nuvem.');
             this.isInitialSyncCompleted = true;
+            this.updateManifestProgress({
+              status: 'completed',
+              source: 'startup',
+              phase: 'Nenhum backup prévio na nuvem e base local limpa. Pronto para uso.',
+              progress: 100,
+              completedAt: new Date().toISOString(),
+              lastSyncResult: {
+                timestamp: new Date().toISOString(),
+                message: 'Nenhum backup prévio na nuvem e base local limpa.',
+                fileCount: 0,
+                folderCount: localFolders.length,
+                manifestSizeBytes: 0
+              }
+            }, 'Base limpa e sem backups prévios no Telegram. Pronto para uso.');
             return {
               success: true,
               message: 'Nenhum backup prévio na nuvem e base local limpa. Pronto para uso.',
@@ -1121,6 +1358,13 @@ class TelegramService {
 
           // Se a base local possuir arquivos reais, aí sim salva o manifesto inicial
           console.log(`[DriveGram Startup Sync] Base local possui ${localFiles.length} arquivos. Enviando manifesto inicial...`);
+          this.updateManifestProgress({
+            status: 'uploading',
+            source: 'startup',
+            phase: `2/4 • Base local possui ${localFiles.length} arquivos. Enviando manifesto JSON inicial...`,
+            progress: 30
+          }, `Enviando manifesto inicial com ${localFiles.length} arquivos...`);
+
           const initialSync = await this.syncMetadataToTelegram({ force: true, skipInitialCheck: true });
           this.isInitialSyncCompleted = true;
           return {
@@ -1135,6 +1379,25 @@ class TelegramService {
         if (settings.lastMetadataMessageId && settings.lastMetadataMessageId === latestMsg.id) {
           console.log(`[DriveGram Startup Sync] O manifesto na nuvem (Msg ID: ${latestMsg.id}) já corresponde ao estado local. Sincronização dispensada.`);
           this.isInitialSyncCompleted = true;
+          const currentFiles = db.getAllFiles();
+          const currentFolders = db.getAllFolders();
+          const currentManifest = db.exportManifest();
+          const manifestSizeBytes = Buffer.byteLength(JSON.stringify(currentManifest));
+          this.updateManifestProgress({
+            status: 'completed',
+            source: 'startup',
+            phase: 'Manifesto JSON já corresponde ao estado mais recente na nuvem.',
+            progress: 100,
+            completedAt: new Date().toISOString(),
+            lastSyncResult: {
+              timestamp: settings.lastSyncDate || new Date().toISOString(),
+              message: 'Base local já sincronizada com a nuvem.',
+              messageId: latestMsg.id,
+              fileCount: currentFiles.length,
+              folderCount: currentFolders.length,
+              manifestSizeBytes
+            }
+          }, `Manifesto verificado: nuvem e local 100% alinhados (Msg ID: ${latestMsg.id}).`);
           return {
             success: true,
             message: 'Base local já sincronizada com o Telegram.',
@@ -1143,15 +1406,52 @@ class TelegramService {
         }
 
         console.log(`[DriveGram Startup Sync] Baixando manifesto remoto (Msg ID: ${latestMsg.id})...`);
-        const remoteManifest = await this.downloadManifestFromMessage(latestMsg.id);
+        this.updateManifestProgress({
+          status: 'downloading',
+          source: 'startup',
+          phase: `2/4 • Baixando manifesto JSON remoto (Msg ID: ${latestMsg.id})...`,
+          progress: 25,
+          transferredBytes: 0,
+          totalBytes: 0
+        }, `Novo manifesto detectado na nuvem (Msg ID: ${latestMsg.id}). Iniciando download...`);
+
+        const dlStart = Date.now();
+        const remoteManifest = await this.downloadManifestFromMessage(latestMsg.id, (pct, transferred, total) => {
+          const elapsedSec = Math.max(0.1, (Date.now() - dlStart) / 1000);
+          const speed = `${((transferred / (1024 * 1024)) / elapsedSec).toFixed(2)} MB/s`;
+          const overallProgress = Math.min(70, Math.round(25 + (pct * 0.45)));
+          this.updateManifestProgress({
+            status: 'downloading',
+            source: 'startup',
+            phase: `2/4 • Baixando manifesto JSON (${pct}% • ${formatBytes(transferred)} / ${formatBytes(total)})...`,
+            progress: overallProgress,
+            transferredBytes: transferred,
+            totalBytes: total,
+            speed
+          });
+        });
 
         if (!remoteManifest) {
           console.warn('[DriveGram Startup Sync] Não foi possível obter o manifesto remoto. Mantendo base local.');
           if (db.getAllFiles().length > 0) {
             this.isInitialSyncCompleted = true;
           }
+          this.updateManifestProgress({
+            status: 'error',
+            source: 'startup',
+            phase: 'Falha ao baixar ou decodificar o manifesto de metadados do Telegram.',
+            error: 'Download/parse falhou',
+            progress: 0
+          }, 'Erro ao baixar ou decodificar manifesto do Telegram.');
           return { success: false, message: 'Falha ao baixar ou decodificar o manifesto de metadados do Telegram.' };
         }
+
+        this.updateManifestProgress({
+          status: 'reconciling',
+          source: 'startup',
+          phase: '3/4 • Reconciliando arquivos e pastas da nuvem com a base local...',
+          progress: 75
+        }, 'Manifesto baixado. Reconciliando arquivos e pastas...');
 
         const reconcileResult = db.reconcileManifest(remoteManifest);
         console.log(`[DriveGram Startup Sync] Reconciliação concluída: +${reconcileResult.addedFiles} arquivos, +${reconcileResult.addedFolders} pastas.`);
@@ -1170,8 +1470,34 @@ class TelegramService {
         // Se houver arquivos novos locais que não existiam na nuvem, atualiza o manifesto no Telegram
         if (reconcileResult.localHasNewerChanges) {
           console.log('[DriveGram Startup Sync] Dados locais possuem novos itens. Atualizando backup na nuvem...');
+          this.updateManifestProgress({
+            status: 'uploading',
+            source: 'startup',
+            phase: '4/4 • Enviando manifesto JSON consolidado com alterações para o Telegram...',
+            progress: 85
+          }, 'Novidades locais encontradas. Enviando manifesto consolidado para a nuvem...');
           await this.syncMetadataToTelegram({ force: true, skipInitialCheck: true });
         }
+
+        const finalManifest = db.exportManifest();
+        const finalManifestSize = Buffer.byteLength(JSON.stringify(finalManifest));
+        this.updateManifestProgress({
+          status: 'completed',
+          source: 'startup',
+          phase: `Sincronização ativa concluída com sucesso! (+${reconcileResult.addedFiles} arquivos, +${reconcileResult.addedFolders} pastas)`,
+          progress: 100,
+          completedAt: new Date().toISOString(),
+          lastSyncResult: {
+            timestamp: new Date().toISOString(),
+            message: `Sincronizado: +${reconcileResult.addedFiles} arquivos e +${reconcileResult.addedFolders} pastas integrados.`,
+            messageId: latestMsg.id,
+            addedFiles: reconcileResult.addedFiles,
+            addedFolders: reconcileResult.addedFolders,
+            fileCount: finalManifest.files.length,
+            folderCount: finalManifest.folders.length,
+            manifestSizeBytes: finalManifestSize
+          }
+        }, `Sincronização ativa concluída! +${reconcileResult.addedFiles} arquivos e +${reconcileResult.addedFolders} pastas.`);
 
         return {
           success: true,
@@ -1183,6 +1509,13 @@ class TelegramService {
         if (db.getAllFiles().length > 0) {
           this.isInitialSyncCompleted = true;
         }
+        this.updateManifestProgress({
+          status: 'error',
+          source: 'startup',
+          phase: `Erro na sincronização de inicialização: ${e?.message || 'Falha'}`,
+          error: e?.message,
+          progress: 0
+        }, `Erro na sincronização de inicialização: ${e?.message || e}`);
         return { success: false, message: e.message || 'Erro durante a sincronização de inicialização' };
       } finally {
         this.activeStartupSyncPromise = null;

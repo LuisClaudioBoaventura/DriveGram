@@ -187,6 +187,38 @@ export interface CacheDurationConfig {
   totalMinutes: number;
 }
 
+export type ManifestSyncStatus = 'idle' | 'checking' | 'downloading' | 'reconciling' | 'uploading' | 'completed' | 'error';
+
+export interface ManifestSyncLog {
+  timestamp: string;
+  message: string;
+  type?: 'info' | 'success' | 'warn' | 'error';
+}
+
+export interface ManifestSyncProgress {
+  status: ManifestSyncStatus;
+  phase: string;
+  progress: number;
+  transferredBytes?: number;
+  totalBytes?: number;
+  speed?: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  source?: 'startup' | 'debounce-auto' | 'manual' | 'restore';
+  lastSyncResult?: {
+    timestamp: string;
+    message: string;
+    messageId?: number;
+    addedFiles?: number;
+    addedFolders?: number;
+    fileCount?: number;
+    folderCount?: number;
+    manifestSizeBytes?: number;
+  };
+  logs?: ManifestSyncLog[];
+}
+
 export interface TelegramAuthState {
   isConnected: boolean;
   phone?: string;
@@ -201,6 +233,7 @@ export interface TelegramAuthState {
   cacheDuration?: CacheDurationConfig;
   localCacheSizeBytes?: number;
   metadataRetentionCount?: number;
+  manifestSyncProgress?: ManifestSyncProgress;
 }
 
 export interface ComicIssue {

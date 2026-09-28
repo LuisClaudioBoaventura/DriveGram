@@ -25,9 +25,14 @@ import {
   ArrowLeft,
   ChevronRight,
   Key,
-  Monitor
+  Monitor,
+  FileJson,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
+  Activity
 } from 'lucide-react';
-import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult, SavedAuditItem } from '../types/index.js';
+import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult, SavedAuditItem, ManifestSyncProgress } from '../types/index.js';
 import { ApiKeysSection } from './ApiKeysSection.js';
 import { SystemDiagnosticSection } from './SystemDiagnosticSection.js';
 
@@ -39,6 +44,7 @@ interface SyncModalProps {
   onRestoreFromTelegram: () => Promise<any>;
   onRefreshItems: () => void;
   syncing: boolean;
+  manifestProgress?: ManifestSyncProgress;
   onUpdateStreamingMode?: (mode: StreamingMode) => Promise<void>;
   onUpdateCacheDuration?: (value: number, unit: 'minutes' | 'hours' | 'days') => Promise<void>;
   onClearCache?: () => Promise<any>;
@@ -55,6 +61,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   onRestoreFromTelegram,
   onRefreshItems,
   syncing,
+  manifestProgress,
   onUpdateStreamingMode,
   onUpdateCacheDuration,
   onClearCache,
@@ -77,7 +84,62 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   const [showMissingPreview, setShowMissingPreview] = useState(false);
   const [retentionCount, setRetentionCount] = useState<number>(telegramState.metadataRetentionCount || 1);
   const [pendingInfo, setPendingInfo] = useState<{ totalPending: number; totalBytesFormatted: string } | null>(null);
+  const [currentManifestProgress, setCurrentManifestProgress] = useState<ManifestSyncProgress | null>(
+    manifestProgress || telegramState.manifestSyncProgress || null
+  );
+  const [showLogs, setShowLogs] = useState(false);
+  const logTerminalRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (manifestProgress) {
+      setCurrentManifestProgress(manifestProgress);
+    } else if (telegramState.manifestSyncProgress) {
+      setCurrentManifestProgress(telegramState.manifestSyncProgress);
+    }
+  }, [manifestProgress, telegramState.manifestSyncProgress]);
+
+  useEffect(() => {
+    const handleProgressEvent = (e: CustomEvent) => {
+      if (e.detail) {
+        setCurrentManifestProgress(e.detail);
+      }
+    };
+    window.addEventListener('drivegram-manifest-progress' as any, handleProgressEvent);
+    return () => window.removeEventListener('drivegram-manifest-progress' as any, handleProgressEvent);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetch('/api/telegram/manifest-status')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) setCurrentManifestProgress(data);
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (showLogs && logTerminalRef.current) {
+      logTerminalRef.current.scrollTop = logTerminalRef.current.scrollHeight;
+    }
+  }, [showLogs, currentManifestProgress?.logs]);
+
+  const isManifestUpdating = currentManifestProgress?.status === 'checking' || 
+    currentManifestProgress?.status === 'downloading' || 
+    currentManifestProgress?.status === 'reconciling' || 
+    currentManifestProgress?.status === 'uploading';
+
+  const formatDateTime = (dateStr?: string) => {
+    if (!dateStr) return 'Não registrado';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (_) {
+      return dateStr;
+    }
+  };
 
 
   useEffect(() => {
@@ -501,15 +563,21 @@ export const SyncModal: React.FC<SyncModalProps> = ({
     {
       id: 'sync' as const,
       title: 'Sincronização Ativa & Backup de Metadados',
-      icon: Send,
-      iconBg: 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/50',
+      icon: isManifestUpdating ? RefreshCw : Send,
+      iconBg: isManifestUpdating
+        ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-300 border border-blue-300 dark:border-blue-700 animate-pulse'
+        : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/50',
       badges: [
         {
-          text: 'Backup Ativo (3.5s)',
-          style: 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+          text: isManifestUpdating 
+            ? `Sincronizando (${currentManifestProgress?.progress ?? 0}%)` 
+            : 'Manifesto em Nuvem',
+          style: isManifestUpdating
+            ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800 animate-pulse'
+            : 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
         },
         {
-          text: `${telegramState.totalSavedFiles || 0} catalogados`,
+          text: `${currentManifestProgress?.lastSyncResult?.fileCount ?? telegramState.totalSavedFiles ?? 0} catalogados`,
           style: 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
         }
       ]
@@ -605,6 +673,107 @@ export const SyncModal: React.FC<SyncModalProps> = ({
           {/* Pré-Tela: Hub / Menu de Funções */}
           {activeSection === 'menu' && (
             <div className="space-y-1.5 animate-in fade-in duration-150">
+              {/* Card Visual de Acompanhamento do Manifesto JSON */}
+              <div className="mb-2">
+                {isManifestUpdating ? (
+                  <div 
+                    onClick={() => setActiveSection('sync')}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-br from-blue-500/10 via-sky-500/10 to-indigo-500/10 dark:from-blue-950/40 dark:via-sky-950/30 dark:to-indigo-950/40 border border-blue-300 dark:border-blue-700/60 shadow-xs cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-all group"
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="p-1.5 rounded-lg bg-blue-600 text-white shrink-0 shadow-xs">
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-blue-950 dark:text-blue-200">
+                              Atualizando Manifesto JSON
+                            </span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-blue-200 dark:bg-blue-900/80 text-blue-800 dark:text-blue-300">
+                              {currentManifestProgress?.progress ?? 0}%
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-blue-700 dark:text-blue-300/90 block truncate font-medium">
+                            {currentManifestProgress?.phase || 'Processando metadados na nuvem...'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {currentManifestProgress?.speed && (
+                        <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-md bg-white/70 dark:bg-blue-900/40 shrink-0">
+                          {currentManifestProgress.speed}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Barra de Progresso Fluida */}
+                    <div className="w-full bg-blue-200/60 dark:bg-blue-950/80 rounded-full h-2 overflow-hidden mb-1.5 shadow-inner">
+                      <div 
+                        className="bg-gradient-to-r from-blue-600 via-sky-500 to-indigo-600 h-full rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${Math.max(5, Math.min(100, currentManifestProgress?.progress ?? 0))}%` }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-blue-700 dark:text-blue-400">
+                      <span>
+                        {currentManifestProgress?.transferredBytes && currentManifestProgress?.totalBytes ? (
+                          `${formatBytes(currentManifestProgress.transferredBytes)} de ${formatBytes(currentManifestProgress.totalBytes)}`
+                        ) : (
+                          'Sincronizando com as Mensagens Salvas...'
+                        )}
+                      </span>
+                      <span className="font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                        Ver detalhes ➔
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div 
+                    onClick={() => setActiveSection('sync')}
+                    className="p-2.5 sm:p-3 rounded-2xl bg-white/80 dark:bg-drive-darkBg/80 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-300 dark:hover:border-blue-600/50 flex items-center justify-between gap-2.5 shadow-xs transition-all cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-1.5 sm:p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 shrink-0">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-gray-800 dark:text-gray-200">
+                            Manifesto JSON Sincronizado
+                          </span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                            Em Nuvem
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400 block truncate">
+                          {currentManifestProgress?.lastSyncResult?.fileCount ?? telegramState.totalSavedFiles ?? 0} arquivos catalogados
+                          {currentManifestProgress?.lastSyncResult?.manifestSizeBytes ? ` • ${formatBytes(currentManifestProgress.lastSyncResult.manifestSizeBytes)}` : ''}
+                          {currentManifestProgress?.lastSyncResult?.timestamp ? ` • ${new Date(currentManifestProgress.lastSyncResult.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleActiveStartupSync();
+                        }}
+                        disabled={performingStartupSync || syncing}
+                        className="px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-semibold text-[10px] border border-blue-200 dark:border-blue-800/60 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
+                        title="Sincronizar manifesto agora"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${performingStartupSync ? 'animate-spin' : ''}`} />
+                        <span className="hidden xs:inline">Sincronizar</span>
+                      </button>
+                      <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium px-1 mb-0.5">
                 Selecione uma função:
               </div>
@@ -1054,14 +1223,269 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               Ao iniciar o app no Desktop ou no celular, os metadados são reconciliados automaticamente com o Telegram. Qualquer alteração (inclusão, renomeação, exclusão de pastas ou arquivos) é salva em segundo plano de forma contínua em disco e nas suas Mensagens Salvas.
             </p>
 
+            {/* PAINEL DE ACOMPANHAMENTO DO MANIFESTO JSON */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white/95 dark:bg-drive-darkSurface border border-blue-200 dark:border-blue-900/60 shadow-sm mb-3 space-y-3">
+              {/* Header do Manifesto */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 dark:border-drive-darkBorder pb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-2 rounded-xl shrink-0 ${
+                    isManifestUpdating
+                      ? 'bg-blue-600 text-white animate-pulse'
+                      : 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60'
+                  }`}>
+                    <FileJson className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs sm:text-sm text-gray-800 dark:text-gray-100 block">
+                      Manifesto JSON (drivegram_metadata.json)
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-400">
+                      Índice central de arquivos, pastas e identificadores em nuvem
+                    </span>
+                  </div>
+                </div>
+
+                {/* Badge de Status Atual */}
+                <div className="self-start sm:self-auto">
+                  {currentManifestProgress?.status === 'checking' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
+                      <RefreshCw className="w-3 h-3 animate-spin text-amber-600" />
+                      Verificando Nuvem...
+                    </span>
+                  )}
+                  {currentManifestProgress?.status === 'downloading' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-200 border border-sky-300 dark:border-sky-800">
+                      <Download className="w-3 h-3 animate-bounce text-sky-600" />
+                      Baixando Manifesto...
+                    </span>
+                  )}
+                  {currentManifestProgress?.status === 'reconciling' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-800">
+                      <Sparkles className="w-3 h-3 animate-spin text-purple-600" />
+                      Reconciliando Metadados...
+                    </span>
+                  )}
+                  {currentManifestProgress?.status === 'uploading' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-800">
+                      <CloudUpload className="w-3 h-3 animate-pulse text-indigo-600" />
+                      Enviando para Nuvem...
+                    </span>
+                  )}
+                  {(currentManifestProgress?.status === 'completed' || currentManifestProgress?.status === 'idle') && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      100% Sincronizado
+                    </span>
+                  )}
+                  {currentManifestProgress?.status === 'error' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-200 border border-rose-300 dark:border-rose-800">
+                      <AlertCircle className="w-3 h-3 text-rose-600" />
+                      Falha na Sincronização
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Stepper / Pipeline Visual dos Passos de Sincronização */}
+              <div className="pt-0.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+                  Fluxo de Sincronização & Proteção:
+                </div>
+                <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
+                  {[
+                    { 
+                      step: 1, 
+                      name: 'Varredura', 
+                      desc: 'Mensagens Salvas',
+                      isDone: (currentManifestProgress?.progress ?? 0) >= 20 || currentManifestProgress?.status === 'completed',
+                      isActive: currentManifestProgress?.status === 'checking'
+                    },
+                    { 
+                      step: 2, 
+                      name: 'Download', 
+                      desc: 'Versão Nuvem',
+                      isDone: (currentManifestProgress?.progress ?? 0) >= 70 || currentManifestProgress?.status === 'completed',
+                      isActive: currentManifestProgress?.status === 'downloading'
+                    },
+                    { 
+                      step: 3, 
+                      name: 'Reconciliação', 
+                      desc: 'Unificar Dados',
+                      isDone: (currentManifestProgress?.progress ?? 0) >= 80 || currentManifestProgress?.status === 'completed',
+                      isActive: currentManifestProgress?.status === 'reconciling'
+                    },
+                    { 
+                      step: 4, 
+                      name: 'Envio Nuvem', 
+                      desc: 'Novas Pastas/Itens',
+                      isDone: currentManifestProgress?.status === 'completed',
+                      isActive: currentManifestProgress?.status === 'uploading'
+                    },
+                    { 
+                      step: 5, 
+                      name: 'Protegido', 
+                      desc: 'Base em Dia',
+                      isDone: currentManifestProgress?.status === 'completed',
+                      isActive: false
+                    }
+                  ].map((s) => (
+                    <div 
+                      key={s.step} 
+                      className={`p-1.5 sm:p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center ${
+                        s.isActive
+                          ? 'bg-blue-100/70 dark:bg-blue-950/70 border-blue-400 dark:border-blue-600 ring-2 ring-blue-400/30'
+                          : s.isDone
+                          ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300'
+                          : 'bg-gray-50/70 dark:bg-drive-darkBg/50 border-gray-200/60 dark:border-drive-darkBorder text-gray-400'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 ${
+                        s.isActive
+                          ? 'bg-blue-600 text-white animate-spin'
+                          : s.isDone
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-gray-200 dark:bg-gray-800 text-gray-500'
+                      }`}>
+                        {s.isActive ? (
+                          <RefreshCw className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                        ) : s.isDone ? (
+                          <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                        ) : (
+                          s.step
+                        )}
+                      </div>
+                      <span className="font-bold text-[9px] sm:text-[11px] truncate w-full block">
+                        {s.name}
+                      </span>
+                      <span className="hidden xs:block text-[8px] sm:text-[9px] text-gray-500 dark:text-gray-400 truncate w-full">
+                        {s.desc}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Barra de Progresso e Métricas em Tempo Real */}
+              <div className="bg-gray-50/80 dark:bg-drive-darkBg/60 p-2.5 sm:p-3 rounded-xl border border-gray-200/80 dark:border-drive-darkBorder">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-1.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Activity className={`w-3.5 h-3.5 shrink-0 ${isManifestUpdating ? 'text-blue-500 animate-pulse' : 'text-emerald-500'}`} />
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                      {currentManifestProgress?.phase || 'Manifesto sincronizado e em dia'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-gray-600 dark:text-gray-300 self-end sm:self-auto shrink-0">
+                    {currentManifestProgress?.transferredBytes && currentManifestProgress?.totalBytes ? (
+                      <span>{formatBytes(currentManifestProgress.transferredBytes)} / {formatBytes(currentManifestProgress.totalBytes)}</span>
+                    ) : null}
+                    {currentManifestProgress?.speed && (
+                      <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
+                        {currentManifestProgress.speed}
+                      </span>
+                    )}
+                    <span className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 font-mono">
+                      {currentManifestProgress?.progress ?? 100}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2.5 overflow-hidden shadow-inner">
+                  <div 
+                    className="bg-gradient-to-r from-blue-600 via-sky-500 to-indigo-600 h-full rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${Math.max(5, Math.min(100, currentManifestProgress?.progress ?? 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 4 Cards de Métricas do Manifesto */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="p-2 sm:p-2.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-xs">
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 block font-medium">Tamanho do JSON</span>
+                  <span className="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100">
+                    {formatBytes(currentManifestProgress?.lastSyncResult?.manifestSizeBytes || 0)}
+                  </span>
+                  <span className="text-[9px] text-gray-400 block truncate">drivegram_metadata.json</span>
+                </div>
+
+                <div className="p-2 sm:p-2.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-xs">
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 block font-medium">Arquivos Catalogados</span>
+                  <span className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400">
+                    {currentManifestProgress?.lastSyncResult?.fileCount ?? telegramState.totalSavedFiles ?? 0}
+                  </span>
+                  <span className="text-[9px] text-gray-400 block truncate">Mídias e documentos</span>
+                </div>
+
+                <div className="p-2 sm:p-2.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-xs">
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 block font-medium">Pastas / Categorias</span>
+                  <span className="text-xs sm:text-sm font-bold text-purple-600 dark:text-purple-400">
+                    {currentManifestProgress?.lastSyncResult?.folderCount ?? 0}
+                  </span>
+                  <span className="text-[9px] text-gray-400 block truncate">Árvore organizada</span>
+                </div>
+
+                <div className="p-2 sm:p-2.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-xs">
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 block font-medium">Última Nuvem</span>
+                  <span className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400 truncate block">
+                    {currentManifestProgress?.lastSyncResult?.messageId ? `#${currentManifestProgress.lastSyncResult.messageId}` : 'Sincronizado'}
+                  </span>
+                  <span className="text-[9px] text-gray-400 block truncate">
+                    {formatDateTime(currentManifestProgress?.lastSyncResult?.timestamp || telegramState.lastSyncDate)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Terminal de Logs / Eventos em Tempo Real */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowLogs(!showLogs)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-drive-darkBg dark:hover:bg-drive-darkBorder text-gray-700 dark:text-gray-300 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Terminal className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Terminal de Eventos & Logs de Sincronização ({(currentManifestProgress?.logs || []).length})</span>
+                  </div>
+                  {showLogs ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                {showLogs && (
+                  <div 
+                    ref={logTerminalRef}
+                    className="mt-1.5 max-h-44 overflow-y-auto rounded-xl bg-gray-950 text-gray-200 p-2.5 font-mono text-[10px] sm:text-[11px] space-y-1 border border-gray-800 shadow-inner"
+                  >
+                    {(currentManifestProgress?.logs && currentManifestProgress.logs.length > 0) ? (
+                      currentManifestProgress.logs.map((log, idx) => (
+                        <div key={idx} className="flex items-start gap-1.5 leading-relaxed">
+                          <span className="text-sky-400 shrink-0 font-bold">[{log.timestamp}]</span>
+                          <span className={`${
+                            log.type === 'success' ? 'text-emerald-400' :
+                            log.type === 'error' ? 'text-rose-400 font-bold' :
+                            log.type === 'warn' ? 'text-amber-400' :
+                            'text-gray-300'
+                          }`}>
+                            {log.message}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-gray-500 italic py-2 text-center">
+                        Nenhum evento registrado nesta sessão. Clique no botão de sincronização para iniciar varredura.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Sincronização Ativa Manual / Forçada */}
             <button
               onClick={handleActiveStartupSync}
-              disabled={performingStartupSync || syncing || !telegramState.isConnected}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-40 mb-3"
+              disabled={performingStartupSync || syncing || isManifestUpdating || !telegramState.isConnected}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-40 mb-3 cursor-pointer"
             >
-              <RefreshCw className={`w-4 h-4 ${performingStartupSync ? 'animate-spin' : ''}`} />
-              <span>{performingStartupSync ? 'Reconciliando Metadados com o Telegram...' : '🔄 Executar Sincronização Ativa Agora (Reconciliar com Nuvem)'}</span>
+              <RefreshCw className={`w-4 h-4 ${(performingStartupSync || isManifestUpdating) ? 'animate-spin' : ''}`} />
+              <span>{(performingStartupSync || isManifestUpdating) ? 'Sincronizando & Reconciliando Manifesto...' : '🔄 Executar Sincronização Ativa Agora (Reconciliar com Nuvem)'}</span>
             </button>
 
             <div className="flex flex-col sm:flex-row gap-2">

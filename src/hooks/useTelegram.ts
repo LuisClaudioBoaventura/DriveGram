@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
-import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult } from '../types/index.js';
+import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult, ManifestSyncProgress } from '../types/index.js';
 
 export function useTelegram() {
   const [authState, setAuthState] = useState<TelegramAuthState>({
@@ -19,6 +19,7 @@ export function useTelegram() {
     localCacheSizeBytes: 0,
     metadataRetentionCount: 1
   });
+  const [manifestProgress, setManifestProgress] = useState<ManifestSyncProgress | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const startupSyncTriggered = useRef(false);
@@ -63,6 +64,9 @@ export function useTelegram() {
       if (res.ok) {
         const data = await res.json();
         setAuthState(data);
+        if (data.manifestSyncProgress) {
+          setManifestProgress(data.manifestSyncProgress);
+        }
         if (data.isConnected) {
           triggerStartupSync();
         }
@@ -91,6 +95,10 @@ export function useTelegram() {
               console.log('[DriveGram Real-Time SSE] Atualização de metadados recebida:', data);
               fetchStatus();
               window.dispatchEvent(new CustomEvent('drivegram-metadata-updated', { detail: data }));
+            } else if (data.type === 'manifest-progress') {
+              const { type, ...progressData } = data;
+              setManifestProgress(progressData);
+              window.dispatchEvent(new CustomEvent('drivegram-manifest-progress', { detail: progressData }));
             }
           } catch (_) {}
         };
@@ -348,6 +356,7 @@ export function useTelegram() {
 
   return {
     authState,
+    manifestProgress,
     loading,
     syncing,
     fetchStatus,

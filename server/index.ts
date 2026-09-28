@@ -139,7 +139,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.20.4',
+    version: '1.21.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -4855,6 +4855,14 @@ app.post('/api/telegram/reconcile-saved', async (req, res) => {
   }
 });
 
+app.get('/api/telegram/manifest-status', (_req, res) => {
+  try {
+    res.json(telegramService.getManifestSyncProgress());
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ---------------- EVENTOS EM TEMPO REAL (SSE) ----------------
 app.get('/api/telegram/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -4867,13 +4875,26 @@ app.get('/api/telegram/events', (req, res) => {
   // Enviar heartbeat inicial
   res.write(`data: ${JSON.stringify({ type: 'connected', time: new Date().toISOString() })}\n\n`);
 
+  // Enviar estado inicial do progresso do manifesto
+  try {
+    const currentManifestProgress = telegramService.getManifestSyncProgress();
+    res.write(`data: ${JSON.stringify({ type: 'manifest-progress', ...currentManifestProgress })}\n\n`);
+  } catch (_) {}
+
   const onMetadataUpdated = (data: any) => {
     try {
       res.write(`data: ${JSON.stringify({ type: 'metadata-updated', ...data })}\n\n`);
     } catch (_) {}
   };
 
+  const onManifestProgress = (data: any) => {
+    try {
+      res.write(`data: ${JSON.stringify({ type: 'manifest-progress', ...data })}\n\n`);
+    } catch (_) {}
+  };
+
   telegramEvents.on('metadata-updated', onMetadataUpdated);
+  telegramEvents.on('manifest-progress', onManifestProgress);
 
   // Heartbeat periódico a cada 25 segundos para manter a conexão aberta
   const keepAliveInterval = setInterval(() => {
@@ -4885,6 +4906,7 @@ app.get('/api/telegram/events', (req, res) => {
   req.on('close', () => {
     clearInterval(keepAliveInterval);
     telegramEvents.off('metadata-updated', onMetadataUpdated);
+    telegramEvents.off('manifest-progress', onManifestProgress);
     res.end();
   });
 });
