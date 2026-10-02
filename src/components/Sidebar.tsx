@@ -587,7 +587,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' 
                 : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
               }`}>
-                {telegramState.isConnected ? t('nav.connected', 'Conectado') : t('nav.disconnected', 'Desconectado')}
+                {telegramState.isConnected ? t('nav.connected', 'Conectada') : t('nav.disconnected', 'Desconectada')}
               </span>
             </div>
 
@@ -612,7 +612,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all"
               >
                 <Database className="w-3.5 h-3.5" />
-                <span>{t('syncModal.title', 'Gerenciar Nuvem & Backup')}</span>
+                <span>{t('syncModal.title', 'Gerenciamento de Nuvem')}</span>
               </button>
 
               {onOpenUploadsFolder && (

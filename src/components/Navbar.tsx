@@ -160,10 +160,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Search className="w-4 h-4" />
           </button>
 
-          {/* Hub de Gerenciamento de Nuvem, Streaming, Cache & Configurações */}
+          {/* Hub de Gerenciamento de Nuvem */}
           <button
             onClick={onOpenSync}
-            title={t('nav.cloudSyncTitle', 'Gerenciamento de Nuvem, Streaming & Cache')}
+            title={t('nav.cloudSyncTitle', 'Gerenciamento de Nuvem')}
             className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 transition-all active:scale-95"
           >
             <Cloud className="w-4 h-4 text-blue-500" />
@@ -188,12 +188,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60 hover:bg-emerald-100'
                 : 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-800/60 hover:bg-sky-100'
             }`}
-            title={telegramState.isConnected ? t('nav.connected', 'Telegram Conectado') : t('nav.disconnected', 'Conectar Telegram')}
+            title={telegramState.isConnected ? t('nav.connected', 'Conectada') : t('nav.disconnected', 'Desconectada')}
           >
             <div className={`w-2 h-2 rounded-full shrink-0 ${telegramState.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-sky-500'}`} />
             <span className="font-semibold text-[11px] sm:text-xs max-w-[70px] sm:max-w-[120px] md:max-w-[160px] truncate block">
               {telegramState.isConnected 
-                ? (telegramState.firstName || telegramState.username || t('nav.connected', 'Conectado'))
+                ? (telegramState.firstName || telegramState.username || t('nav.connected', 'Conectada'))
                 : t('common.connect', 'Conectar')
               }
             </span>

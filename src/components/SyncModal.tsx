@@ -477,7 +477,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 
   const sectionHeaders: Record<SyncSection, { title: string; subtitle: string }> = {
     menu: {
-      title: t('syncModal.title', 'Gerenciamento de Nuvem, Streaming & Cache'),
+      title: t('syncModal.title', 'Gerenciamento de Nuvem'),
       subtitle: t('syncModal.subtitle', 'Configure como suas mídias são reproduzidas, armazenadas e sincronizadas com o Telegram')
     },
     playback: {
