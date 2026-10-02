@@ -82,6 +82,7 @@ export interface DatabaseSchema {
     lastMetadataMessageId?: number;
     metadataRetentionCount?: number;
     deletedFileIds?: string[];
+    language?: 'pt' | 'en' | 'es';
   };
 }
 
@@ -184,7 +185,8 @@ const initialDemoData: DatabaseSchema = {
       totalMinutes: 1440
     },
     lastSyncDate: new Date().toISOString(),
-    metadataRetentionCount: 1
+    metadataRetentionCount: 1,
+    language: 'pt'
   }
 };
 
@@ -5006,6 +5008,15 @@ class Database {
 
   public setCacheDuration(config: CacheDurationConfig) {
     this.data.settings.cacheDuration = config;
+    this.save(this.data);
+  }
+
+  public getLanguage(): 'pt' | 'en' | 'es' {
+    return this.data.settings.language || 'pt';
+  }
+
+  public setLanguage(lang: 'pt' | 'en' | 'es') {
+    this.data.settings.language = lang;
     this.save(this.data);
   }
 

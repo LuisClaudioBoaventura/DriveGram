@@ -51,6 +51,7 @@ Thumbs.db
 .stylelintcache
 .turbo/
 _tmp_server_bundle.*
+strix_runs/
 
 # Android & Desktop build outputs & binaries
 installers/

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Trash2, AlertTriangle, X, ShieldAlert, RotateCcw, Clock } from 'lucide-react';
+import { useTranslation } from '../i18n/index.js';
 
 interface DeleteConfirmModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   isPermanent = false,
   itemType
 }) => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -119,7 +121,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               disabled={loading}
               className="w-full sm:flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-drive-darkBorder hover:bg-gray-100 dark:hover:bg-drive-darkHover text-gray-700 dark:text-gray-300 font-semibold text-xs transition-colors disabled:opacity-50 text-center"
             >
-              Cancelar
+              {t('common.cancel', 'Cancelar')}
             </button>
             <button
               onClick={handleConfirm}
@@ -131,7 +133,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               }`}
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>{loading ? 'Processando...' : isPermanent ? 'Excluir do Telegram' : 'Mover para Lixeira'}</span>
+              <span>{loading ? t('common.loading', 'Processando...') : isPermanent ? t('deleteModal.deletePermanentButton', 'Excluir Definitivamente') : t('deleteModal.deleteButton', 'Mover para Lixeira')}</span>
             </button>
           </div>
         </div>

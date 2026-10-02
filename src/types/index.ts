@@ -180,6 +180,7 @@ export interface UploadProgress {
 }
 
 export type StreamingMode = 'cloud_direct' | 'temp_cache' | 'local_cache';
+export type AppLanguage = 'pt' | 'en' | 'es';
 
 export interface CacheDurationConfig {
   value: number;
@@ -234,6 +235,7 @@ export interface TelegramAuthState {
   localCacheSizeBytes?: number;
   metadataRetentionCount?: number;
   manifestSyncProgress?: ManifestSyncProgress;
+  language?: AppLanguage;
 }
 
 export interface ComicIssue {

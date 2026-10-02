@@ -29,6 +29,7 @@ import { TelegramAuthState } from '../types/index.js';
 import { YouTubeTargetType } from './YouTubeImportModal.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
 import { CURRENT_APP_VERSION } from '../utils/updater.js';
+import { useTranslation } from '../i18n/index.js';
 
 export type SidebarTab = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
 
@@ -119,24 +120,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const { t } = useTranslation();
+
   const navItems: { id: SidebarTab; label: string; icon: React.ReactNode; badge?: string; color: string }[] = [
-    { id: 'drive', label: 'Meu Drive', icon: <HardDrive className="w-4 h-4 text-blue-500" />, color: 'blue' },
-    { id: 'courses', label: 'Cursos & Estudos', icon: <GraduationCap className="w-4 h-4 text-indigo-500" />, badge: 'Estúdio', color: 'indigo' },
-    { id: 'books', label: 'Livros & Audiolivros', icon: <BookOpen className="w-4 h-4 text-purple-500" />, badge: 'Biblioteca', color: 'purple' },
-    { id: 'comics', label: 'HQs & Mangás', icon: <Sparkles className="w-4 h-4 text-pink-500" />, badge: 'Biblioteca', color: 'pink' },
-    { id: 'videos', label: 'Filmes & Cinema', icon: <Film className="w-4 h-4 text-red-500" />, badge: 'Cinema', color: 'red' },
-    { id: 'personal-videos', label: 'Vídeos Pessoais', icon: <Video className="w-4 h-4 text-amber-500" />, badge: 'Memórias', color: 'amber' },
-    { id: 'series', label: 'Séries & Animes', icon: <Tv className="w-4 h-4 text-purple-500" />, badge: 'TV Shows', color: 'purple' },
-    { id: 'podcasts', label: 'Músicas & Podcasts', icon: <Headphones className="w-4 h-4 text-emerald-500" />, badge: 'Áudios', color: 'emerald' },
+    { id: 'drive', label: t('sidebar.myDrive', 'Meu Drive'), icon: <HardDrive className="w-4 h-4 text-blue-500" />, color: 'blue' },
+    { id: 'courses', label: t('sidebar.courses', 'Cursos & Estudos'), icon: <GraduationCap className="w-4 h-4 text-indigo-500" />, badge: 'Estúdio', color: 'indigo' },
+    { id: 'books', label: t('sidebar.books', 'Livros & Audiolivros'), icon: <BookOpen className="w-4 h-4 text-purple-500" />, badge: 'Biblioteca', color: 'purple' },
+    { id: 'comics', label: t('sidebar.comics', 'HQs & Mangás'), icon: <Sparkles className="w-4 h-4 text-pink-500" />, badge: 'Biblioteca', color: 'pink' },
+    { id: 'videos', label: t('sidebar.moviesVideos', 'Filmes & Cinema'), icon: <Film className="w-4 h-4 text-red-500" />, badge: 'Cinema', color: 'red' },
+    { id: 'personal-videos', label: t('sidebar.personalVideos', 'Vídeos Pessoais'), icon: <Video className="w-4 h-4 text-amber-500" />, badge: 'Memórias', color: 'amber' },
+    { id: 'series', label: t('sidebar.series', 'Séries & Animes'), icon: <Tv className="w-4 h-4 text-purple-500" />, badge: 'TV Shows', color: 'purple' },
+    { id: 'podcasts', label: t('sidebar.podcasts', 'Músicas & Podcasts'), icon: <Headphones className="w-4 h-4 text-emerald-500" />, badge: 'Áudios', color: 'emerald' },
     { 
       id: 'adult', 
-      label: 'Red Locker', 
+      label: t('sidebar.redLocker', 'Red Locker'), 
       icon: <LockKeyhole className="w-4 h-4 text-rose-500" />, 
       badge: isAdultVaultUnlocked ? '🔓 +18' : '🔒 +18',
       color: 'rose'
     },
-    { id: 'favorites', label: 'Favoritos', icon: <Star className="w-4 h-4 text-amber-500" />, color: 'amber' },
-    { id: 'trash', label: 'Lixeira', icon: <Trash2 className="w-4 h-4 text-rose-500" />, color: 'rose' },
+    { id: 'favorites', label: t('sidebar.favorites', 'Favoritos'), icon: <Star className="w-4 h-4 text-amber-500" />, color: 'amber' },
+    { id: 'trash', label: t('sidebar.trash', 'Lixeira'), icon: <Trash2 className="w-4 h-4 text-rose-500" />, color: 'rose' },
   ];
 
   const handleDragOver = (e: React.DragEvent, tabId: string) => {
@@ -255,7 +258,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="relative">
           <button
             onClick={() => setShowNewMenu(!showNewMenu)}
-            title={isCollapsed ? 'Novo' : undefined}
+            title={isCollapsed ? t('sidebar.newButton', 'Novo') : undefined}
             className={`flex items-center rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder hover:shadow-lg dark:hover:shadow-black/40 text-gray-800 dark:text-gray-100 font-semibold text-sm transition-all group ${
               isCollapsed 
                 ? 'w-11 h-11 mx-auto justify-center p-0' 
@@ -265,7 +268,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600 to-sky-400 text-white shadow group-hover:rotate-90 transition-transform duration-300 shrink-0">
               <Plus className="w-4 h-4" />
             </div>
-            {!isCollapsed && <span>Novo</span>}
+            {!isCollapsed && <span>{t('sidebar.newButton', 'Novo')}</span>}
           </button>
 
           {/* New Item Dropdown Menu */}
@@ -290,7 +293,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
               >
                 <FolderPlus className="w-4 h-4 text-blue-500" />
-                <span>Nova Pasta</span>
+                <span>{t('sidebar.newFolder', 'Nova Pasta')}</span>
               </button>
 
               <button
@@ -301,7 +304,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
               >
                 <UploadCloud className="w-4 h-4 text-emerald-500" />
-                <span>Upload de Arquivos</span>
+                <span>{t('sidebar.uploadFiles', 'Upload de Arquivos')}</span>
               </button>
 
               <button
@@ -312,7 +315,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
               >
                 <UploadCloud className="w-4 h-4 text-sky-500" />
-                <span>Upload de Pasta Inteira</span>
+                <span>{t('sidebar.uploadFolder', 'Upload de Pasta Inteira')}</span>
               </button>
 
               <div className="my-1 border-t border-gray-100 dark:border-drive-darkBorder" />
@@ -576,7 +579,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex items-center gap-2">
                 <Cloud className={`w-4 h-4 ${telegramState.isConnected ? 'text-emerald-500' : 'text-amber-500'}`} />
                 <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
-                  Nuvem Telegram
+                  {t('sidebar.cloudStorage', 'Nuvem Telegram')}
                 </span>
               </div>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -584,21 +587,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' 
                 : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
               }`}>
-                {telegramState.isConnected ? 'Conectado' : 'Desconectado'}
+                {telegramState.isConnected ? t('nav.connected', 'Conectado') : t('nav.disconnected', 'Desconectado')}
               </span>
             </div>
 
             <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-1 mb-3">
               <div className="flex justify-between">
-                <span>Espaço em Nuvem:</span>
+                <span>{t('sidebar.cloudStorage', 'Espaço em Nuvem')}:</span>
                 <span className="font-semibold text-gray-700 dark:text-gray-200">Ilimitado (∞)</span>
               </div>
               <div className="flex justify-between">
-                <span>Total Salvo:</span>
+                <span>{t('sidebar.storageUsed', 'Total Salvo')}:</span>
                 <span className="font-semibold text-gray-700 dark:text-gray-200">{formatBytes(telegramState.storageUsedBytes)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Arquivos:</span>
+                <span>{t('syncModal.filesCataloged', 'Arquivos')}:</span>
                 <span className="font-semibold text-gray-700 dark:text-gray-200">{telegramState.totalSavedFiles || 0}</span>
               </div>
             </div>
@@ -609,17 +612,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all"
               >
                 <Database className="w-3.5 h-3.5" />
-                <span>Gerenciar Nuvem & Backup</span>
+                <span>{t('syncModal.title', 'Gerenciar Nuvem & Backup')}</span>
               </button>
 
               {onOpenUploadsFolder && (
                 <button
                   onClick={onOpenUploadsFolder}
                   className="w-full flex items-center justify-center gap-2 py-1.5 rounded-xl border border-gray-200 dark:border-drive-darkBorder hover:bg-gray-100 dark:hover:bg-drive-darkHover text-gray-700 dark:text-gray-300 text-xs font-semibold transition-all active:scale-95"
-                  title="Abrir pasta onde os arquivos estão sendo salvos no computador (uploads)"
+                  title={t('nav.uploadsFolder', 'Abrir pasta onde os arquivos estão sendo salvos no computador (uploads)')}
                 >
                   <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Abrir Pasta Local</span>
+                  <span>{t('nav.uploadsFolder', 'Abrir Pasta Local')}</span>
                 </button>
               )}
 
@@ -638,7 +641,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span>v{CURRENT_APP_VERSION}</span>
                   </div>
                   <span className={`text-[11px] font-semibold ${hasUpdateAvailable ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>
-                    {hasUpdateAvailable ? 'Atualização disponível!' : 'Atualizações'}
+                    {hasUpdateAvailable ? t('sidebar.updateAvailable', 'Atualização disponível!') : t('common.details', 'Atualizações')}
                   </span>
                 </button>
               )}
@@ -648,7 +651,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={onOpenAuth}
                   className="w-full flex items-center justify-center gap-2 py-1.5 rounded-xl border border-blue-500 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-xs font-semibold transition-all"
                 >
-                  <span>Conectar Telegram</span>
+                  <span>{t('common.connect', 'Conectar Telegram')}</span>
                 </button>
               )}
             </div>

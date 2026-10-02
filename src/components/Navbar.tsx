@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { TelegramAuthState, FileType } from '../types/index.js';
 import { YouTubeTargetType } from './YouTubeImportModal.js';
+import { useTranslation } from '../i18n/index.js';
 
 interface NavbarProps {
   searchQuery: string;
@@ -65,19 +66,20 @@ export const Navbar: React.FC<NavbarProps> = ({
   isSyncing,
   onOpenMobileMenu
 }) => {
+  const { t } = useTranslation();
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   const filterChips: { type: FileType | 'all'; label: string; icon: React.ReactNode }[] = [
-    { type: 'all', label: 'Tudo', icon: <Layers className="w-3.5 h-3.5" /> },
-    { type: 'video', label: 'Vídeos', icon: <Video className="w-3.5 h-3.5 text-red-500" /> },
-    { type: 'comic', label: 'HQs & Mangás', icon: <BookOpen className="w-3.5 h-3.5 text-pink-500" /> },
-    { type: 'ebook', label: 'E-books', icon: <BookOpen className="w-3.5 h-3.5 text-emerald-500" /> },
-    { type: 'pdf', label: 'PDFs', icon: <FileText className="w-3.5 h-3.5 text-rose-500" /> },
-    { type: 'document', label: 'Documentos', icon: <FileText className="w-3.5 h-3.5 text-blue-500" /> },
-    { type: 'image', label: 'Imagens', icon: <ImageIcon className="w-3.5 h-3.5 text-amber-500" /> },
-    { type: 'audio', label: 'Áudios', icon: <Music className="w-3.5 h-3.5 text-purple-500" /> },
-    { type: 'archive', label: 'Compactados', icon: <Archive className="w-3.5 h-3.5 text-orange-500" /> },
-    { type: 'code', label: 'Código', icon: <FileCode className="w-3.5 h-3.5 text-cyan-500" /> },
+    { type: 'all', label: t('nav.all', 'Tudo'), icon: <Layers className="w-3.5 h-3.5" /> },
+    { type: 'video', label: t('nav.videos', 'Vídeos'), icon: <Video className="w-3.5 h-3.5 text-red-500" /> },
+    { type: 'comic', label: t('nav.comics', 'HQs & Mangás'), icon: <BookOpen className="w-3.5 h-3.5 text-pink-500" /> },
+    { type: 'ebook', label: t('nav.ebooks', 'E-books'), icon: <BookOpen className="w-3.5 h-3.5 text-emerald-500" /> },
+    { type: 'pdf', label: t('nav.pdfs', 'PDFs'), icon: <FileText className="w-3.5 h-3.5 text-rose-500" /> },
+    { type: 'document', label: t('nav.documents', 'Documentos'), icon: <FileText className="w-3.5 h-3.5 text-blue-500" /> },
+    { type: 'image', label: t('nav.images', 'Imagens'), icon: <ImageIcon className="w-3.5 h-3.5 text-amber-500" /> },
+    { type: 'audio', label: t('nav.audios', 'Áudios'), icon: <Music className="w-3.5 h-3.5 text-purple-500" /> },
+    { type: 'archive', label: t('nav.archives', 'Compactados'), icon: <Archive className="w-3.5 h-3.5 text-orange-500" /> },
+    { type: 'code', label: t('nav.code', 'Código'), icon: <FileCode className="w-3.5 h-3.5 text-cyan-500" /> },
   ];
 
   return (
@@ -129,7 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Pesquisar em Meu Drive, cursos, vídeos, aulas, PDFs ou tags..."
+              placeholder={t('nav.searchPlaceholder', 'Pesquisar em todas as pastas e arquivos...')}
               className="w-full pl-10 pr-4 py-2 text-sm rounded-full bg-gray-100 dark:bg-drive-darkSurface border border-transparent focus:border-blue-500 dark:focus:border-blue-400 focus:bg-white dark:focus:bg-drive-darkSurface focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-gray-800 dark:text-gray-100 placeholder-gray-400 transition-all shadow-inner"
             />
             {searchQuery && (
@@ -137,7 +139,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
               >
-                Limpar
+                {t('common.clear', 'Limpar')}
               </button>
             )}
           </div>
@@ -153,7 +155,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
                 : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-drive-darkHover'
             }`}
-            title="Pesquisar"
+            title={t('common.search', 'Pesquisar')}
           >
             <Search className="w-4 h-4" />
           </button>
@@ -161,7 +163,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Hub de Gerenciamento de Nuvem, Streaming, Cache & Configurações */}
           <button
             onClick={onOpenSync}
-            title="Gerenciamento de Nuvem, Streaming & Cache"
+            title={t('nav.cloudSyncTitle', 'Gerenciamento de Nuvem, Streaming & Cache')}
             className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-blue-400 transition-all active:scale-95"
           >
             <Cloud className="w-4 h-4 text-blue-500" />
@@ -171,7 +173,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {onOpenUploadsFolder && (
             <button
               onClick={onOpenUploadsFolder}
-              title="Abrir pasta onde os arquivos estão sendo salvos no computador (uploads)"
+              title={t('nav.uploadsFolder', 'Abrir Pasta de Uploads')}
               className="hidden sm:inline-flex p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-200 dark:border-drive-darkBorder hover:border-amber-400 transition-all active:scale-95"
             >
               <FolderOpen className="w-4 h-4 text-amber-500" />
@@ -186,13 +188,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60 hover:bg-emerald-100'
                 : 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-800/60 hover:bg-sky-100'
             }`}
-            title={telegramState.isConnected ? 'Telegram Conectado' : 'Conectar Telegram'}
+            title={telegramState.isConnected ? t('nav.connected', 'Telegram Conectado') : t('nav.disconnected', 'Conectar Telegram')}
           >
             <div className={`w-2 h-2 rounded-full shrink-0 ${telegramState.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-sky-500'}`} />
             <span className="font-semibold text-[11px] sm:text-xs max-w-[70px] sm:max-w-[120px] md:max-w-[160px] truncate block">
               {telegramState.isConnected 
-                ? (telegramState.firstName || telegramState.username || 'Conectado')
-                : 'Conectar'
+                ? (telegramState.firstName || telegramState.username || t('nav.connected', 'Conectado'))
+                : t('common.connect', 'Conectar')
               }
             </span>
           </button>
@@ -201,7 +203,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
             className="p-2 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-all active:scale-95"
-            title={isDarkMode ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
+            title={isDarkMode ? t('nav.lightMode', 'Ativar Modo Claro') : t('nav.darkMode', 'Ativar Modo Noturno')}
           >
             {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-gray-600" />}
           </button>
@@ -218,7 +220,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               autoFocus
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Pesquisar arquivos, vídeos, PDFs..."
+              placeholder={t('nav.searchPlaceholder', 'Pesquisar arquivos, vídeos, PDFs...')}
               className="w-full pl-9 pr-12 py-2 text-xs rounded-xl bg-gray-100 dark:bg-drive-darkSurface border border-transparent focus:border-blue-500 dark:focus:border-blue-400 focus:bg-white dark:focus:bg-drive-darkSurface focus:outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400"
             />
             {searchQuery ? (
@@ -226,7 +228,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 font-semibold"
               >
-                Limpar
+                {t('common.clear', 'Limpar')}
               </button>
             ) : (
               <button

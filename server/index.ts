@@ -139,7 +139,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.21.1',
+    version: '1.22.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -1555,6 +1555,20 @@ app.post('/api/settings/cache-duration', (req, res) => {
 
   db.setCacheDuration(config);
   res.json({ success: true, config });
+});
+
+// ---------------- LANGUAGE SETTINGS ----------------
+app.get('/api/settings/language', (_req, res) => {
+  res.json({ language: db.getLanguage() });
+});
+
+app.post('/api/settings/language', (req, res) => {
+  const { language } = req.body;
+  if (language === 'pt' || language === 'en' || language === 'es') {
+    db.setLanguage(language);
+    return res.json({ success: true, language });
+  }
+  res.status(400).json({ error: 'Idioma inválido. Escolha pt, en ou es' });
 });
 
 app.post('/api/cache/clear', (_req, res) => {

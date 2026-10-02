@@ -30,11 +30,13 @@ import {
   Terminal,
   ChevronDown,
   ChevronUp,
-  Activity
+  Activity,
+  Languages
 } from 'lucide-react';
 import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult, SavedAuditItem, ManifestSyncProgress } from '../types/index.js';
 import { ApiKeysSection } from './ApiKeysSection.js';
 import { SystemDiagnosticSection } from './SystemDiagnosticSection.js';
+import { useTranslation } from '../i18n/index.js';
 
 interface SyncModalProps {
   isOpen: boolean;
@@ -69,7 +71,8 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   onReconcileSaved,
   onOpenAuth
 }) => {
-  type SyncSection = 'menu' | 'playback' | 'pending' | 'audit' | 'sync' | 'api_keys' | 'system_diagnostic' | 'backup_json';
+  const { language, setLanguage, t, languagesList, currentLanguageOption } = useTranslation();
+  type SyncSection = 'menu' | 'playback' | 'language' | 'pending' | 'audit' | 'sync' | 'api_keys' | 'system_diagnostic' | 'backup_json';
   const [activeSection, setActiveSection] = useState<SyncSection>('menu');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
@@ -474,52 +477,56 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 
   const sectionHeaders: Record<SyncSection, { title: string; subtitle: string }> = {
     menu: {
-      title: 'Gerenciamento de Nuvem, Streaming & Cache',
-      subtitle: 'Configure como suas mídias são reproduzidas, armazenadas e sincronizadas com o Telegram'
+      title: t('syncModal.title', 'Gerenciamento de Nuvem, Streaming & Cache'),
+      subtitle: t('syncModal.subtitle', 'Configure como suas mídias são reproduzidas, armazenadas e sincronizadas com o Telegram')
     },
     playback: {
-      title: 'Modo de Reprodução & Cache (Vídeos e Áudios)',
-      subtitle: 'Estratégias de streaming, retenção temporária e armazenamento local'
+      title: t('syncModal.playbackTitle', 'Modo de Reprodução & Cache (Vídeos e Áudios)'),
+      subtitle: t('syncModal.playbackSubtitle', 'Estratégias de streaming, retenção temporária e armazenamento local')
+    },
+    language: {
+      title: t('syncModal.languageTitle', 'Idioma da Interface (Language)'),
+      subtitle: t('syncModal.languageSubtitle', 'Escolha o idioma de preferência do DriveGram')
     },
     pending: {
-      title: 'Arquivos Pendentes de Envio ao Telegram',
-      subtitle: 'Upload de arquivos locais para as Mensagens Salvas do Telegram'
+      title: t('syncModal.pendingTitle', 'Arquivos Pendentes de Envio ao Telegram'),
+      subtitle: t('syncModal.pendingSubtitle', 'Upload de arquivos locais para as Mensagens Salvas do Telegram')
     },
     audit: {
-      title: 'Auditoria & Reconciliação das Mensagens Salvas',
-      subtitle: 'Comparação de catálogo com Telegram, faltantes e reparo de pastas'
+      title: t('syncModal.auditTitle', 'Auditoria & Reconciliação das Mensagens Salvas'),
+      subtitle: t('syncModal.auditSubtitle', 'Comparação de catálogo com Telegram, faltantes e reparo de pastas')
     },
     sync: {
-      title: 'Sincronização Ativa & Backup de Metadados',
-      subtitle: 'Reconciliação ativa, backup de pastas e política de retenção'
+      title: t('syncModal.syncTitle', 'Sincronização Ativa & Backup de Metadados'),
+      subtitle: t('syncModal.syncSubtitle', 'Reconciliação ativa, backup de pastas e política de retenção')
     },
     api_keys: {
-      title: 'Central de Chaves de API',
-      subtitle: 'Configurações de chaves para OMDb, TMDb, Google Books e YouTube'
+      title: t('syncModal.apiKeysTitle', 'Central de Chaves de API'),
+      subtitle: t('syncModal.apiKeysSubtitle', 'Configurações de chaves para OMDb, TMDb, Google Books e YouTube')
     },
     system_diagnostic: {
-      title: 'Diagnóstico do Sistema Desktop',
-      subtitle: 'Ferramentas de desenvolvedor, inspeção e logs'
+      title: t('syncModal.diagnosticTitle', 'Diagnóstico do Sistema Desktop'),
+      subtitle: t('syncModal.diagnosticSubtitle', 'Ferramentas de desenvolvedor, inspeção e logs')
     },
     backup_json: {
-      title: 'Exportação e Importação Manual (JSON)',
-      subtitle: 'Backup físico e restauração local de metadados em formato JSON'
+      title: t('syncModal.backupJsonTitle', 'Exportação e Importação Manual (JSON)'),
+      subtitle: t('syncModal.backupJsonSubtitle', 'Backup físico e restauração local de metadados em formato JSON')
     }
   };
 
   const menuOptions = [
     {
       id: 'playback' as const,
-      title: 'Reprodução (Áudio e Vídeo)',
+      title: t('syncModal.menuPlayback', 'Reprodução (Áudio e Vídeo)'),
       icon: Zap,
       iconBg: 'bg-amber-50 dark:bg-amber-950/40 text-amber-500 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/50',
       badges: [
         {
           text: currentMode === 'cloud_direct' 
-            ? '⚡ Nuvem Direta' 
+            ? t('syncModal.streamingCloud', '⚡ Streaming Nuvem') 
             : currentMode === 'temp_cache' 
-            ? '⏳ Cache Temporário' 
-            : '💾 Cache Permanente',
+            ? t('syncModal.cacheTemp', '⏳ Cache Temporário') 
+            : t('syncModal.cacheLocal', '💾 Cache Permanente'),
           style: 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
         },
         {
@@ -529,8 +536,20 @@ export const SyncModal: React.FC<SyncModalProps> = ({
       ]
     },
     {
+      id: 'language' as const,
+      title: t('syncModal.menuLanguage', 'Idioma da Interface (Language)'),
+      icon: Languages,
+      iconBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900/50',
+      badges: [
+        {
+          text: `${currentLanguageOption.flag} ${currentLanguageOption.label}`,
+          style: 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+        }
+      ]
+    },
+    {
       id: 'pending' as const,
-      title: 'Arquivos Pendentes de Envio',
+      title: t('syncModal.menuPending', 'Arquivos Pendentes de Envio'),
       icon: CloudUpload,
       iconBg: 'bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border border-orange-200/60 dark:border-orange-900/50',
       badges: [
@@ -638,10 +657,10 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                   setFeedback(null);
                 }}
                 className="p-1.5 sm:p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-drive-darkHover dark:hover:bg-drive-darkBorder text-gray-700 dark:text-gray-200 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
-                title="Voltar ao menu de funções"
+                title={t('syncModal.back', 'Voltar')}
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span className="text-xs font-bold hidden sm:inline">Voltar</span>
+                <span className="text-xs font-bold hidden sm:inline">{t('syncModal.back', 'Voltar')}</span>
               </button>
             )}
             <div className="min-w-0">
@@ -688,7 +707,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-bold text-blue-950 dark:text-blue-200">
-                              Atualizando Manifesto JSON
+                              {t('syncModal.syncingManifest', 'Atualizando Manifesto JSON')}
                             </span>
                             <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-blue-200 dark:bg-blue-900/80 text-blue-800 dark:text-blue-300">
                               {currentManifestProgress?.progress ?? 0}%
@@ -724,7 +743,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                         )}
                       </span>
                       <span className="font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                        Ver detalhes ➔
+                        {t('syncModal.seeDetails', 'Ver detalhes ➔')}
                       </span>
                     </div>
                   </div>
@@ -740,14 +759,14 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-xs text-gray-800 dark:text-gray-200">
-                            Manifesto JSON Sincronizado
+                            {t('syncModal.manifestSynced', 'Manifesto JSON Sincronizado')}
                           </span>
                           <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
-                            Em Nuvem
+                            {t('syncModal.inCloud', 'Em Nuvem')}
                           </span>
                         </div>
                         <span className="text-[11px] text-gray-500 dark:text-gray-400 block truncate">
-                          {currentManifestProgress?.lastSyncResult?.fileCount ?? telegramState.totalSavedFiles ?? 0} arquivos catalogados
+                          {currentManifestProgress?.lastSyncResult?.fileCount ?? telegramState.totalSavedFiles ?? 0} {t('syncModal.filesCataloged', 'arquivos catalogados')}
                           {currentManifestProgress?.lastSyncResult?.manifestSizeBytes ? ` • ${formatBytes(currentManifestProgress.lastSyncResult.manifestSizeBytes)}` : ''}
                           {currentManifestProgress?.lastSyncResult?.timestamp ? ` • ${new Date(currentManifestProgress.lastSyncResult.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}
                         </span>
@@ -763,10 +782,10 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                         }}
                         disabled={performingStartupSync || syncing}
                         className="px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-semibold text-[10px] border border-blue-200 dark:border-blue-800/60 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
-                        title="Sincronizar manifesto agora"
+                        title={t('syncModal.syncNow', 'Sincronizar manifesto agora')}
                       >
                         <RefreshCw className={`w-3 h-3 ${performingStartupSync ? 'animate-spin' : ''}`} />
-                        <span className="hidden xs:inline">Sincronizar</span>
+                        <span className="hidden xs:inline">{t('syncModal.syncNow', 'Sincronizar')}</span>
                       </button>
                       <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
                     </div>
@@ -775,7 +794,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               </div>
 
               <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium px-1 mb-0.5">
-                Selecione uma função:
+                {t('syncModal.selectFunction', 'Selecione uma função:')}
               </div>
               {menuOptions.map((item) => {
                 const Icon = item.icon;
@@ -1037,6 +1056,101 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               </button>
             </div>
           </div>
+          )}
+
+          {/* Seção de Idioma da Interface (Language) */}
+          {activeSection === 'language' && (
+            <div className="p-3.5 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-50/50 via-teal-50/30 to-blue-50/40 dark:from-drive-darkBg dark:to-drive-darkBg border border-emerald-100 dark:border-drive-darkBorder space-y-4 animate-in fade-in duration-150">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-emerald-800 dark:text-emerald-300">
+                  <Languages className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>{t('syncModal.languageTitle', 'Idioma da Interface (Language)')}</span>
+                </div>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5 shadow-xs">
+                  <span>{currentLanguageOption.flag}</span>
+                  <span>{currentLanguageOption.label}</span>
+                </span>
+              </div>
+
+              <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                {t('syncModal.languageSubtitle', 'Escolha o idioma de preferência do DriveGram')}
+              </p>
+
+              {/* Language Selection 3-Card Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {languagesList.map((langOpt) => {
+                  const isSelected = language === langOpt.id;
+                  return (
+                    <button
+                      key={langOpt.id}
+                      type="button"
+                      onClick={async () => {
+                        if (language === langOpt.id) return;
+                        await setLanguage(langOpt.id);
+                        setFeedback({
+                          type: 'success',
+                          message: t('syncModal.langSwitchSuccess', 'Idioma alterado com sucesso!')
+                        });
+                      }}
+                      className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between relative group cursor-pointer ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-500/25 ring-2 ring-emerald-400/40'
+                          : 'bg-white dark:bg-drive-darkSurface border-gray-200 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300 hover:border-emerald-400 dark:hover:border-emerald-500/60 hover:shadow-xs'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-2xl leading-none select-none">{langOpt.flag}</span>
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs sm:text-sm block truncate">
+                                {langOpt.label}
+                              </span>
+                              <span className={`text-[10px] block truncate ${isSelected ? 'text-emerald-100' : 'text-gray-400'}`}>
+                                {langOpt.nativeName}
+                              </span>
+                            </div>
+                          </div>
+                          {isSelected ? (
+                            <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                              <Check className="w-3.5 h-3.5 text-white" />
+                            </div>
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border border-gray-300 dark:border-gray-600 group-hover:border-emerald-500 shrink-0" />
+                          )}
+                        </div>
+
+                        <p className={`text-[11px] leading-relaxed mt-2 ${isSelected ? 'text-emerald-50' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {t(`syncModal.${langOpt.id}Desc`, langOpt.description)}
+                        </p>
+                      </div>
+
+                      <div className={`mt-3 pt-2.5 border-t text-[10px] font-semibold flex items-center justify-between ${
+                        isSelected ? 'border-white/20 text-emerald-100' : 'border-gray-100 dark:border-drive-darkBorder text-gray-400'
+                      }`}>
+                        <span className="flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          {isSelected ? t('syncModal.currentLangBadge', 'Idioma Ativo') : t('common.select', 'Selecionar')}
+                        </span>
+                        {isSelected && (
+                          <span className="bg-white/20 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                            ✓
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Informational Banner */}
+              <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/70 dark:border-blue-800/50 flex items-start gap-2.5 text-xs text-blue-800 dark:text-blue-300">
+                <Sparkles className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">
+                  {t('syncModal.langSwitchNote', '✨ A alteração de idioma é instantânea e fica salva nas suas preferências locais e no servidor.')}
+                </span>
+              </div>
+            </div>
           )}
 
           {/* 2. Sincronização de Arquivos Pendentes */}

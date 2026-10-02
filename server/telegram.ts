@@ -488,7 +488,8 @@ class TelegramService {
       cacheDuration: db.getCacheDuration(),
       localCacheSizeBytes: db.getLocalCacheSizeBytes(uploadsDir),
       metadataRetentionCount: db.getMetadataRetentionCount(),
-      manifestSyncProgress: this.getManifestSyncProgress()
+      manifestSyncProgress: this.getManifestSyncProgress(),
+      language: db.getLanguage()
     };
   }
 

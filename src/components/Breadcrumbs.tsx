@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChevronRight, Home, LayoutGrid, List, ArrowUpDown, Copy, ArrowDownToLine, X, Filter, Search as SearchIcon, FolderOpen } from 'lucide-react';
 import { FolderItem, FileType } from '../types/index.js';
 import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
+import { useTranslation } from '../i18n/index.js';
 
 interface BreadcrumbsProps {
   currentPath: FolderItem[];
@@ -53,6 +54,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   onMoveItem,
   onUploadToFolder
 }) => {
+  const { t } = useTranslation();
   const [dragOverTargetId, setDragOverTargetId] = useState<string | null>(null);
 
   const handleDragOver = (e: React.DragEvent, targetId: string | null) => {
@@ -122,7 +124,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             }`}
           >
             <Home className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${dragOverTargetId === '__root__' ? 'text-white' : 'text-blue-500'}`} />
-            <span>Meu Drive</span>
+            <span>{t('breadcrumbs.myDrive', 'Meu Drive')}</span>
             {dragOverTargetId === '__root__' && (
               <span className="text-[10px] bg-white/20 px-1 rounded ml-1 font-semibold">Mover p/ Raiz</span>
             )}

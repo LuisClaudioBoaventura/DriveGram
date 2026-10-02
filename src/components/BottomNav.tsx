@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { SidebarTab } from './Sidebar.js';
 import { YouTubeTargetType } from './YouTubeImportModal.js';
+import { useTranslation } from '../i18n/index.js';
 
 interface BottomNavProps {
   activeTab: SidebarTab;
@@ -57,6 +58,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onUploadFiles,
   isAdultVaultUnlocked
 }) => {
+  const { t } = useTranslation();
   const [showActionSheet, setShowActionSheet] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const folderInputRef = React.useRef<HTMLInputElement>(null);
@@ -83,7 +85,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <div className={`p-1 rounded-xl transition-all ${activeTab === 'drive' ? 'bg-blue-50 dark:bg-blue-900/40 scale-110' : ''}`}>
               <HardDrive className="w-5 h-5" />
             </div>
-            <span className="text-[10px] mt-0.5">Drive</span>
+            <span className="text-[10px] mt-0.5">{t('bottomNav.drive', 'Drive')}</span>
           </button>
 
           {/* Tab: Cursos */}
@@ -98,7 +100,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <div className={`p-1 rounded-xl transition-all ${activeTab === 'courses' ? 'bg-indigo-50 dark:bg-indigo-900/40 scale-110' : ''}`}>
               <GraduationCap className="w-5 h-5" />
             </div>
-            <span className="text-[10px] mt-0.5">Cursos</span>
+            <span className="text-[10px] mt-0.5">{t('bottomNav.courses', 'Cursos')}</span>
           </button>
 
           {/* Central Floating "NOVO" Action Button */}
@@ -106,7 +108,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <button
               onClick={() => setShowActionSheet(true)}
               className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-sky-500 text-white shadow-lg shadow-blue-500/40 active:scale-90 transition-transform ring-4 ring-white dark:ring-drive-darkBg"
-              title="Novo Item / Upload"
+              title={t('bottomNav.actions', 'Novo Item / Upload')}
             >
               <Plus className="w-6 h-6 stroke-[2.5]" />
             </button>
@@ -124,7 +126,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <div className={`p-1 rounded-xl transition-all ${activeTab === 'videos' ? 'bg-red-50 dark:bg-red-900/40 scale-110' : ''}`}>
               <Film className="w-5 h-5" />
             </div>
-            <span className="text-[10px] mt-0.5">Cinema</span>
+            <span className="text-[10px] mt-0.5">{t('sidebar.moviesVideos', 'Cinema')}</span>
           </button>
 
           {/* Tab: Menu / Mais */}
@@ -135,7 +137,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <div className="p-1 rounded-xl">
               <Menu className="w-5 h-5" />
             </div>
-            <span className="text-[10px] mt-0.5">Mais</span>
+            <span className="text-[10px] mt-0.5">{t('bottomNav.menu', 'Mais')}</span>
           </button>
         </div>
       </nav>

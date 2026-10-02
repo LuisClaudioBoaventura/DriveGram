@@ -90,6 +90,40 @@ function requestHttp(endpoint) {
   });
 }
 
+function postHttp(endpoint, body) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = http.request(`http://${TEST_HOST}:${TEST_PORT}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      },
+      timeout: 4000
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve({ status: res.statusCode, data: parsed, raw: data });
+        } catch (err) {
+          resolve({ status: res.statusCode, data: null, raw: data });
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Timeout ao requisitar POST ${endpoint}`));
+    });
+
+    req.write(payload);
+    req.end();
+  });
+}
+
 async function waitForServerReady(maxWaitMs = 20000) {
   const startTime = Date.now();
   const pollInterval = 400;
@@ -216,6 +250,25 @@ async function run() {
           if (res.status !== 200) throw new Error(`Status esperado 200, recebido ${res.status}`);
           if (typeof res.data?.isConnected !== 'boolean') throw new Error('Campo isConnected inválido');
           return `Conectado: ${res.data.isConnected}`;
+        },
+      },
+      {
+        name: 'GET & POST /api/settings/language (Configuração de Idioma)',
+        run: async () => {
+          const initial = await requestHttp('/api/settings/language');
+          if (initial.status !== 200) throw new Error(`Status esperado 200, recebido ${initial.status}`);
+          if (!['pt', 'en', 'es'].includes(initial.data?.language)) throw new Error(`Idioma inicial inválido: ${initial.data?.language}`);
+
+          const setEn = await postHttp('/api/settings/language', { language: 'en' });
+          if (setEn.status !== 200 || setEn.data?.language !== 'en') throw new Error('Falha ao definir idioma en');
+
+          const setEs = await postHttp('/api/settings/language', { language: 'es' });
+          if (setEs.status !== 200 || setEs.data?.language !== 'es') throw new Error('Falha ao definir idioma es');
+
+          const setPt = await postHttp('/api/settings/language', { language: 'pt' });
+          if (setPt.status !== 200 || setPt.data?.language !== 'pt') throw new Error('Falha ao restaurar idioma pt');
+
+          return `Suporte verificado para Português, Inglês e Espanhol`;
         },
       },
     ];
