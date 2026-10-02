@@ -118,6 +118,7 @@ export interface Translations {
     seeDetails: string;
     filesCataloged: string;
     menuPlayback: string;
+    menuThemes: string;
     menuLanguage: string;
     menuPending: string;
     menuAudit: string;
@@ -125,6 +126,11 @@ export interface Translations {
     menuApiKeys: string;
     menuDiagnostic: string;
     menuBackupJson: string;
+    themesTitle: string;
+    themesSubtitle: string;
+    currentThemeBadge: string;
+    themeSwitchSuccess: string;
+    themeSwitchNote: string;
     languageTitle: string;
     languageSubtitle: string;
     currentLangBadge: string;
@@ -319,6 +325,7 @@ export const translations: Record<AppLanguage, Translations> = {
       seeDetails: 'Ver detalhes ➔',
       filesCataloged: 'arquivos catalogados',
       menuPlayback: 'Reprodução (Áudio e Vídeo)',
+      menuThemes: 'Temas & Aparência',
       menuLanguage: 'Idioma da Interface (Language)',
       menuPending: 'Arquivos Pendentes de Envio',
       menuAudit: 'Auditoria & Reconciliação (Mensagens Salvas)',
@@ -326,6 +333,11 @@ export const translations: Record<AppLanguage, Translations> = {
       menuApiKeys: 'Central de Chaves de API',
       menuDiagnostic: 'Diagnóstico do Sistema Desktop',
       menuBackupJson: 'Exportação e Importação Manual (JSON)',
+      themesTitle: 'Temas & Aparência',
+      themesSubtitle: 'Personalize as cores, contraste e estilo visual do DriveGram',
+      currentThemeBadge: 'Tema Ativo',
+      themeSwitchSuccess: 'Tema alterado com sucesso!',
+      themeSwitchNote: '✨ As opções de tema são aplicadas instantaneamente e ficam salvas nas suas preferências deste dispositivo.',
       languageTitle: 'Idioma da Interface (Language)',
       languageSubtitle: 'Escolha o idioma de preferência do DriveGram',
       currentLangBadge: 'Idioma Ativo',
@@ -518,6 +530,7 @@ export const translations: Record<AppLanguage, Translations> = {
       seeDetails: 'See details ➔',
       filesCataloged: 'files cataloged',
       menuPlayback: 'Playback (Audio & Video)',
+      menuThemes: 'Themes & Appearance',
       menuLanguage: 'Interface Language',
       menuPending: 'Files Pending Upload',
       menuAudit: 'Audit & Reconciliation (Saved Messages)',
@@ -525,6 +538,11 @@ export const translations: Record<AppLanguage, Translations> = {
       menuApiKeys: 'API Keys Central',
       menuDiagnostic: 'Desktop System Diagnostic',
       menuBackupJson: 'Manual JSON Export & Import',
+      themesTitle: 'Themes & Appearance',
+      themesSubtitle: 'Customize the visual style, colors, and contrast of DriveGram',
+      currentThemeBadge: 'Active Theme',
+      themeSwitchSuccess: 'Theme changed successfully!',
+      themeSwitchNote: '✨ Theme options are applied instantly and saved to your device preferences.',
       languageTitle: 'Interface Language',
       languageSubtitle: 'Choose your preferred language for DriveGram',
       currentLangBadge: 'Active Language',
@@ -717,6 +735,7 @@ export const translations: Record<AppLanguage, Translations> = {
       seeDetails: 'Ver detalles ➔',
       filesCataloged: 'archivos catalogados',
       menuPlayback: 'Reproducción (Audio y Video)',
+      menuThemes: 'Temas y Apariencia',
       menuLanguage: 'Idioma de la Interfaz (Language)',
       menuPending: 'Archivos Pendientes de Subida',
       menuAudit: 'Auditoría y Reconciliación (Mensajes Guardados)',
@@ -724,6 +743,11 @@ export const translations: Record<AppLanguage, Translations> = {
       menuApiKeys: 'Central de Claves de API',
       menuDiagnostic: 'Diagnóstico del Sistema Desktop',
       menuBackupJson: 'Exportación e Importación Manual (JSON)',
+      themesTitle: 'Temas y Apariencia',
+      themesSubtitle: 'Personaliza el estilo visual, colores y contraste de DriveGram',
+      currentThemeBadge: 'Tema Activo',
+      themeSwitchSuccess: '¡Tema cambiado con éxito!',
+      themeSwitchNote: '✨ Las opciones de tema se aplican al instante y se guardan en tus preferencias locales.',
       languageTitle: 'Idioma de la Interfaz (Language)',
       languageSubtitle: 'Elige tu idioma de preferencia para DriveGram',
       currentLangBadge: 'Idioma Activo',

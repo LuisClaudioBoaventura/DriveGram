@@ -19,6 +19,16 @@
     <script>
       (function() {
         try {
+          var savedTheme = localStorage.getItem('drivegram_theme') || 'dark';
+          document.documentElement.setAttribute('data-theme', savedTheme);
+          if (savedTheme === 'light') {
+            document.documentElement.classList.remove('dark');
+          } else {
+            document.documentElement.classList.add('dark');
+          }
+        } catch(_) {}
+
+        try {
           if (window.DriveGramAndroidBridge) {
             if (typeof window.DriveGramAndroidBridge.getStatusBarHeightDp === 'function') {
               var sb = window.DriveGramAndroidBridge.getStatusBarHeightDp();

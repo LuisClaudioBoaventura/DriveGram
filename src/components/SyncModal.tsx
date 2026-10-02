@@ -31,12 +31,14 @@ import {
   ChevronDown,
   ChevronUp,
   Activity,
-  Languages
+  Languages,
+  Palette
 } from 'lucide-react';
 import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult, SavedAuditItem, ManifestSyncProgress } from '../types/index.js';
 import { ApiKeysSection } from './ApiKeysSection.js';
 import { SystemDiagnosticSection } from './SystemDiagnosticSection.js';
 import { useTranslation } from '../i18n/index.js';
+import { useTheme } from '../utils/theme.js';
 
 interface SyncModalProps {
   isOpen: boolean;
@@ -72,7 +74,8 @@ export const SyncModal: React.FC<SyncModalProps> = ({
   onOpenAuth
 }) => {
   const { language, setLanguage, t, languagesList, currentLanguageOption } = useTranslation();
-  type SyncSection = 'menu' | 'playback' | 'language' | 'pending' | 'audit' | 'sync' | 'api_keys' | 'system_diagnostic' | 'backup_json';
+  const { currentTheme, themeId, setTheme, themesList } = useTheme();
+  type SyncSection = 'menu' | 'themes' | 'playback' | 'language' | 'pending' | 'audit' | 'sync' | 'api_keys' | 'system_diagnostic' | 'backup_json';
   const [activeSection, setActiveSection] = useState<SyncSection>('menu');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
@@ -480,6 +483,10 @@ export const SyncModal: React.FC<SyncModalProps> = ({
       title: t('syncModal.title', 'Gerenciamento de Nuvem'),
       subtitle: t('syncModal.subtitle', 'Configure como suas mídias são reproduzidas, armazenadas e sincronizadas com o Telegram')
     },
+    themes: {
+      title: t('syncModal.themesTitle', 'Temas & Aparência'),
+      subtitle: t('syncModal.themesSubtitle', 'Personalize as cores, contraste e estilo visual do DriveGram')
+    },
     playback: {
       title: t('syncModal.playbackTitle', 'Modo de Reprodução & Cache (Vídeos e Áudios)'),
       subtitle: t('syncModal.playbackSubtitle', 'Estratégias de streaming, retenção temporária e armazenamento local')
@@ -531,6 +538,22 @@ export const SyncModal: React.FC<SyncModalProps> = ({
         },
         {
           text: `Disco: ${formatBytes(telegramState.localCacheSizeBytes || 0)}`,
+          style: 'bg-gray-100 dark:bg-drive-darkBg text-gray-600 dark:text-gray-400 border-gray-200 dark:border-drive-darkBorder'
+        }
+      ]
+    },
+    {
+      id: 'themes' as const,
+      title: t('syncModal.menuThemes', 'Temas & Aparência'),
+      icon: Palette,
+      iconBg: 'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200/60 dark:border-purple-900/50',
+      badges: [
+        {
+          text: currentTheme.name,
+          style: 'bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+        },
+        {
+          text: currentTheme.tag,
           style: 'bg-gray-100 dark:bg-drive-darkBg text-gray-600 dark:text-gray-400 border-gray-200 dark:border-drive-darkBorder'
         }
       ]
@@ -1056,6 +1079,145 @@ export const SyncModal: React.FC<SyncModalProps> = ({
               </button>
             </div>
           </div>
+          )}
+
+          {/* Seção de Temas & Aparência */}
+          {activeSection === 'themes' && (
+            <div className="p-3.5 sm:p-5 rounded-2xl bg-gradient-to-br from-purple-50/50 via-indigo-50/30 to-blue-50/40 dark:from-drive-darkBg dark:to-drive-darkBg border border-purple-100 dark:border-drive-darkBorder space-y-4 animate-in fade-in duration-150">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-purple-800 dark:text-purple-300">
+                  <Palette className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                  <span>{t('syncModal.themesTitle', 'Temas & Aparência')}</span>
+                </div>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1.5 shadow-xs">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentTheme.colors.primary }} />
+                  <span>{currentTheme.name} ({currentTheme.tag})</span>
+                </span>
+              </div>
+
+              <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                {t('syncModal.themesSubtitle', 'Personalize as cores, contraste e estilo visual do DriveGram')}
+              </p>
+
+              {/* 7 Themes Responsive Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {themesList.map((th) => {
+                  const isSelected = themeId === th.id;
+                  return (
+                    <button
+                      key={th.id}
+                      type="button"
+                      onClick={() => {
+                        if (themeId === th.id) return;
+                        setTheme(th.id);
+                        setFeedback({
+                          type: 'success',
+                          message: `${t('syncModal.themeSwitchSuccess', 'Tema alterado com sucesso!')} (${th.name})`
+                        });
+                      }}
+                      className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between relative group cursor-pointer ${
+                        isSelected
+                          ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-500/25 ring-2 ring-purple-400/40'
+                          : 'bg-white dark:bg-drive-darkSurface border-gray-200 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300 hover:border-purple-400 dark:hover:border-purple-500/60 hover:shadow-xs'
+                      }`}
+                    >
+                      <div>
+                        {/* Header: Name, Tag & Active check */}
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {/* Theme Color Preview Swatches (4 small circles) */}
+                            <div className="flex -space-x-1 shrink-0 p-1 rounded-lg bg-black/10 dark:bg-black/30 border border-black/10 dark:border-white/10">
+                              {th.previewSwatches.map((color, idx) => (
+                                <span
+                                  key={idx}
+                                  className="w-3.5 h-3.5 rounded-full ring-1 ring-white/30 dark:ring-black/40 shadow-xs"
+                                  style={{ backgroundColor: color }}
+                                />
+                              ))}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs sm:text-sm block truncate">
+                                {th.name}
+                              </span>
+                              <span className={`text-[10px] block truncate font-medium ${isSelected ? 'text-purple-100' : 'text-gray-400'}`}>
+                                {th.tag}
+                              </span>
+                            </div>
+                          </div>
+                          {isSelected ? (
+                            <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                              <Check className="w-3.5 h-3.5 text-white" />
+                            </div>
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border border-gray-300 dark:border-gray-600 group-hover:border-purple-500 shrink-0" />
+                          )}
+                        </div>
+
+                        {/* Theme Mini UI Card Preview Mockup */}
+                        <div 
+                          className="w-full h-11 rounded-xl p-1.5 flex items-center justify-between gap-1.5 border my-2 text-[10px] select-none"
+                          style={{
+                            backgroundColor: th.colors.bg,
+                            borderColor: th.colors.border,
+                            color: th.isDark ? '#e2e8f0' : '#1e293b'
+                          }}
+                        >
+                          <div 
+                            className="h-full px-2 rounded-lg flex items-center gap-1.5 font-bold shrink-0 shadow-xs"
+                            style={{ backgroundColor: th.colors.surface, borderColor: th.colors.border }}
+                          >
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: th.colors.primary }} />
+                            <span>Preview</span>
+                          </div>
+                          <div className="flex-1 flex justify-end gap-1">
+                            <span 
+                              className="px-2 py-0.5 rounded-md text-[9px] font-semibold text-white shadow-xs"
+                              style={{ backgroundColor: th.colors.primary }}
+                            >
+                              Botão
+                            </span>
+                            <span 
+                              className="px-1.5 py-0.5 rounded-md text-[9px] border"
+                              style={{ borderColor: th.colors.border, backgroundColor: th.colors.surface }}
+                            >
+                              Card
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Description */}
+                        <p className={`text-[11px] leading-relaxed mt-1 ${isSelected ? 'text-purple-50' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {th.description}
+                        </p>
+                      </div>
+
+                      {/* Footer Badge */}
+                      <div className={`mt-3 pt-2 border-t text-[10px] font-semibold flex items-center justify-between ${
+                        isSelected ? 'border-white/20 text-purple-100' : 'border-gray-100 dark:border-drive-darkBorder text-gray-400'
+                      }`}>
+                        <span className="flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          {isSelected ? t('syncModal.currentThemeBadge', 'Tema Ativo') : t('common.select', 'Selecionar')}
+                        </span>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                          isSelected ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-drive-darkBg text-gray-500 dark:text-gray-400'
+                        }`}>
+                          {th.isDark ? 'Modo Escuro' : 'Modo Claro'}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Informational Banner */}
+              <div className="p-3 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200/70 dark:border-purple-800/50 flex items-start gap-2.5 text-xs text-purple-800 dark:text-purple-300">
+                <Sparkles className="w-4 h-4 text-purple-500 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">
+                  {t('syncModal.themeSwitchNote', '✨ As opções de tema são aplicadas instantaneamente e ficam salvas nas suas preferências deste dispositivo.')}
+                </span>
+              </div>
+            </div>
           )}
 
           {/* Seção de Idioma da Interface (Language) */}
