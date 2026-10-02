@@ -70,13 +70,11 @@ import { useAdultVault } from './hooks/useAdultVault.js';
 import { DriveItem, FolderItem, Course, Book, ComicBook, MovieVideo, PersonalVideo, SeriesShow, SeriesEpisode, AudioShow, AdultVideo, AdultPerformer } from './types/index.js';
 import { getFilesFromDataTransfer } from './utils/dragDropUtils.js';
 import { isRedLockerFolder } from './utils/libraryFolderUtils.js';
+import { useTheme } from './utils/theme.js';
 import { UploadCloud, Lock, Flame, LockKeyhole } from 'lucide-react';
 
 export function App() {
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem('drivegram_theme');
-    return saved !== null ? saved === 'dark' : true;
-  });
+  const { currentTheme, themeId, isDark } = useTheme();
 
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
     id: string;
@@ -87,16 +85,6 @@ export function App() {
   } | null>(null);
 
   const [pendingFolderToOpenAfterUnlock, setPendingFolderToOpenAfterUnlock] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('drivegram_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('drivegram_theme', 'light');
-    }
-  }, [isDarkMode]);
 
   // Hooks
   const fs = useFileSystem();
@@ -492,8 +480,6 @@ export function App() {
         setSearchQuery={fs.setSearchQuery}
         filterType={fs.filterType}
         setFilterType={fs.setFilterType}
-        isDarkMode={isDarkMode}
-        setIsDarkMode={setIsDarkMode}
         telegramState={tg.authState}
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onOpenSync={() => {

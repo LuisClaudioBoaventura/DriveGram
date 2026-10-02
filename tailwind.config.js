@@ -9,12 +9,12 @@ export default {
     extend: {
       colors: {
         drive: {
-          blue: '#1a73e8',
-          blueHover: '#1557b0',
-          darkBg: '#131314',
-          darkSurface: '#1e1f20',
-          darkBorder: '#333537',
-          darkHover: '#282a2c',
+          blue: 'rgb(var(--drive-primary, 26 115 232) / <alpha-value>)',
+          blueHover: 'rgb(var(--drive-primary-hover, 21 87 176) / <alpha-value>)',
+          darkBg: 'rgb(var(--drive-dark-bg, 19 19 20) / <alpha-value>)',
+          darkSurface: 'rgb(var(--drive-dark-surface, 30 31 32) / <alpha-value>)',
+          darkBorder: 'rgb(var(--drive-dark-border, 51 53 55) / <alpha-value>)',
+          darkHover: 'rgb(var(--drive-dark-hover, 40 42 44) / <alpha-value>)',
           lightBg: '#f8fafd',
           lightSurface: '#ffffff',
           lightBorder: '#e0e3e7',

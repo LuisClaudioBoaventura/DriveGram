@@ -9,6 +9,77 @@
   --android-navigation-bar-height: 0px;
   --safe-area-inset-top: 0px;
   --safe-area-inset-bottom: 0px;
+
+  /* Default theme: Dark Modern */
+  --drive-dark-bg: 19 19 20;
+  --drive-dark-surface: 30 31 32;
+  --drive-dark-border: 51 53 55;
+  --drive-dark-hover: 40 42 44;
+  --drive-primary: 26 115 232;
+  --drive-primary-hover: 21 87 176;
+}
+
+[data-theme="dark"] {
+  --drive-dark-bg: 19 19 20;
+  --drive-dark-surface: 30 31 32;
+  --drive-dark-border: 51 53 55;
+  --drive-dark-hover: 40 42 44;
+  --drive-primary: 26 115 232;
+  --drive-primary-hover: 21 87 176;
+}
+
+[data-theme="light"] {
+  --drive-dark-bg: 248 250 253;
+  --drive-dark-surface: 255 255 255;
+  --drive-dark-border: 224 227 231;
+  --drive-dark-hover: 241 243 244;
+  --drive-primary: 26 115 232;
+  --drive-primary-hover: 21 87 176;
+}
+
+[data-theme="dracula"] {
+  --drive-dark-bg: 40 42 54;
+  --drive-dark-surface: 52 55 70;
+  --drive-dark-border: 68 71 90;
+  --drive-dark-hover: 76 80 103;
+  --drive-primary: 189 147 249;
+  --drive-primary-hover: 168 123 232;
+}
+
+[data-theme="nord"] {
+  --drive-dark-bg: 36 41 51;
+  --drive-dark-surface: 46 52 64;
+  --drive-dark-border: 67 76 94;
+  --drive-dark-hover: 59 66 82;
+  --drive-primary: 136 192 208;
+  --drive-primary-hover: 129 161 193;
+}
+
+[data-theme="midnight"] {
+  --drive-dark-bg: 10 11 16;
+  --drive-dark-surface: 20 22 36;
+  --drive-dark-border: 40 43 69;
+  --drive-dark-hover: 30 32 52;
+  --drive-primary: 192 132 252;
+  --drive-primary-hover: 168 85 247;
+}
+
+[data-theme="emerald"] {
+  --drive-dark-bg: 11 23 20;
+  --drive-dark-surface: 20 38 34;
+  --drive-dark-border: 35 66 58;
+  --drive-dark-hover: 28 54 47;
+  --drive-primary: 16 185 129;
+  --drive-primary-hover: 5 150 105;
+}
+
+[data-theme="sunset"] {
+  --drive-dark-bg: 26 22 19;
+  --drive-dark-surface: 39 34 30;
+  --drive-dark-border: 66 57 51;
+  --drive-dark-hover: 53 45 39;
+  --drive-primary: 245 158 11;
+  --drive-primary-hover: 217 119 6;
 }
 
 *, *::before, *::after {
@@ -226,26 +297,27 @@ body {
   transform: translateY(-2px);
 }
 
-/* ================= UNIVERSAL BLACK SELECTORS STYLING ================= */
-select {
-  background-color: #000000 !important;
+/* ================= UNIVERSAL THEME-AWARE SELECTORS STYLING ================= */
+.dark select {
+  background-color: rgb(var(--drive-dark-surface, 30 31 32)) !important;
   color: #f8fafc !important;
   color-scheme: dark !important;
+  border-color: rgb(var(--drive-dark-border, 51 53 55)) !important;
 }
 
-select option {
-  background-color: #000000 !important;
+.dark select option {
+  background-color: rgb(var(--drive-dark-surface, 30 31 32)) !important;
   color: #ffffff !important;
   padding: 8px 12px;
 }
 
-select option:checked {
-  background-color: #1e1b4b !important;
-  color: #a855f7 !important;
+.dark select option:checked {
+  background-color: rgb(var(--drive-dark-hover, 40 42 44)) !important;
+  color: rgb(var(--drive-primary, 26 115 232)) !important;
 }
 
-select option:hover {
-  background-color: #18181b !important;
+.dark select option:hover {
+  background-color: rgb(var(--drive-dark-hover, 40 42 44)) !important;
 }
 
 /* ================= VIDEO SUBTITLES / CLOSED CAPTIONS STYLING ================= */

@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { 
   Search, 
   Send, 
-  Moon, 
-  Sun, 
   HardDrive, 
   ShieldCheck, 
   Video, 
@@ -32,8 +30,8 @@ interface NavbarProps {
   setSearchQuery: (q: string) => void;
   filterType: FileType | 'all';
   setFilterType: (t: FileType | 'all') => void;
-  isDarkMode: boolean;
-  setIsDarkMode: (val: boolean) => void;
+  isDarkMode?: boolean;
+  setIsDarkMode?: (val: boolean) => void;
   telegramState: TelegramAuthState;
   onOpenAuth: () => void;
   onOpenSync: () => void;
@@ -197,15 +195,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 : t('common.connect', 'Conectar')
               }
             </span>
-          </button>
-
-          {/* Theme Switcher */}
-          <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className="p-2 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-drive-darkHover transition-all active:scale-95"
-            title={isDarkMode ? t('nav.lightMode', 'Ativar Modo Claro') : t('nav.darkMode', 'Ativar Modo Noturno')}
-          >
-            {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-gray-600" />}
           </button>
         </div>
       </div>
