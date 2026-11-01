@@ -2152,10 +2152,13 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                             <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/30">
                               Episódio #{getEpisodeDisplayNumber(selectedEpisodeForDetail)}
                             </span>
-                            {selectedEpisodeForDetail.coverImage && selectedEpisodeForDetail.coverImage !== audioShow.coverImage && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                            {selectedEpisodeForDetail.coverImage && (
+                              <span 
+                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30"
+                                title={selectedEpisodeForDetail.coverImage.startsWith('data:image') ? 'Capa armazenada em formato Base64 no JSON' : 'Capa original do episódio'}
+                              >
                                 <ImageIcon className="w-3 h-3 text-emerald-400" />
-                                <span>Capa Original</span>
+                                <span>{selectedEpisodeForDetail.coverImage.startsWith('data:image') ? 'Capa Base64 JSON' : 'Capa Original'}</span>
                               </span>
                             )}
                             {fullDateStr && (
@@ -2395,7 +2398,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                               {hasOriginalCover ? (
                                 <span 
                                   className="px-1.5 py-0.5 rounded-md bg-emerald-600/90 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-wider shadow-md border border-emerald-400/40 flex items-center gap-1"
-                                  title="Capa original individual deste episódio"
+                                  title={track.coverImage?.startsWith('data:image') ? 'Capa salva em Base64 no JSON' : 'Capa original individual deste episódio'}
                                 >
                                   <ImageIcon className="w-2.5 h-2.5" />
                                   <span>Original</span>
