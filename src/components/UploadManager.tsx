@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ChevronUp, 
   ChevronDown, 
@@ -16,9 +16,18 @@ import {
   Radio,
   Youtube,
   Music,
-  BookOpen
+  BookOpen,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { UploadProgress } from '../types/index.js';
+import { 
+  triggerUploadCompleteSound, 
+  isUploadSoundEnabled, 
+  setUploadSoundEnabled, 
+  playSoundEffect, 
+  getSelectedUploadSound 
+} from '../utils/soundEffects.js';
 
 interface UploadManagerProps {
   uploads: UploadProgress[];
@@ -36,6 +45,52 @@ export const formatBytes = (bytes?: number, decimals = 1): string => {
 
 export const UploadManager: React.FC<UploadManagerProps> = ({ uploads, onClear }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(() => isUploadSoundEnabled());
+  const prevCompletedIdsRef = useRef<Set<string>>(new Set());
+  const isInitialMountRef = useRef(true);
+
+  useEffect(() => {
+    const handleSoundChange = () => {
+      setSoundEnabled(isUploadSoundEnabled());
+    };
+    window.addEventListener('drivegram_upload_sound_changed', handleSoundChange);
+    return () => window.removeEventListener('drivegram_upload_sound_changed', handleSoundChange);
+  }, []);
+
+  useEffect(() => {
+    const currentCompleted = uploads.filter(u => u.status === 'completed');
+    const currentCompletedIds = new Set(currentCompleted.map(u => u.id));
+
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      prevCompletedIdsRef.current = currentCompletedIds;
+      return;
+    }
+
+    let hasNewlyCompleted = false;
+    for (const id of currentCompletedIds) {
+      if (!prevCompletedIdsRef.current.has(id)) {
+        hasNewlyCompleted = true;
+        break;
+      }
+    }
+
+    prevCompletedIdsRef.current = currentCompletedIds;
+
+    if (hasNewlyCompleted) {
+      triggerUploadCompleteSound();
+    }
+  }, [uploads]);
+
+  const toggleSound = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = !soundEnabled;
+    setUploadSoundEnabled(next);
+    setSoundEnabled(next);
+    if (next) {
+      playSoundEffect(getSelectedUploadSound());
+    }
+  };
 
   if (uploads.length === 0) return null;
 
@@ -83,6 +138,13 @@ export const UploadManager: React.FC<UploadManagerProps> = ({ uploads, onClear }
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            onClick={toggleSound}
+            className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+            title={soundEnabled ? 'Som de conclusão ativado (clique para mutar)' : 'Som de conclusão desativado (clique para ativar)'}
+          >
+            {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-rose-400" /> : <VolumeX className="w-3.5 h-3.5 text-gray-500" />}
+          </button>
           <button 
             onClick={(e) => {
               e.stopPropagation();

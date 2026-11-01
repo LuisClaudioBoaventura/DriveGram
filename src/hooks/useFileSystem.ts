@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { DriveItem, FolderItem, UploadProgress, FileType } from '../types/index.js';
+import { triggerUploadCompleteSound } from '../utils/soundEffects.js';
 
 export type ActiveTabType = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
 
@@ -215,6 +216,7 @@ export function useFileSystem() {
                 stageLabel: 'Salvo com sucesso na nuvem',
                 speed: 'Concluído'
               } : u));
+              triggerUploadCompleteSound();
               await fetchItems();
             } else {
               setUploads(prev => prev.map(u => u.id === uploadId ? {
@@ -675,6 +677,9 @@ export function useFileSystem() {
           stageLabel: success ? 'Concluído com sucesso!' : (errorMsg || 'Falha no processo'),
           speed: success ? 'Concluído' : 'Erro'
         } : u));
+        if (success) {
+          triggerUploadCompleteSound();
+        }
         fetchItems();
       },
       cancel: () => {

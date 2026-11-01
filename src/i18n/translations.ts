@@ -126,6 +126,13 @@ export interface Translations {
     menuApiKeys: string;
     menuDiagnostic: string;
     menuBackupJson: string;
+    menuUploadSound: string;
+    uploadSoundTitle: string;
+    uploadSoundSubtitle: string;
+    uploadSoundActive: string;
+    uploadSoundVolume: string;
+    uploadSoundTest: string;
+    uploadSoundNote: string;
     themesTitle: string;
     themesSubtitle: string;
     currentThemeBadge: string;
@@ -333,6 +340,13 @@ export const translations: Record<AppLanguage, Translations> = {
       menuApiKeys: 'Central de Chaves de API',
       menuDiagnostic: 'Diagnóstico do Sistema Desktop',
       menuBackupJson: 'Exportação e Importação Manual (JSON)',
+      menuUploadSound: 'Som ao Finalizar Upload',
+      uploadSoundTitle: 'Som de Conclusão de Upload',
+      uploadSoundSubtitle: 'Escolha o efeito sonoro reproduzido ao finalizar o envio de arquivos para a nuvem',
+      uploadSoundActive: 'Ativar som de conclusão de upload',
+      uploadSoundVolume: 'Volume do efeito sonoro',
+      uploadSoundTest: 'Ouvir som',
+      uploadSoundNote: '✨ Os sons são sintetizados localmente com áudio de alta fidelidade sem atraso ou necessidade de internet.',
       themesTitle: 'Temas & Aparência',
       themesSubtitle: 'Personalize as cores, contraste e estilo visual do DriveGram',
       currentThemeBadge: 'Tema Ativo',
@@ -538,6 +552,13 @@ export const translations: Record<AppLanguage, Translations> = {
       menuApiKeys: 'API Keys Central',
       menuDiagnostic: 'Desktop System Diagnostic',
       menuBackupJson: 'Manual JSON Export & Import',
+      menuUploadSound: 'Upload Completion Sound',
+      uploadSoundTitle: 'Upload Completion Sound',
+      uploadSoundSubtitle: 'Choose the sound effect played upon completing file uploads to the cloud',
+      uploadSoundActive: 'Enable upload completion sound',
+      uploadSoundVolume: 'Sound effect volume',
+      uploadSoundTest: 'Play sound',
+      uploadSoundNote: '✨ Sounds are synthesized locally with high-fidelity audio without latency or internet requirement.',
       themesTitle: 'Themes & Appearance',
       themesSubtitle: 'Customize the visual style, colors, and contrast of DriveGram',
       currentThemeBadge: 'Active Theme',
@@ -743,6 +764,13 @@ export const translations: Record<AppLanguage, Translations> = {
       menuApiKeys: 'Central de Claves de API',
       menuDiagnostic: 'Diagnóstico del Sistema Desktop',
       menuBackupJson: 'Exportación e Importación Manual (JSON)',
+      menuUploadSound: 'Sonido al Finalizar Subida',
+      uploadSoundTitle: 'Sonido de Finalización de Subida',
+      uploadSoundSubtitle: 'Elija el efecto de sonido reproducido al completar la subida de archivos a la nube',
+      uploadSoundActive: 'Activar sonido de finalización de subida',
+      uploadSoundVolume: 'Volumen del efecto de sonido',
+      uploadSoundTest: 'Escuchar sonido',
+      uploadSoundNote: '✨ Los sonidos se generan localmente mediante audio de alta fidelidad sin retrasos ni necesidad de internet.',
       themesTitle: 'Temas y Apariencia',
       themesSubtitle: 'Personaliza el estilo visual, colores y contraste de DriveGram',
       currentThemeBadge: 'Tema Activo',

@@ -32,13 +32,28 @@ import {
   ChevronUp,
   Activity,
   Languages,
-  Palette
+  Palette,
+  Volume2,
+  VolumeX,
+  Play,
+  Bell
 } from 'lucide-react';
 import { TelegramAuthState, StreamingMode, CacheDurationConfig, SavedAuditResult, SavedAuditItem, ManifestSyncProgress } from '../types/index.js';
 import { ApiKeysSection } from './ApiKeysSection.js';
 import { SystemDiagnosticSection } from './SystemDiagnosticSection.js';
 import { useTranslation } from '../i18n/index.js';
 import { useTheme } from '../utils/theme.js';
+import { 
+  UPLOAD_SOUND_OPTIONS, 
+  UploadSoundOption, 
+  getSelectedUploadSound, 
+  setSelectedUploadSound, 
+  isUploadSoundEnabled, 
+  setUploadSoundEnabled, 
+  getUploadSoundVolume, 
+  setUploadSoundVolume, 
+  playSoundEffect 
+} from '../utils/soundEffects.js';
 
 interface SyncModalProps {
   isOpen: boolean;
@@ -75,8 +90,22 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 }) => {
   const { language, setLanguage, t, languagesList, currentLanguageOption } = useTranslation();
   const { currentTheme, themeId, setTheme, themesList } = useTheme();
-  type SyncSection = 'menu' | 'themes' | 'playback' | 'language' | 'pending' | 'audit' | 'sync' | 'api_keys' | 'system_diagnostic' | 'backup_json';
+  type SyncSection = 'menu' | 'themes' | 'playback' | 'language' | 'pending' | 'upload_sound' | 'audit' | 'sync' | 'api_keys' | 'system_diagnostic' | 'backup_json';
   const [activeSection, setActiveSection] = useState<SyncSection>('menu');
+  const [selectedSound, setSelectedSound] = useState<UploadSoundOption>(() => getSelectedUploadSound());
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => isUploadSoundEnabled());
+  const [soundVolume, setSoundVolume] = useState<number>(() => getUploadSoundVolume());
+  const [playingSoundId, setPlayingSoundId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleSoundChange = () => {
+      setSelectedSound(getSelectedUploadSound());
+      setSoundEnabled(isUploadSoundEnabled());
+      setSoundVolume(getUploadSoundVolume());
+    };
+    window.addEventListener('drivegram_upload_sound_changed', handleSoundChange);
+    return () => window.removeEventListener('drivegram_upload_sound_changed', handleSoundChange);
+  }, []);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [importingSaved, setImportingSaved] = useState(false);
@@ -499,6 +528,10 @@ export const SyncModal: React.FC<SyncModalProps> = ({
       title: t('syncModal.pendingTitle', 'Arquivos Pendentes de Envio ao Telegram'),
       subtitle: t('syncModal.pendingSubtitle', 'Upload de arquivos locais para as Mensagens Salvas do Telegram')
     },
+    upload_sound: {
+      title: t('syncModal.uploadSoundTitle', 'Som de Conclusão de Upload'),
+      subtitle: t('syncModal.uploadSoundSubtitle', 'Escolha o efeito sonoro reproduzido ao finalizar o envio de arquivos para a nuvem')
+    },
     audit: {
       title: t('syncModal.auditTitle', 'Auditoria & Reconciliação das Mensagens Salvas'),
       subtitle: t('syncModal.auditSubtitle', 'Comparação de catálogo com Telegram, faltantes e reparo de pastas')
@@ -583,6 +616,28 @@ export const SyncModal: React.FC<SyncModalProps> = ({
           style: pendingInfo && pendingInfo.totalPending > 0
             ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-800'
             : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+        }
+      ]
+    },
+    {
+      id: 'upload_sound' as const,
+      title: t('syncModal.menuUploadSound', 'Som ao Finalizar Upload'),
+      icon: Volume2,
+      iconBg: 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/50',
+      badges: [
+        {
+          text: soundEnabled
+            ? (UPLOAD_SOUND_OPTIONS.find(s => s.id === selectedSound)?.name || 'Chime Cristalino')
+            : 'Silencioso',
+          style: soundEnabled
+            ? 'bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+            : 'bg-gray-100 dark:bg-drive-darkBg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-drive-darkBorder'
+        },
+        {
+          text: soundEnabled ? `Ativo • ${Math.round(soundVolume * 100)}%` : 'Desativado',
+          style: soundEnabled
+            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+            : 'bg-gray-100 dark:bg-drive-darkBg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-drive-darkBorder'
         }
       ]
     },
@@ -1349,7 +1404,226 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                 <span>{syncingPending ? 'Enviando Arquivos Pendentes para o Telegram...' : `📤 Enviar ${pendingInfo.totalPending} Arquivo(s) Pendente(s) Agora`}</span>
               </button>
             )}
+
+            {/* Quick sound setting banner */}
+            <div className="mt-3 p-2.5 rounded-xl bg-white/70 dark:bg-drive-darkSurface/70 border border-amber-200/60 dark:border-amber-800/40 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-rose-500 shrink-0" />
+                <span className="text-gray-700 dark:text-gray-300">
+                  Som ao concluir: <strong>{soundEnabled ? (UPLOAD_SOUND_OPTIONS.find(s => s.id === selectedSound)?.name || 'Chime Cristalino') : 'Silencioso'}</strong>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveSection('upload_sound')}
+                className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+              >
+                Configurar Som ➔
+              </button>
+            </div>
           </div>
+          )}
+
+
+
+          {/* Seção de Sons de Conclusão de Upload */}
+          {activeSection === 'upload_sound' && (
+            <div className="p-3.5 sm:p-5 rounded-2xl bg-gradient-to-br from-rose-50/50 via-pink-50/30 to-purple-50/40 dark:from-drive-darkBg dark:to-drive-darkBg border border-rose-100 dark:border-drive-darkBorder space-y-4 animate-in fade-in duration-150">
+              {/* Header with Title and Current Status */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-rose-800 dark:text-rose-300">
+                  <Volume2 className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                  <span>{t('syncModal.uploadSoundTitle', 'Som de Conclusão de Upload')}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 shadow-xs ${
+                    soundEnabled
+                      ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-gray-100 dark:bg-drive-darkSurface text-gray-500 border-gray-200 dark:border-gray-700'
+                  }`}>
+                    {soundEnabled ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>Ativado • {Math.round(soundVolume * 100)}%</span>
+                      </>
+                    ) : (
+                      <>
+                        <VolumeX className="w-3 h-3 text-gray-400" />
+                        <span>Desativado</span>
+                      </>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                {t('syncModal.uploadSoundSubtitle', 'Escolha o efeito sonoro reproduzido ao finalizar o envio de arquivos para a nuvem')}
+              </p>
+
+              {/* Master Toggle & Volume Controls Bar */}
+              <div className="p-3.5 rounded-2xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                {/* On/Off Switch */}
+                <div className="flex items-center justify-between sm:justify-start gap-3">
+                  <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                    {t('syncModal.uploadSoundActive', 'Ativar som de conclusão de upload')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !soundEnabled;
+                      setSoundEnabled(next);
+                      setUploadSoundEnabled(next);
+                      if (next) {
+                        playSoundEffect(selectedSound, soundVolume);
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      soundEnabled ? 'bg-rose-600' : 'bg-gray-300 dark:bg-gray-700'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        soundEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Volume Slider */}
+                <div className="flex items-center gap-3 w-full sm:w-60">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!soundEnabled) return;
+                      playSoundEffect(selectedSound, soundVolume);
+                    }}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                    title="Testar volume atual"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                  </button>
+                  <div className="flex-1 flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-[10px] text-gray-500 font-semibold">
+                      <span>{t('syncModal.uploadSoundVolume', 'Volume')}</span>
+                      <span>{Math.round(soundVolume * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="1.0"
+                      step="0.05"
+                      value={soundVolume}
+                      disabled={!soundEnabled}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setSoundVolume(val);
+                        setUploadSoundVolume(val);
+                      }}
+                      onMouseUp={() => {
+                        if (soundEnabled) {
+                          playSoundEffect(selectedSound, soundVolume);
+                        }
+                      }}
+                      className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-rose-600 disabled:opacity-40"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Sound Selection Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {UPLOAD_SOUND_OPTIONS.map((snd) => {
+                  const isSelected = selectedSound === snd.id;
+                  const isPlaying = playingSoundId === snd.id;
+
+                  const handleSelect = () => {
+                    setSelectedSound(snd.id);
+                    setSelectedUploadSound(snd.id);
+                    if (snd.id !== 'none') {
+                      setPlayingSoundId(snd.id);
+                      playSoundEffect(snd.id, soundVolume);
+                      setTimeout(() => setPlayingSoundId(null), 800);
+                    }
+                  };
+
+                  const handlePreview = (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    if (snd.id === 'none') return;
+                    setPlayingSoundId(snd.id);
+                    playSoundEffect(snd.id, soundVolume);
+                    setTimeout(() => setPlayingSoundId(null), 800);
+                  };
+
+                  return (
+                    <div
+                      key={snd.id}
+                      onClick={handleSelect}
+                      className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 cursor-pointer group ${
+                        isSelected
+                          ? 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-500/25 ring-2 ring-rose-400/40'
+                          : 'bg-white dark:bg-drive-darkSurface border-gray-200 dark:border-drive-darkBorder text-gray-700 dark:text-gray-300 hover:border-rose-300 dark:hover:border-rose-500/50 hover:shadow-xs'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center shrink-0 border transition-all ${
+                          isSelected
+                            ? 'border-white bg-white text-rose-600'
+                            : 'border-gray-300 dark:border-gray-600 group-hover:border-rose-400'
+                        }`}>
+                          {isSelected && <div className="w-2 h-2 rounded-full bg-rose-600" />}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-xs truncate">
+                              {snd.name}
+                            </span>
+                            {snd.badge && (
+                              <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider ${
+                                isSelected
+                                  ? 'bg-white/20 text-white'
+                                  : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                              }`}>
+                                {snd.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className={`text-[10px] leading-tight mt-0.5 line-clamp-2 ${
+                            isSelected ? 'text-rose-100' : 'text-gray-400 dark:text-gray-400'
+                          }`}>
+                            {snd.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {snd.id !== 'none' && (
+                        <button
+                          type="button"
+                          onClick={handlePreview}
+                          className={`p-2 rounded-xl border transition-all shrink-0 active:scale-95 flex items-center gap-1 text-[10px] font-bold ${
+                            isSelected
+                              ? 'bg-white/20 hover:bg-white/30 border-white/30 text-white'
+                              : 'bg-gray-100 dark:bg-gray-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:text-rose-600 hover:border-rose-300'
+                          }`}
+                          title={`Ouvir prévia de ${snd.name}`}
+                        >
+                          <Play className={`w-3 h-3 fill-current ${isPlaying ? 'animate-pulse text-amber-300' : ''}`} />
+                          <span className="hidden sm:inline">{t('syncModal.uploadSoundTest', 'Ouvir')}</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Informational Banner */}
+              <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50 flex items-start gap-2.5 text-xs text-rose-800 dark:text-rose-300">
+                <Sparkles className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">
+                  {t('syncModal.uploadSoundNote', '✨ Os sons são sintetizados localmente com áudio de alta fidelidade sem atraso ou necessidade de internet.')}
+                </span>
+              </div>
+            </div>
           )}
 
           {/* Auditoria & Reconciliação Inteligente das Mensagens Salvas */}
