@@ -139,7 +139,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.25.0',
+    version: '1.26.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -3152,8 +3152,96 @@ app.get('/api/audio-shows/:id', (req, res) => {
   res.json(show);
 });
 
-app.post('/api/audio-shows', (req, res) => {
-  const show = db.saveAudioShow(req.body);
+
+// ---------------- UTILITÁRIO DE CONVERSÃO DE CAPAS DE PODCASTS PARA BASE64 NO JSON ----------------
+const imageBase64Cache = new Map<string, string>();
+
+async function convertImageUrlToBase64(url?: string, timeoutMs = 8000): Promise<string | undefined> {
+  if (!url || typeof url !== 'string') return undefined;
+  const trimmed = url.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    return trimmed; // Já está em formato Base64 ou local
+  }
+
+  if (imageBase64Cache.has(trimmed)) {
+    return imageBase64Cache.get(trimmed);
+  }
+
+  try {
+    let fetchUrl = trimmed;
+    // Otimiza URLs da Apple/iTunes para resolução adequada e tamanho leve no JSON (~25KB)
+    if (fetchUrl.includes('mzstatic.com') || fetchUrl.includes('itunes.apple.com')) {
+      fetchUrl = fetchUrl.replace(/\/\d+x\d+bb\./, '/300x300bb.');
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    const resp = await fetch(fetchUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveGram/1.0',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+      }
+    });
+    clearTimeout(timer);
+
+    if (!resp.ok) {
+      return trimmed;
+    }
+
+    const contentType = resp.headers.get('content-type') || 'image/jpeg';
+    const mime = contentType.split(';')[0].trim();
+    const arrayBuffer = await resp.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Evita armazenar payloads gigantes (> 3MB)
+    if (buffer.length > 3 * 1024 * 1024) {
+      return trimmed;
+    }
+
+    const base64Data = `data:${mime};base64,${buffer.toString('base64')}`;
+    imageBase64Cache.set(trimmed, base64Data);
+    return base64Data;
+  } catch (err: any) {
+    return trimmed;
+  }
+}
+
+async function convertEpisodeCoversToBase64(episodes: any[], defaultCoverUrl?: string): Promise<any[]> {
+  if (!episodes || !Array.isArray(episodes)) return [];
+  const defaultBase64 = defaultCoverUrl ? await convertImageUrlToBase64(defaultCoverUrl) : undefined;
+  const result: any[] = [];
+  const chunkSize = 6;
+
+  for (let i = 0; i < episodes.length; i += chunkSize) {
+    const chunk = episodes.slice(i, i + chunkSize);
+    const convertedChunk = await Promise.all(
+      chunk.map(async (ep) => {
+        const epCoverUrl = ep.coverImage || defaultCoverUrl;
+        if (epCoverUrl) {
+          const base64Cover = await convertImageUrlToBase64(epCoverUrl);
+          return {
+            ...ep,
+            coverImage: base64Cover || ep.coverImage || defaultBase64
+          };
+        }
+        return ep;
+      })
+    );
+    result.push(...convertedChunk);
+  }
+
+  return result;
+}
+
+app.post('/api/audio-shows', async (req, res) => {
+  let data = req.body;
+  if (data && data.showType === 'podcast' && Array.isArray(data.tracks)) {
+    data.tracks = await convertEpisodeCoversToBase64(data.tracks, data.coverImage);
+    if (data.coverImage) data.coverImage = await convertImageUrlToBase64(data.coverImage);
+  }
+  const show = db.saveAudioShow(data);
   res.status(201).json(show);
 });
 
@@ -3195,8 +3283,13 @@ app.post('/api/audio-shows/sync-root', (_req, res) => {
   }
 });
 
-app.put('/api/audio-shows/:id', (req, res) => {
-  const updated = db.saveAudioShow({ ...req.body, id: req.params.id });
+app.put('/api/audio-shows/:id', async (req, res) => {
+  let data = req.body;
+  if (data && data.showType === 'podcast' && Array.isArray(data.tracks)) {
+    data.tracks = await convertEpisodeCoversToBase64(data.tracks, data.coverImage);
+    if (data.coverImage) data.coverImage = await convertImageUrlToBase64(data.coverImage);
+  }
+  const updated = db.saveAudioShow({ ...data, id: req.params.id });
   res.json(updated);
 });
 
@@ -3777,6 +3870,10 @@ app.post('/api/audio-shows/import-podcast', async (req, res) => {
       finalFolderId = podcastFolder.id;
     }
 
+    // Converte as capas de cada episódio e a capa principal para Base64 no JSON
+    const finalShowCover = coverImage ? (await convertImageUrlToBase64(coverImage)) : coverImage;
+    const episodesWithBase64Covers = await convertEpisodeCoversToBase64(episodes, finalShowCover || coverImage);
+
     const newShow = db.saveAudioShow({
       title: title.trim(),
       artist: artist || host,
@@ -3785,12 +3882,12 @@ app.post('/api/audio-shows/import-podcast', async (req, res) => {
       category: category || 'Podcasts',
       genre: genre || 'Podcast',
       description: description || '',
-      coverImage: coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
+      coverImage: finalShowCover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60',
       folderId: finalFolderId,
       feedUrl: feedUrl || undefined,
       podcastId: podcastId ? String(podcastId) : undefined,
       lastSyncedAt: new Date().toISOString(),
-      tracks: episodes
+      tracks: episodesWithBase64Covers
     });
 
     res.status(201).json(newShow);
@@ -3873,8 +3970,18 @@ async function refreshSinglePodcastInternal(show: any): Promise<{ show: any; new
         if (!existing.releaseDate && ep.releaseDate) existing.releaseDate = ep.releaseDate;
         if (!existing.duration && ep.duration) existing.duration = ep.duration;
         if (!existing.durationSeconds && ep.durationSeconds) existing.durationSeconds = ep.durationSeconds;
-        if (!existing.coverImage && ep.coverImage) existing.coverImage = ep.coverImage;
+        if (!existing.coverImage && ep.coverImage) {
+          existing.coverImage = ep.coverImage;
+        }
       }
+    }
+  }
+
+  // Converte as capas das novas faixas para Base64 no JSON
+  if (newTracksToAdd.length > 0) {
+    const convertedNewTracks = await convertEpisodeCoversToBase64(newTracksToAdd, show.coverImage);
+    for (let i = 0; i < newTracksToAdd.length; i++) {
+      newTracksToAdd[i].coverImage = convertedNewTracks[i]?.coverImage || newTracksToAdd[i].coverImage;
     }
   }
 
@@ -3895,8 +4002,8 @@ async function refreshSinglePodcastInternal(show: any): Promise<{ show: any; new
 
   show.tracks = finalTracks.map((t: any, idx: number) => ({
     ...t,
-    order: idx + 1,
-    trackNumber: idx + 1
+    order: finalTracks.length - idx,
+    trackNumber: finalTracks.length - idx
   }));
 
   show.lastSyncedAt = new Date().toISOString();
@@ -5798,3 +5905,35 @@ httpServer.on('error', (err: any) => {
   throw err;
 });
 
+
+// Migração em segundo plano: converte capas de podcasts já salvos no JSON para Base64
+async function migrateExistingPodcastCoversToBase64() {
+  try {
+    const shows = db.getAudioShows();
+    const podcastShows = shows.filter(s => s.showType === 'podcast');
+    for (const show of podcastShows) {
+      let changed = false;
+      if (show.coverImage && (show.coverImage.startsWith('http://') || show.coverImage.startsWith('https://'))) {
+        const b64 = await convertImageUrlToBase64(show.coverImage);
+        if (b64 && b64.startsWith('data:image')) {
+          show.coverImage = b64;
+          changed = true;
+        }
+      }
+      if (Array.isArray(show.tracks) && show.tracks.length > 0) {
+        const needsConversion = show.tracks.some(t => t.coverImage && (t.coverImage.startsWith('http://') || t.coverImage.startsWith('https://')));
+        if (needsConversion) {
+          show.tracks = await convertEpisodeCoversToBase64(show.tracks, show.coverImage);
+          changed = true;
+        }
+      }
+      if (changed) {
+        db.saveAudioShow(show);
+        console.log(`[Base64] Capas do podcast "${show.title}" convertidas e salvas no JSON em Base64.`);
+      }
+    }
+  } catch (e) {
+    console.warn('[Base64] Erro durante migração de capas:', e);
+  }
+}
+setTimeout(migrateExistingPodcastCoversToBase64, 4000);

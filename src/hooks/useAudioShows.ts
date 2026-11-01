@@ -304,8 +304,8 @@ export function useAudioShows() {
         duration: ep.duration || '45:00',
         durationSeconds: ep.durationSeconds || 0,
         audioUrl: ep.audioUrl,
-        order: idx + 1,
-        trackNumber: idx + 1,
+        order: (podcastData.episodes || []).length - idx,
+        trackNumber: (podcastData.episodes || []).length - idx,
         releaseDate: ep.releaseDate || ep.pubDate,
         description: ep.description || ep.summary || '',
         coverImage: ep.coverImage || undefined
