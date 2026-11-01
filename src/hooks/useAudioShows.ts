@@ -307,7 +307,8 @@ export function useAudioShows() {
         order: idx + 1,
         trackNumber: idx + 1,
         releaseDate: ep.releaseDate || ep.pubDate,
-        description: ep.description || ep.summary || ''
+        description: ep.description || ep.summary || '',
+        coverImage: ep.coverImage || undefined
       }));
 
       const fallbackShowData: Partial<AudioShow> = {

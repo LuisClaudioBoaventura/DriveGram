@@ -2003,6 +2003,12 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                             <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/30">
                               Episódio #{epIndex >= 0 ? epIndex + 1 : 1}
                             </span>
+                            {selectedEpisodeForDetail.coverImage && selectedEpisodeForDetail.coverImage !== audioShow.coverImage && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                                <ImageIcon className="w-3 h-3 text-emerald-400" />
+                                <span>Capa Original</span>
+                              </span>
+                            )}
                             {fullDateStr && (
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-semibold border border-amber-500/30">
                                 <Calendar className="w-3 h-3 text-amber-400" />
@@ -2188,7 +2194,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                   </div>
                 ) : episodesViewMode === 'grid' ? (
                   /* ---------------- VISUALIZAÇÃO EM BLOCOS (GRID) ---------------- */
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4.5 p-4 sm:p-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-5 lg:gap-6 p-4 sm:p-6">
                     {filteredEpisodes.map((track) => {
                       const realIndex = tracks.findIndex(t => t.id === track.id);
                       const isCurrent = currentTrackIndex === realIndex;
@@ -2202,50 +2208,62 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                             ? allFiles.find(f => !f.isTrash && f.parentId === audioShow.folderId && f.name.toLowerCase().includes((track.title || '').toLowerCase().trim()))
                             : null);
                       const isTrackSaved = Boolean(matchedTrackFile || track.fileId);
+                      const hasOriginalCover = Boolean(track.coverImage && track.coverImage !== audioShow.coverImage);
+                      const episodeCoverUrl = track.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60';
 
                       return (
                         <div
                           key={track.id}
                           onClick={() => setSelectedEpisodeForDetail(track)}
-                          className={`group relative flex flex-col justify-between rounded-3xl border transition-all duration-300 overflow-hidden cursor-pointer ${
+                          className={`group relative flex flex-col justify-between rounded-2xl border transition-all duration-300 overflow-hidden cursor-pointer shadow-sm hover:shadow-xl ${
                             isCurrent
                               ? 'bg-emerald-500/10 border-emerald-500/60 shadow-lg shadow-emerald-500/10 dark:bg-emerald-950/20'
                               : 'bg-white dark:bg-drive-darkBg border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40 hover:shadow-xl dark:hover:border-emerald-500/30'
                           }`}
                         >
                           {/* Topo do Card com Imagem e Badges */}
-                          <div className="relative aspect-video w-full overflow-hidden bg-gray-900">
+                          <div className="relative aspect-square w-full overflow-hidden bg-gray-950">
                             <img
-                              src={track.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                              src={episodeCoverUrl}
                               alt={track.title}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent pointer-events-none" />
 
-                            {/* Badge de Data no Topo Esquerdo */}
-                            {badgeDateStr && (
-                              <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md text-amber-300 text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
-                                <Calendar className="w-2.5 h-2.5" />
-                                <span>{badgeDateStr}</span>
-                              </div>
-                            )}
-
-                            {/* Badge de Status Salvo Telegram no Topo Direito */}
-                            <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
-                              {isTrackSaved ? (
-                                <span className="p-1 rounded-lg bg-sky-500/90 text-white shadow-xs" title="Salvo no Telegram">
-                                  <ShieldCheck className="w-3 h-3" />
+                            {/* Badge de Capa Original ou Data no Topo Esquerdo */}
+                            <div className="absolute top-2 left-2 flex items-center gap-1 z-10">
+                              {hasOriginalCover ? (
+                                <span 
+                                  className="px-1.5 py-0.5 rounded-md bg-emerald-600/90 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-wider shadow-md border border-emerald-400/40 flex items-center gap-1"
+                                  title="Capa original individual deste episódio"
+                                >
+                                  <ImageIcon className="w-2.5 h-2.5" />
+                                  <span>Original</span>
+                                </span>
+                              ) : badgeDateStr ? (
+                                <span className="px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-amber-300 text-[9px] font-bold border border-amber-500/30 flex items-center gap-1">
+                                  <Calendar className="w-2.5 h-2.5" />
+                                  <span>{badgeDateStr}</span>
                                 </span>
                               ) : null}
+                            </div>
+
+                            {/* Badges de Status no Topo Direito */}
+                            <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+                              {isTrackSaved && (
+                                <span className="p-1 rounded-md bg-sky-500/90 text-white shadow-xs" title="Salvo no Telegram">
+                                  <ShieldCheck className="w-2.5 h-2.5" />
+                                </span>
+                              )}
                               {isCurrent && (
-                                <span className="px-2 py-0.5 rounded-lg bg-emerald-500 text-black text-[10px] font-bold shadow-md animate-pulse">
+                                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-black text-[9px] font-bold shadow-md animate-pulse">
                                   {isPlaying ? 'Tocando' : 'Pausado'}
                                 </span>
                               )}
                             </div>
 
                             {/* Duração no Canto Inferior Direito da Imagem */}
-                            <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-gray-200 text-[10px] font-mono font-semibold">
+                            <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-gray-200 text-[9px] font-mono font-semibold z-10">
                               {track.duration || '45:00'}
                             </div>
 
@@ -2257,37 +2275,36 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                                   handlePlayEpisodeAndCloseModal(realIndex);
                                 }
                               }}
-                              className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                              className="absolute inset-0 m-auto w-10 h-10 rounded-full bg-emerald-600/95 hover:bg-emerald-500 text-white flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 hover:scale-110 active:scale-95 transition-all cursor-pointer z-20"
                               title="Tocar este episódio agora"
                             >
-                              <Play className="w-5 h-5 fill-current ml-0.5" />
+                              <Play className="w-4 h-4 fill-current ml-0.5" />
                             </button>
                           </div>
 
-                          {/* Conteúdo Central do Card */}
-                          <div className="p-4 flex-1 flex flex-col justify-between">
+                          {/* Conteúdo Central do Card Compacto */}
+                          <div className="p-2.5 sm:p-3 flex-1 flex flex-col justify-between">
                             <div>
-                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mb-1">
-                                <span>Episódio #{realIndex >= 0 ? realIndex + 1 : 1}</span>
-                                {(track.artist || audioShow.artist) && (
-                                  <>
-                                    <span>•</span>
-                                    <span className="truncate max-w-[140px] text-gray-400">{track.artist || audioShow.artist}</span>
-                                  </>
+                              <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 mb-1">
+                                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                  Ep. #{realIndex >= 0 ? realIndex + 1 : 1}
+                                </span>
+                                {badgeDateStr && (
+                                  <span className="truncate text-[9px] text-gray-400 dark:text-gray-500">
+                                    {badgeDateStr}
+                                  </span>
                                 )}
                               </div>
-                              <h3 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-2 leading-snug">
+                              <h3
+                                className="text-xs font-bold text-gray-900 dark:text-gray-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-2 leading-snug"
+                                title={track.title}
+                              >
                                 {track.title}
                               </h3>
-                              {track.description && (
-                                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 leading-normal">
-                                  {formatEpisodeDescription(track.description)}
-                                </p>
-                              )}
                             </div>
 
                             {/* Rodapé do Card com Ações Rápidas */}
-                            <div className="flex items-center justify-between pt-3 mt-3 border-t border-gray-100 dark:border-drive-darkBorder/60">
+                            <div className="flex items-center justify-between pt-2 mt-2 border-t border-gray-100 dark:border-drive-darkBorder/60">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -2295,10 +2312,10 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                                     handlePlayEpisodeAndCloseModal(realIndex);
                                   }
                                 }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold shadow-sm shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
                                 title="Tocar episódio e voltar à tela principal"
                               >
-                                <Play className="w-3.5 h-3.5 fill-current" />
+                                <Play className="w-3 h-3 fill-current" />
                                 <span>Tocar</span>
                               </button>
 
@@ -2310,13 +2327,13 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                                       handleBackupTrackToTelegram(track);
                                     }}
                                     disabled={isBackingUpThis}
-                                    className="p-1.5 rounded-xl text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-colors"
+                                    className="p-1 rounded-lg text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-colors"
                                     title="Salvar no Telegram"
                                   >
                                     {isBackingUpThis ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                     ) : (
-                                      <CloudUpload className="w-4 h-4" />
+                                      <CloudUpload className="w-3.5 h-3.5" />
                                     )}
                                   </button>
                                 )}
@@ -2354,6 +2371,8 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                             ? allFiles.find(f => !f.isTrash && f.parentId === audioShow.folderId && f.name.toLowerCase().includes((track.title || '').toLowerCase().trim()))
                             : null);
                       const isTrackSaved = Boolean(matchedTrackFile || track.fileId);
+                      const hasOriginalCover = Boolean(track.coverImage && track.coverImage !== audioShow.coverImage);
+                      const episodeCoverUrl = track.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60';
 
                       return (
                         <div
@@ -2374,7 +2393,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                             {/* Mini Capa */}
                             <div className="w-11 h-11 rounded-xl overflow-hidden bg-gray-900 shrink-0 border border-gray-200 dark:border-drive-darkBorder">
                               <img
-                                src={track.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                                src={episodeCoverUrl}
                                 alt={track.title}
                                 className="w-full h-full object-cover"
                               />
@@ -2386,6 +2405,12 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                                 {track.title}
                               </h4>
                               <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                {hasOriginalCover && (
+                                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-[9px] border border-emerald-500/25 flex items-center gap-0.5">
+                                    <ImageIcon className="w-2.5 h-2.5" />
+                                    <span>Original</span>
+                                  </span>
+                                )}
                                 {badgeDateStr && (
                                   <span className="text-amber-600 dark:text-amber-400 font-semibold">{badgeDateStr}</span>
                                 )}
