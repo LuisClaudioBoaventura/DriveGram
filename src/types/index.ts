@@ -465,6 +465,7 @@ export interface AudioTrack {
   coverImage?: string; // Capa individual da faixa / episódio (ex: parte de coletânea/playlist)
   showTitle?: string; // Nome do podcast / álbum de origem
   showId?: string; // ID do podcast / álbum de origem
+  description?: string; // Descrição detalhada do episódio (RSS / Notas)
 }
 
 export interface AudioShow {
