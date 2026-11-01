@@ -80,7 +80,11 @@ export function parsePodcastRssXmlString(xmlText: string): ParsedPodcastRss {
 
   itemMatches.forEach((match, index) => {
     const itemXml = match[1];
-    const epTitle = getTag(itemXml, 'title') || `Episódio ${index + 1}`;
+    const itunesEpRaw = getTag(itemXml, 'itunes:episode');
+    const parsedItunesEp = itunesEpRaw ? parseInt(itunesEpRaw, 10) : NaN;
+    const chronologicalEpNum = itemMatches.length - index;
+    const epNum = (!isNaN(parsedItunesEp) && parsedItunesEp > 0) ? parsedItunesEp : chronologicalEpNum;
+    const epTitle = getTag(itemXml, 'title') || `Episódio ${epNum}`;
     const epAudio = getAttr(itemXml, 'enclosure', 'url') || getAttr(itemXml, 'media:content', 'url');
     
     if (!epAudio) return;
@@ -120,8 +124,8 @@ export function parsePodcastRssXmlString(xmlText: string): ParsedPodcastRss {
       duration: durationStr,
       durationSeconds,
       audioUrl: epAudio,
-      order: index + 1,
-      trackNumber: index + 1,
+      order: epNum,
+      trackNumber: epNum,
       releaseDate: getTag(itemXml, 'pubDate'),
       description: getTag(itemXml, 'description') || getTag(itemXml, 'itunes:summary') || '',
       coverImage: getAttr(itemXml, 'itunes:image', 'href') || getAttr(itemXml, 'media:thumbnail', 'url') || undefined

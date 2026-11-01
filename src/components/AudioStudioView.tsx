@@ -46,7 +46,8 @@ import {
   Info,
   Calendar,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  ArrowUpDown
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
@@ -281,17 +282,111 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const tracks = audioShow.tracks || [];
   const activeTrack: AudioTrack | undefined = tracks[currentTrackIndex];
 
-  // Filtro de episódios no modal
+  // Tipos e Estados de Filtro e Ordenação dos Episódios
+  type EpisodeStatusFilter = 'all' | 'unplayed' | 'played';
+  type EpisodeSortOrder = 'newest' | 'oldest' | 'duration_desc' | 'duration_asc' | 'title_asc';
+
+  const [episodeStatusFilter, setEpisodeStatusFilter] = useState<EpisodeStatusFilter>('all');
+  const [episodeSortOrder, setEpisodeSortOrder] = useState<EpisodeSortOrder>('newest');
+
+  // Contadores para os filtros rápidos
+  const unplayedEpisodesCount = useMemo(() => tracks.filter(t => !t.isCompleted).length, [tracks]);
+  const playedEpisodesCount = useMemo(() => tracks.filter(t => t.isCompleted).length, [tracks]);
+
+  // Função centralizada para numeração cronológica correta (Ep. 1 = mais antigo)
+  const getEpisodeDisplayNumber = (track: AudioTrack) => {
+    if (track.title) {
+      const match = track.title.match(/(?:#|ep(?:is[oó]dio)?\.?\s*#?)\s*(\d+)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > 0 && num < 100000) {
+          return num;
+        }
+      }
+    }
+
+    const trackIndex = tracks.findIndex(t => t.id === track.id);
+    if (trackIndex === -1) return 1;
+    // O último item no array é o mais antigo (Episódio 1), o primeiro é o mais recente
+    return Math.max(1, tracks.length - trackIndex);
+  };
+
+  // Alternar status de ouvido de um episódio com atualização imediata no estado local e persistência
+  const handleToggleSingleTrackCompletion = async (trackId: string) => {
+    const updatedTracks = tracks.map(t => {
+      if (t.id === trackId) {
+        return { ...t, isCompleted: !t.isCompleted };
+      }
+      return t;
+    });
+    if (selectedEpisodeForDetail && selectedEpisodeForDetail.id === trackId) {
+      setSelectedEpisodeForDetail(prev => prev ? { ...prev, isCompleted: !prev.isCompleted } : null);
+    }
+    await onUpdateAudioShow({ ...audioShow, tracks: updatedTracks });
+    if (onToggleTrackCompletion) {
+      onToggleTrackCompletion(trackId).catch(() => {});
+    }
+  };
+
+  // Filtro e reorganização de episódios no modal
   const filteredEpisodes = useMemo(() => {
-    if (!episodeSearchQuery.trim()) return tracks;
-    const q = episodeSearchQuery.toLowerCase().trim();
-    return tracks.filter(t => 
-      (t.title && t.title.toLowerCase().includes(q)) ||
-      (t.artist && t.artist.toLowerCase().includes(q)) ||
-      (t.description && t.description.toLowerCase().includes(q)) ||
-      (t.notes && t.notes.toLowerCase().includes(q))
-    );
-  }, [tracks, episodeSearchQuery]);
+    let list = [...tracks];
+
+    // 1. Filtro de pesquisa por texto
+    if (episodeSearchQuery.trim()) {
+      const q = episodeSearchQuery.toLowerCase().trim();
+      list = list.filter(t => 
+        (t.title && t.title.toLowerCase().includes(q)) ||
+        (t.artist && t.artist.toLowerCase().includes(q)) ||
+        (t.description && t.description.toLowerCase().includes(q)) ||
+        (t.notes && t.notes.toLowerCase().includes(q))
+      );
+    }
+
+    // 2. Filtro por status (Não ouvidos / Ouvidos)
+    if (episodeStatusFilter === 'unplayed') {
+      list = list.filter(t => !t.isCompleted);
+    } else if (episodeStatusFilter === 'played') {
+      list = list.filter(t => t.isCompleted);
+    }
+
+    // 3. Ordenação / Reorganização
+    list.sort((a, b) => {
+      if (episodeSortOrder === 'oldest') {
+        const dateA = parseEpisodePublicationDate(a, audioShow, 0);
+        const dateB = parseEpisodePublicationDate(b, audioShow, 0);
+        if (dateA && dateB) return dateA.getTime() - dateB.getTime();
+        const indexA = tracks.findIndex(t => t.id === a.id);
+        const indexB = tracks.findIndex(t => t.id === b.id);
+        return indexB - indexA; // Índice maior no array original é o episódio mais antigo -> vem primeiro
+      }
+
+      if (episodeSortOrder === 'newest') {
+        const dateA = parseEpisodePublicationDate(a, audioShow, 0);
+        const dateB = parseEpisodePublicationDate(b, audioShow, 0);
+        if (dateA && dateB) return dateB.getTime() - dateA.getTime();
+        const indexA = tracks.findIndex(t => t.id === a.id);
+        const indexB = tracks.findIndex(t => t.id === b.id);
+        return indexA - indexB; // Índice menor é mais recente -> vem primeiro
+      }
+
+      if (episodeSortOrder === 'duration_desc') {
+        return (b.durationSeconds || 0) - (a.durationSeconds || 0);
+      }
+
+      if (episodeSortOrder === 'duration_asc') {
+        return (a.durationSeconds || 0) - (b.durationSeconds || 0);
+      }
+
+      if (episodeSortOrder === 'title_asc') {
+        return (a.title || '').localeCompare(b.title || '');
+      }
+
+      return 0;
+    });
+
+    return list;
+  }, [tracks, episodeSearchQuery, episodeStatusFilter, episodeSortOrder, audioShow]);
 
   // Tocar episódio e fechar o modal imediatamente
   const handlePlayEpisodeAndCloseModal = (index: number) => {
@@ -1586,7 +1681,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                         ) : isCurrent ? (
                           <Play className="w-3 h-3 text-emerald-500 fill-current" />
                         ) : (
-                          <span className="text-gray-400">{track.trackNumber || idx + 1}</span>
+                          <span className="text-gray-400">{audioShow.showType === 'podcast' ? getEpisodeDisplayNumber(track) : (track.trackNumber || idx + 1)}</span>
                         )}
                       </div>
 
@@ -1847,26 +1942,6 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Barra de Busca rápida */}
-                  <div className="flex-1 max-w-xs relative hidden md:block">
-                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
-                      value={episodeSearchQuery}
-                      onChange={(e) => setEpisodeSearchQuery(e.target.value)}
-                      placeholder="Pesquisar episódio..."
-                      className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder text-xs text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                    {episodeSearchQuery && (
-                      <button
-                        onClick={() => setEpisodeSearchQuery('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-
                   {/* Switcher de Visualização: Blocos (Grid) vs Lista & Ações */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     {/* Botões Blocos vs Lista */}
@@ -1933,26 +2008,100 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               )}
             </div>
 
-            {/* Sub-barra de busca mobile quando em tela pequena */}
+            {/* Barra de Filtros Rápidos, Busca e Reorganização */}
             {!selectedEpisodeForDetail && (
-              <div className="p-3 border-b border-gray-100 dark:border-drive-darkBorder md:hidden bg-gray-50/50 dark:bg-drive-darkBg/30">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    value={episodeSearchQuery}
-                    onChange={(e) => setEpisodeSearchQuery(e.target.value)}
-                    placeholder="Pesquisar episódio por título ou assunto..."
-                    className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder text-xs text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                  {episodeSearchQuery && (
-                    <button
-                      onClick={() => setEpisodeSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              <div className="px-4 sm:px-6 py-2.5 border-b border-gray-100 dark:border-drive-darkBorder bg-gray-50/70 dark:bg-drive-darkSurface/40 flex flex-wrap items-center justify-between gap-2.5">
+                {/* Filtros Rápidos de Status: Todos / Não Ouvidos / Ouvidos */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => setEpisodeStatusFilter('all')}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      episodeStatusFilter === 'all'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-drive-darkBg text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40'
+                    }`}
+                  >
+                    <span>Todos</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      episodeStatusFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                    }`}>
+                      {tracks.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setEpisodeStatusFilter('unplayed')}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      episodeStatusFilter === 'unplayed'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-drive-darkBg text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40'
+                    }`}
+                  >
+                    <Circle className="w-3 h-3 text-amber-500" />
+                    <span>Não ouvidos</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      episodeStatusFilter === 'unplayed' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                    }`}>
+                      {unplayedEpisodesCount}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setEpisodeStatusFilter('played')}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      episodeStatusFilter === 'played'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-drive-darkBg text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    <span>Ouvidos</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      episodeStatusFilter === 'played' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                    }`}>
+                      {playedEpisodesCount}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Busca e Ordenação / Reorganização dos Episódios */}
+                <div className="flex items-center gap-2 flex-1 sm:flex-initial justify-end flex-wrap">
+                  {/* Campo de Busca Rápida */}
+                  <div className="relative flex-1 sm:w-48 md:w-56">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={episodeSearchQuery}
+                      onChange={(e) => setEpisodeSearchQuery(e.target.value)}
+                      placeholder="Pesquisar..."
+                      className="w-full pl-8 pr-7 py-1 rounded-xl bg-white dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder text-xs text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    {episodeSearchQuery && (
+                      <button
+                        onClick={() => setEpisodeSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Seletor de Ordenação */}
+                  <div className="flex items-center gap-1.5">
+                    <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <select
+                      value={episodeSortOrder}
+                      onChange={(e) => setEpisodeSortOrder(e.target.value as EpisodeSortOrder)}
+                      className="py-1 px-2.5 rounded-xl bg-white dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder text-xs font-semibold text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                      title="Reorganizar ordem dos episódios"
                     >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                      <option value="newest">Mais recentes primeiro</option>
+                      <option value="oldest">Mais antigos primeiro (Ep. 1)</option>
+                      <option value="duration_desc">Mais longos primeiro</option>
+                      <option value="duration_asc">Mais curtos primeiro</option>
+                      <option value="title_asc">Ordem alfabética (A-Z)</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             )}
@@ -2001,7 +2150,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                           {/* Badges de Metadados */}
                           <div className="flex items-center gap-2 flex-wrap mb-2">
                             <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/30">
-                              Episódio #{epIndex >= 0 ? epIndex + 1 : 1}
+                              Episódio #{getEpisodeDisplayNumber(selectedEpisodeForDetail)}
                             </span>
                             {selectedEpisodeForDetail.coverImage && selectedEpisodeForDetail.coverImage !== audioShow.coverImage && (
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
@@ -2098,7 +2247,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
                           {/* Concluir / Marcar como Ouvido */}
                           <button
-                            onClick={() => onToggleTrackCompletion(selectedEpisodeForDetail.id)}
+                            onClick={() => handleToggleSingleTrackCompletion(selectedEpisodeForDetail.id)}
                             className={`flex items-center gap-1 px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all border ${
                               selectedEpisodeForDetail.isCompleted
                                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
@@ -2122,9 +2271,9 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                         </h3>
                       </div>
                       
-                      <div className="p-5 rounded-3xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder">
+                      <div className="p-5 rounded-3xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder max-w-full overflow-hidden">
                         {selectedEpisodeForDetail.description || selectedEpisodeForDetail.notes ? (
-                          <div className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap select-text space-y-2">
+                          <div className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap select-text space-y-2 break-words [overflow-wrap:anywhere] [word-break:break-word] max-w-full max-h-80 sm:max-h-96 overflow-y-auto pr-2">
                             {formatEpisodeDescription(selectedEpisodeForDetail.description || selectedEpisodeForDetail.notes)}
                           </div>
                         ) : (
@@ -2182,13 +2331,20 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                   <div className="flex flex-col items-center justify-center p-12 text-center text-gray-400">
                     <Search className="w-8 h-8 mb-2 opacity-40 text-emerald-500" />
                     <p className="text-sm font-bold text-gray-600 dark:text-gray-300">Nenhum episódio encontrado</p>
-                    <p className="text-xs mt-1">Tente pesquisar com outros termos ou limpe a busca.</p>
-                    {episodeSearchQuery && (
+                    <p className="text-xs mt-1 max-w-xs mx-auto">
+                      {episodeSearchQuery 
+                        ? `Nenhum resultado para "${episodeSearchQuery}" com os filtros atuais.` 
+                        : 'Nenhum episódio corresponde ao filtro selecionado.'}
+                    </p>
+                    {(episodeSearchQuery || episodeStatusFilter !== 'all') && (
                       <button
-                        onClick={() => setEpisodeSearchQuery('')}
-                        className="mt-3 px-3 py-1 rounded-xl bg-emerald-600 text-white text-xs font-bold"
+                        onClick={() => {
+                          setEpisodeSearchQuery('');
+                          setEpisodeStatusFilter('all');
+                        }}
+                        className="mt-3.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
                       >
-                        Limpar Busca
+                        Limpar Filtros
                       </button>
                     )}
                   </div>
@@ -2198,6 +2354,8 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                     {filteredEpisodes.map((track) => {
                       const realIndex = tracks.findIndex(t => t.id === track.id);
                       const isCurrent = currentTrackIndex === realIndex;
+                      const isHeard = Boolean(track.isCompleted);
+                      const epNum = getEpisodeDisplayNumber(track);
                       const parsedDate = parseEpisodePublicationDate(track, audioShow, realIndex >= 0 ? realIndex : 0);
                       const badgeDateStr = formatEpisodeBadgeDate(parsedDate);
                       const isBackingUpThis = backingUpTrackIds.includes(track.id);
@@ -2217,8 +2375,10 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                           onClick={() => setSelectedEpisodeForDetail(track)}
                           className={`group relative flex flex-col justify-between rounded-2xl border transition-all duration-300 overflow-hidden cursor-pointer shadow-sm hover:shadow-xl ${
                             isCurrent
-                              ? 'bg-emerald-500/10 border-emerald-500/60 shadow-lg shadow-emerald-500/10 dark:bg-emerald-950/20'
-                              : 'bg-white dark:bg-drive-darkBg border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40 hover:shadow-xl dark:hover:border-emerald-500/30'
+                              ? 'bg-emerald-500/10 border-emerald-500 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-500/30'
+                              : isHeard
+                                ? 'bg-emerald-500/[0.04] dark:bg-emerald-950/15 border-emerald-500 dark:border-emerald-500/90 ring-1 ring-emerald-500/30 shadow-sm shadow-emerald-500/10 hover:border-emerald-400'
+                                : 'bg-white dark:bg-drive-darkBg border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40 hover:shadow-xl dark:hover:border-emerald-500/30'
                           }`}
                         >
                           {/* Topo do Card com Imagem e Badges */}
@@ -2250,6 +2410,15 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
                             {/* Badges de Status no Topo Direito */}
                             <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+                              {isHeard && (
+                                <span 
+                                  className="px-1.5 py-0.5 rounded-md bg-emerald-600/95 backdrop-blur-md text-white text-[9px] font-bold shadow-md border border-emerald-400/40 flex items-center gap-0.5" 
+                                  title="Episódio já ouvido"
+                                >
+                                  <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                  <span>Ouvido</span>
+                                </span>
+                              )}
                               {isTrackSaved && (
                                 <span className="p-1 rounded-md bg-sky-500/90 text-white shadow-xs" title="Salvo no Telegram">
                                   <ShieldCheck className="w-2.5 h-2.5" />
@@ -2287,7 +2456,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                             <div>
                               <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 mb-1">
                                 <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                  Ep. #{realIndex >= 0 ? realIndex + 1 : 1}
+                                  Ep. #{epNum}
                                 </span>
                                 {badgeDateStr && (
                                   <span className="truncate text-[9px] text-gray-400 dark:text-gray-500">
@@ -2341,6 +2510,25 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    handleToggleSingleTrackCompletion(track.id);
+                                  }}
+                                  className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
+                                    isHeard
+                                      ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100'
+                                      : 'text-gray-400 hover:text-emerald-500 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                  }`}
+                                  title={isHeard ? 'Marcar como não ouvido' : 'Marcar como ouvido'}
+                                >
+                                  {isHeard ? (
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-500 fill-emerald-500/20" />
+                                  ) : (
+                                    <Circle className="w-4 h-4" />
+                                  )}
+                                </button>
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setSelectedEpisodeForDetail(track);
                                   }}
                                   className="p-1.5 rounded-xl text-gray-400 hover:text-emerald-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -2361,6 +2549,8 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                     {filteredEpisodes.map((track) => {
                       const realIndex = tracks.findIndex(t => t.id === track.id);
                       const isCurrent = currentTrackIndex === realIndex;
+                      const isHeard = Boolean(track.isCompleted);
+                      const epNum = getEpisodeDisplayNumber(track);
                       const parsedDate = parseEpisodePublicationDate(track, audioShow, realIndex >= 0 ? realIndex : 0);
                       const badgeDateStr = formatEpisodeBadgeDate(parsedDate);
                       const isBackingUpThis = backingUpTrackIds.includes(track.id);
@@ -2380,14 +2570,32 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                           onClick={() => setSelectedEpisodeForDetail(track)}
                           className={`group flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
                             isCurrent
-                              ? 'bg-emerald-500/10 border-emerald-500/50 dark:bg-emerald-950/20 shadow-xs'
-                              : 'bg-white dark:bg-drive-darkBg border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40 hover:bg-gray-50 dark:hover:bg-gray-800/40'
+                              ? 'bg-emerald-500/10 border-emerald-500 dark:bg-emerald-950/20 shadow-xs ring-1 ring-emerald-500/30'
+                              : isHeard
+                                ? 'bg-emerald-500/[0.04] dark:bg-emerald-950/15 border-emerald-500 dark:border-emerald-500/90 ring-1 ring-emerald-500/30 hover:border-emerald-400'
+                                : 'bg-white dark:bg-drive-darkBg border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40 hover:bg-gray-50 dark:hover:bg-gray-800/40'
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+                            {/* Botão Conclusão Rápida */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleSingleTrackCompletion(track.id);
+                              }}
+                              className="p-1 text-gray-400 hover:text-emerald-500 shrink-0 cursor-pointer"
+                              title={isHeard ? 'Ouvido (clique para desmarcar)' : 'Marcar como ouvido'}
+                            >
+                              {isHeard ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-500 fill-emerald-500/20" />
+                              ) : (
+                                <Circle className="w-4 h-4" />
+                              )}
+                            </button>
+
                             {/* Número / Posição */}
-                            <span className="w-6 text-center text-xs font-mono font-bold text-gray-400 shrink-0">
-                              #{realIndex >= 0 ? realIndex + 1 : 1}
+                            <span className="w-8 text-center text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                              #{epNum}
                             </span>
 
                             {/* Mini Capa */}

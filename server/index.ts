@@ -139,7 +139,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.24.1',
+    version: '1.25.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -3259,20 +3259,22 @@ app.get('/api/podcasts/episodes', async (req, res) => {
     const data: any = await response.json();
 
     if (data.results && data.results.length > 1) {
+      const totalEps = data.results.length - 1;
       const episodes = data.results.slice(1).map((ep: any, index: number) => {
         const durationSeconds = ep.trackTimeMillis ? Math.round(ep.trackTimeMillis / 1000) : 0;
         const mins = Math.floor(durationSeconds / 60);
         const secs = durationSeconds % 60;
         const durationStr = durationSeconds > 0 ? `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : '45:00';
+        const epNum = ep.trackNumber || (totalEps - index);
 
         return {
           id: `ep-${ep.trackId || Date.now() + '-' + index}`,
-          title: ep.trackName || `Episódio ${index + 1}`,
+          title: ep.trackName || `Episódio ${epNum}`,
           duration: durationStr,
           durationSeconds,
           audioUrl: ep.episodeUrl || ep.previewUrl,
-          order: index + 1,
-          trackNumber: index + 1,
+          order: epNum,
+          trackNumber: epNum,
           releaseDate: ep.releaseDate,
           description: ep.description || ep.shortDescription || '',
           coverImage: ep.artworkUrl600 || ep.artworkUrl160 || ep.artworkUrl60 || undefined
@@ -3347,7 +3349,11 @@ function parsePodcastRssXml(xmlText: string) {
 
   itemMatches.forEach((match, index) => {
     const itemXml = match[1];
-    const epTitle = getTag(itemXml, 'title') || `Episódio ${index + 1}`;
+    const itunesEpRaw = getTag(itemXml, 'itunes:episode');
+    const parsedItunesEp = itunesEpRaw ? parseInt(itunesEpRaw, 10) : NaN;
+    const chronologicalEpNum = itemMatches.length - index;
+    const epNum = (!isNaN(parsedItunesEp) && parsedItunesEp > 0) ? parsedItunesEp : chronologicalEpNum;
+    const epTitle = getTag(itemXml, 'title') || `Episódio ${epNum}`;
     const epAudio = getAttr(itemXml, 'enclosure', 'url') || getAttr(itemXml, 'media:content', 'url');
     
     if (!epAudio) return;
@@ -3386,8 +3392,8 @@ function parsePodcastRssXml(xmlText: string) {
       duration: durationStr,
       durationSeconds,
       audioUrl: epAudio,
-      order: index + 1,
-      trackNumber: index + 1,
+      order: epNum,
+      trackNumber: epNum,
       releaseDate: getTag(itemXml, 'pubDate'),
       description: getTag(itemXml, 'description') || getTag(itemXml, 'itunes:summary') || '',
       coverImage: getAttr(itemXml, 'itunes:image', 'href') || getAttr(itemXml, 'media:thumbnail', 'url') || undefined
