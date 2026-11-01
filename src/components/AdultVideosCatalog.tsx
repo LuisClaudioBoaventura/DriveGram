@@ -230,6 +230,22 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
     onSelectVideo(list[0], list);
   };
 
+  const handlePlayRandomVideo = () => {
+    const pool = filteredVideos.length > 0 ? filteredVideos : videos;
+    if (pool.length === 0) {
+      if (onShowToast) onShowToast('Nenhum vídeo disponível no Red Locker para reproduzir.', 'info');
+      return;
+    }
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    const randomVideo = pool[randomIndex];
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const playlist = [
+      randomVideo,
+      ...shuffled.filter(v => v.id !== randomVideo.id)
+    ];
+    onSelectVideo(randomVideo, playlist);
+  };
+
   return (
     <div className="w-full max-w-full overflow-x-hidden flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-3 sm:p-6 space-y-6 select-none">
       {/* Standardized Hero Banner */}
@@ -255,17 +271,29 @@ export const AdultVideosCatalog: React.FC<AdultVideosCatalogProps> = ({
 
             <div className="pt-2 flex flex-wrap items-center gap-2.5">
               {activeCatalogTab === 'videos' ? (
-                onSyncRootFolder && (
+                <>
+                  {onSyncRootFolder && (
+                    <button
+                      onClick={handleSync}
+                      disabled={isSyncing}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-rose-900 hover:bg-rose-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                      title="Detectar e sincronizar todas as pastas e vídeos do Red Locker no Drive automaticamente"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-rose-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                    </button>
+                  )}
+
                   <button
-                    onClick={handleSync}
-                    disabled={isSyncing}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-rose-900 hover:bg-rose-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
-                    title="Detectar e sincronizar todas as pastas e vídeos do Red Locker no Drive automaticamente"
+                    onClick={handlePlayRandomVideo}
+                    disabled={videos.length === 0}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white text-xs font-bold shadow-lg shadow-rose-950/40 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Assistir a um vídeo aleatório da biblioteca Red Locker"
                   >
-                    <RefreshCw className={`w-4 h-4 text-rose-600 ${isSyncing ? 'animate-spin' : ''}`} />
-                    <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pastas'}</span>
+                    <Shuffle className="w-4 h-4" />
+                    <span>Assistir Aleatório</span>
                   </button>
-                )
+                </>
               ) : (
                 <button
                   onClick={onOpenNewPerformerModal}
