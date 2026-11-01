@@ -954,21 +954,24 @@ class TelegramService {
       return { success: false, message: 'Envio de metadados já em andamento. Alterações enfileiradas para o próximo ciclo.' };
     }
 
+    // Trava imediatamente antes de serializar o manifesto para evitar chamadas concorrentes duplicadas
+    this.isSyncingMetadata = true;
+
     try {
       const manifest = db.exportManifest();
       const localFileCount = manifest.files.length;
       const courseCount = manifest.courses ? manifest.courses.length : 0;
       const bookCount = manifest.books ? manifest.books.length : 0;
 
-      const manifestJson = JSON.stringify(manifest, null, 2);
+      // Serialização compacta sem identação pesada para economizar até 50% de memória heap
+      const manifestJson = JSON.stringify(manifest);
       const manifestSizeBytes = Buffer.byteLength(manifestJson);
-      // Hash baseado no conteúdo estrutural sem timestamp volátil de exportação
-      const { exportedAt: _exp, ...contentToHash } = manifest;
-      const manifestHash = crypto.createHash('md5').update(JSON.stringify(contentToHash)).digest('hex');
+      const manifestHash = crypto.createHash('md5').update(manifestJson).digest('hex');
 
       // Evita loops infinitos e uploads redundantes: se o manifesto for exatamente igual ao último enviado, não reenvia
       if (this.lastUploadedManifestHash === manifestHash && !force) {
         console.log('[DriveGram Auto-Backup] Manifesto inalterado desde o último envio. Backup para o Telegram dispensado.');
+        this.isSyncingMetadata = false;
         return { success: true, message: 'Manifesto inalterado.' };
       }
 
