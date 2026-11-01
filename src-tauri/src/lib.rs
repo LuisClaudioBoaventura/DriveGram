@@ -236,6 +236,7 @@ fn start_backend_server(app: &AppHandle) -> Option<Child> {
     if let Some(bundle_path) = find_server_bundle(app) {
         let node_bin = find_node_executable(app);
         let mut cmd = Command::new(&node_bin);
+        cmd.arg("--max-old-space-size=4096");
         cmd.arg(&bundle_path);
         cmd.env("PORT", "5000");
         cmd.env("NODE_ENV", "production");

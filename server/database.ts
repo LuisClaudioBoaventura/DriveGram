@@ -714,7 +714,7 @@ class Database {
     this.cloudBackupCallback = cb;
   }
 
-  public scheduleAutoBackup(debounceMs = 3500) {
+  public scheduleAutoBackup(debounceMs = 6000) {
     if (this.autoBackupDebounceTimer) {
       clearTimeout(this.autoBackupDebounceTimer);
     }
@@ -734,7 +734,7 @@ class Database {
       }
       const manifest = this.exportManifest();
       const backupFile = path.join(backupDir, 'drivegram_metadata_backup.json');
-      fs.writeFileSync(backupFile, JSON.stringify(manifest, null, 2), 'utf-8');
+      fs.writeFileSync(backupFile, JSON.stringify(manifest), 'utf-8');
 
       if (triggerCloudCallback && this.cloudBackupCallback) {
         this.cloudBackupCallback();
@@ -746,15 +746,20 @@ class Database {
 
   private save(data: DatabaseSchema, triggerAutoBackup: boolean = true) {
     try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      // Serialização compacta sem indentação excessiva para evitar estouro de heap no Node
+      const jsonString = JSON.stringify(data);
+      const tempFile = `${DB_FILE}.tmp`;
+      fs.writeFileSync(tempFile, jsonString, 'utf-8');
+      fs.renameSync(tempFile, DB_FILE);
+
       if (triggerAutoBackup) {
         this.scheduleAutoBackup();
       } else {
         // Grava apenas o snapshot local sem acionar callback na nuvem
         this.executeAutoBackup(false);
       }
-    } catch (e) {
-      console.error('Error saving database:', e);
+    } catch (e: any) {
+      console.error('[DriveGram Database] Erro ao salvar banco JSON:', e?.message || e);
     }
   }
 

@@ -139,7 +139,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.26.0',
+    version: '1.26.1',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -3210,26 +3210,30 @@ async function convertImageUrlToBase64(url?: string, timeoutMs = 8000): Promise<
 
 async function convertEpisodeCoversToBase64(episodes: any[], defaultCoverUrl?: string): Promise<any[]> {
   if (!episodes || !Array.isArray(episodes)) return [];
+  // Converte a capa principal do podcast (que será herdada por todos os episódios que não possuem capa própria)
   const defaultBase64 = defaultCoverUrl ? await convertImageUrlToBase64(defaultCoverUrl) : undefined;
-  const result: any[] = [];
-  const chunkSize = 6;
+  
+  // Limita a conversão para no máximo 30 episódios mais recentes se possuírem capa individual diferente
+  const maxIndividualCovers = 30;
+  let individualConvertedCount = 0;
 
-  for (let i = 0; i < episodes.length; i += chunkSize) {
-    const chunk = episodes.slice(i, i + chunkSize);
-    const convertedChunk = await Promise.all(
-      chunk.map(async (ep) => {
-        const epCoverUrl = ep.coverImage || defaultCoverUrl;
-        if (epCoverUrl) {
-          const base64Cover = await convertImageUrlToBase64(epCoverUrl);
-          return {
-            ...ep,
-            coverImage: base64Cover || ep.coverImage || defaultBase64
-          };
-        }
-        return ep;
-      })
-    );
-    result.push(...convertedChunk);
+  const result: any[] = [];
+  for (let i = 0; i < episodes.length; i++) {
+    const ep = episodes[i];
+    // Se o episódio tiver uma capa individual específica DIFERENTE da capa do show
+    if (ep.coverImage && ep.coverImage !== defaultCoverUrl && individualConvertedCount < maxIndividualCovers) {
+      const base64 = await convertImageUrlToBase64(ep.coverImage);
+      if (base64 && base64.startsWith('data:image')) {
+        individualConvertedCount++;
+        result.push({ ...ep, coverImage: base64 });
+        continue;
+      }
+    }
+    // Se não tem capa individual específica, deixa sem campo para herdar show.coverImage (Base64) sem duplicar megabytes
+    result.push({
+      ...ep,
+      coverImage: ep.coverImage && ep.coverImage !== defaultCoverUrl ? ep.coverImage : undefined
+    });
   }
 
   return result;
@@ -5906,34 +5910,4 @@ httpServer.on('error', (err: any) => {
 });
 
 
-// Migração em segundo plano: converte capas de podcasts já salvos no JSON para Base64
-async function migrateExistingPodcastCoversToBase64() {
-  try {
-    const shows = db.getAudioShows();
-    const podcastShows = shows.filter(s => s.showType === 'podcast');
-    for (const show of podcastShows) {
-      let changed = false;
-      if (show.coverImage && (show.coverImage.startsWith('http://') || show.coverImage.startsWith('https://'))) {
-        const b64 = await convertImageUrlToBase64(show.coverImage);
-        if (b64 && b64.startsWith('data:image')) {
-          show.coverImage = b64;
-          changed = true;
-        }
-      }
-      if (Array.isArray(show.tracks) && show.tracks.length > 0) {
-        const needsConversion = show.tracks.some(t => t.coverImage && (t.coverImage.startsWith('http://') || t.coverImage.startsWith('https://')));
-        if (needsConversion) {
-          show.tracks = await convertEpisodeCoversToBase64(show.tracks, show.coverImage);
-          changed = true;
-        }
-      }
-      if (changed) {
-        db.saveAudioShow(show);
-        console.log(`[Base64] Capas do podcast "${show.title}" convertidas e salvas no JSON em Base64.`);
-      }
-    }
-  } catch (e) {
-    console.warn('[Base64] Erro durante migração de capas:', e);
-  }
-}
-setTimeout(migrateExistingPodcastCoversToBase64, 4000);
+// Migração em massa desativada para proteger a memória heap e estabilidade do JSON
