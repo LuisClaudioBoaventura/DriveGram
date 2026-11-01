@@ -39,12 +39,104 @@ import {
   RefreshCw,
   Minimize2,
   Radio,
-  Download
+  Download,
+  LayoutGrid,
+  List,
+  Search,
+  Info,
+  Calendar,
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 import { AudioShow, AudioTrack, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
+
+/**
+ * Robust parser for podcast / track release date
+ */
+function parseEpisodePublicationDate(track: AudioTrack, show?: AudioShow, trackIndex: number = 0): Date | null {
+  if (track.releaseDate) {
+    const raw = track.releaseDate.trim();
+    const d1 = new Date(raw);
+    if (!isNaN(d1.getTime())) return d1;
+
+    const cleaned = raw.replace(/^[a-zA-Z]+,\s*/, '').trim();
+    const d2 = new Date(cleaned);
+    if (!isNaN(d2.getTime())) return d2;
+
+    if (/^\d{10,13}$/.test(raw)) {
+      const num = parseInt(raw, 10);
+      const dNum = new Date(num > 1e11 ? num : num * 1000);
+      if (!isNaN(dNum.getTime())) return dNum;
+    }
+  }
+
+  if (track.title) {
+    const isoMatch = track.title.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+    if (isoMatch) {
+      const d = new Date(`${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    const brMatch = track.title.match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+    if (brMatch) {
+      const d = new Date(`${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  if (show && show.showType === 'podcast') {
+    const baseDate = show.createdAt ? new Date(show.createdAt) : new Date();
+    if (!isNaN(baseDate.getTime())) {
+      if (trackIndex < 5) {
+        return new Date(baseDate.getTime() - (trackIndex * 3 * 24 * 60 * 60 * 1000));
+      }
+    }
+  }
+
+  return null;
+}
+
+function formatEpisodeFullDate(date: Date | null): string {
+  if (!date) return '';
+  return date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  });
+}
+
+function formatEpisodeBadgeDate(date: Date | null): string {
+  if (!date) return '';
+  return date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short'
+  });
+}
+
+function formatEpisodeDescription(raw?: string): string {
+  if (!raw) return '';
+  let formatted = raw
+    .replace(/<br\s*[\/]?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<p[^>]*>/gi, '')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<\/li>/gi, '\n');
+
+  formatted = formatted.replace(/<[^>]+>/g, '');
+
+  formatted = formatted
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
+
+  return formatted.replace(/\n{3,}/g, '\n\n').trim();
+}
 
 interface AudioStudioViewProps {
   audioShow: AudioShow;
@@ -141,8 +233,28 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
   const [sleepTimerRemainingSeconds, setSleepTimerRemainingSeconds] = useState<number | null>(null);
   const [showSleepMenu, setShowSleepMenu] = useState(false);
 
-  // Collapsible Tracks Sidebar state
-  const [isTracksSidebarOpen, setIsTracksSidebarOpen] = useState<boolean>(true);
+  // Collapsible Tracks Sidebar state (closed by default for podcasts to maximize player view)
+  const [isTracksSidebarOpen, setIsTracksSidebarOpen] = useState<boolean>(audioShow.showType !== 'podcast');
+
+  // Episodes Modal & View Mode States (Blocos vs Lista)
+  const [isEpisodesModalOpen, setIsEpisodesModalOpen] = useState<boolean>(false);
+  const [episodesViewMode, setEpisodesViewMode] = useState<'grid' | 'list'>(() => {
+    try {
+      const saved = localStorage.getItem('drivegram_podcast_episodes_view_mode');
+      return saved === 'list' ? 'list' : 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
+  const [selectedEpisodeForDetail, setSelectedEpisodeForDetail] = useState<AudioTrack | null>(null);
+  const [episodeSearchQuery, setEpisodeSearchQuery] = useState<string>('');
+
+  const handleToggleViewMode = (mode: 'grid' | 'list') => {
+    setEpisodesViewMode(mode);
+    try {
+      localStorage.setItem('drivegram_podcast_episodes_view_mode', mode);
+    } catch {}
+  };
 
   // Active Tab for details (Timestamps vs Notes)
   const [activeTab, setActiveTab] = useState<'timestamps' | 'notes'>('timestamps');
@@ -168,6 +280,40 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
   const tracks = audioShow.tracks || [];
   const activeTrack: AudioTrack | undefined = tracks[currentTrackIndex];
+
+  // Filtro de episódios no modal
+  const filteredEpisodes = useMemo(() => {
+    if (!episodeSearchQuery.trim()) return tracks;
+    const q = episodeSearchQuery.toLowerCase().trim();
+    return tracks.filter(t => 
+      (t.title && t.title.toLowerCase().includes(q)) ||
+      (t.artist && t.artist.toLowerCase().includes(q)) ||
+      (t.description && t.description.toLowerCase().includes(q)) ||
+      (t.notes && t.notes.toLowerCase().includes(q))
+    );
+  }, [tracks, episodeSearchQuery]);
+
+  // Tocar episódio e fechar o modal imediatamente
+  const handlePlayEpisodeAndCloseModal = (index: number) => {
+    playTrackByIndex(index);
+    setIsEpisodesModalOpen(false);
+  };
+
+  // Fechar modal ao pressionar ESC
+  useEffect(() => {
+    if (!isEpisodesModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedEpisodeForDetail) {
+          setSelectedEpisodeForDetail(null);
+        } else {
+          setIsEpisodesModalOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEpisodesModalOpen, selectedEpisodeForDetail]);
 
   // Rolagem suave automática para a faixa ativa quando mudar
   useEffect(() => {
@@ -790,6 +936,23 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
 
         {/* Right Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Episódios / Faixas Modal Trigger Button */}
+          <button
+            onClick={() => {
+              setSelectedEpisodeForDetail(null);
+              setEpisodeSearchQuery('');
+              setIsEpisodesModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold transition-all active:scale-95 shadow-xs shrink-0 cursor-pointer"
+            title={audioShow.showType === 'podcast' ? 'Ver catálogo de episódios em modal' : 'Ver lista de faixas em modal'}
+          >
+            <ListOrdered className="w-3.5 h-3.5 text-emerald-500" />
+            <span>{audioShow.showType === 'podcast' ? 'Episódios' : 'Faixas'}</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 text-[10px] font-mono font-bold">
+              {tracks.length}
+            </span>
+          </button>
+
           {/* Backup Telegram Quick Action Button */}
           {hasUnsavedTracks ? (
             <button
@@ -871,14 +1034,14 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
         {/* Main Content / Studio Player */}
         <div className="flex-1 flex flex-col lg:overflow-y-auto p-4 sm:p-6 space-y-6 shrink-0 lg:shrink">
           <div className={`w-full transition-all duration-300 ${
-            isTracksSidebarOpen ? 'max-w-3xl mx-auto space-y-6' : 'max-w-5xl mx-auto space-y-6'
+            isTracksSidebarOpen && audioShow.showType !== 'podcast' ? 'max-w-3xl mx-auto space-y-6' : 'max-w-5xl mx-auto space-y-6'
           }`}>
             {/* Main Audio Studio Card */}
             <div className={`p-6 sm:p-8 bg-gradient-to-b from-emerald-950/50 via-teal-950/40 to-slate-950 rounded-3xl border border-emerald-800/40 shadow-2xl text-white transition-all ${
-              !isTracksSidebarOpen ? 'grid grid-cols-1 lg:grid-cols-12 gap-8 items-center' : 'flex flex-col items-center justify-center'
+              !isTracksSidebarOpen || audioShow.showType === 'podcast' ? 'grid grid-cols-1 lg:grid-cols-12 gap-8 items-center' : 'flex flex-col items-center justify-center'
             }`}>
               {/* Left / Cover Section */}
-              <div className={`flex flex-col items-center justify-center ${!isTracksSidebarOpen ? 'lg:col-span-5' : ''}`}>
+              <div className={`flex flex-col items-center justify-center ${!isTracksSidebarOpen || audioShow.showType === 'podcast' ? 'lg:col-span-5' : ''}`}>
                 {/* Vinyl Record Mode View vs Standard Cover Art */}
                 {isStudioVinylMode ? (
                   <div 
@@ -886,7 +1049,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                     className="relative mb-4 group cursor-pointer transition-all duration-700 animate-in fade-in"
                   >
                     <div className={`relative rounded-full bg-gray-950 border-4 border-emerald-500/60 p-2 flex items-center justify-center shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_30px_rgba(16,185,129,0.3)] transition-all duration-700 ${
-                      !isTracksSidebarOpen ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-52 h-52'
+                      !isTracksSidebarOpen || audioShow.showType === 'podcast' ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-52 h-52'
                     }`}>
                       {/* Ambient Glow */}
                       {isPlaying && (
@@ -933,7 +1096,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                     title="Clique para trocar a capa"
                   >
                     <div className={`rounded-3xl overflow-hidden shadow-2xl border-2 border-emerald-500/40 transition-all duration-700 ${
-                      !isTracksSidebarOpen ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-52 h-52'
+                      !isTracksSidebarOpen || audioShow.showType === 'podcast' ? 'w-56 h-56 sm:w-64 sm:h-64' : 'w-52 h-52'
                     } ${isPlaying ? 'ring-8 ring-emerald-500/20 scale-105 shadow-emerald-500/20 shadow-2xl' : 'grayscale-[15%]'}`}>
                       <img
                         src={activeTrack?.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
@@ -1072,7 +1235,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               </div>
 
               {/* Right / Controls & Scrubber Section */}
-              <div className={`flex flex-col items-center w-full ${!isTracksSidebarOpen ? 'lg:col-span-7 space-y-5' : 'space-y-4 max-w-md mt-2'}`}>
+              <div className={`flex flex-col items-center w-full ${!isTracksSidebarOpen || audioShow.showType === 'podcast' ? 'lg:col-span-7 space-y-5' : 'space-y-4 max-w-md mt-2'}`}>
                 {/* Scrub bar */}
                 <div className="w-full space-y-1.5">
                   <div className="flex justify-between text-xs text-emerald-300 font-mono">
@@ -1342,42 +1505,19 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
           </div>
         </div>
 
-        {/* Right Sidebar: Tracks Accordion (Collapsible) */}
-        {isTracksSidebarOpen ? (
-          <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-200">
-            <div className="p-3.5 px-4 border-b border-gray-200 dark:border-drive-darkBorder flex items-center justify-between bg-gray-50/70 dark:bg-drive-darkBg/50">
-              <div className="flex items-center gap-2">
-                <ListOrdered className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800 dark:text-gray-200">
-                  Faixas ({tracks.length}) • {progressPercent}%
-                </h3>
-              </div>
+        {/* Right Sidebar: Tracks Accordion (Collapsible - Only for non-podcasts) */}
+        {audioShow.showType !== 'podcast' && (
+          isTracksSidebarOpen ? (
+            <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-drive-darkBorder bg-white dark:bg-drive-darkSurface flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-200">
+              <div className="p-3.5 px-4 border-b border-gray-200 dark:border-drive-darkBorder flex items-center justify-between bg-gray-50/70 dark:bg-drive-darkBg/50">
+                <div className="flex items-center gap-2">
+                  <ListOrdered className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800 dark:text-gray-200">
+                    Faixas ({tracks.length}) • {progressPercent}%
+                  </h3>
+                </div>
               
               <div className="flex items-center gap-1">
-                {audioShow.showType === 'podcast' && onRefreshSinglePodcast && (
-                  <button
-                    onClick={async () => {
-                      if (isRefreshingPodcast) return;
-                      setIsRefreshingPodcast(true);
-                      try {
-                        const res = await onRefreshSinglePodcast(audioShow.id);
-                        if (res.success && res.newEpisodesCount > 0) {
-                          setBackupSuccessMessage(`🎉 ${res.newEpisodesCount} novos episódios encontrados!`);
-                          setTimeout(() => setBackupSuccessMessage(null), 5000);
-                        }
-                      } finally {
-                        setIsRefreshingPodcast(false);
-                      }
-                    }}
-                    disabled={isRefreshingPodcast}
-                    className="p-1 px-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center gap-1 transition-colors disabled:opacity-50"
-                    title="Atualizar episódios do podcast agora"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${isRefreshingPodcast ? 'animate-spin text-amber-400' : ''}`} />
-                    <span>{isRefreshingPodcast ? 'Atualizando...' : 'Atualizar Feed'}</span>
-                  </button>
-                )}
-
                 {hasUnsavedTracks && (
                   <button
                     onClick={handleBackupAllToTelegram}
@@ -1526,7 +1666,7 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
               Faixas ({tracks.length})
             </span>
           </button>
-        )}
+        ))}
       </div>
 
       {/* Modal: Change Cover */}
@@ -1606,6 +1746,721 @@ export const AudioStudioView: React.FC<AudioStudioViewProps> = ({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL CENTRAL DE EPISÓDIOS (CARDS / LISTA & DETALHES COMPLETOS)     */}
+      {/* ==================================================================== */}
+      {isEpisodesModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-6 animate-in fade-in duration-200"
+          onClick={() => setIsEpisodesModalOpen(false)}
+        >
+          <div 
+            className="relative w-full max-w-5xl h-[90vh] max-h-[820px] flex flex-col bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-gray-800 dark:text-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Bar do Modal */}
+            <div className="p-4 sm:px-6 border-b border-gray-200/80 dark:border-drive-darkBorder flex items-center justify-between gap-3 bg-gray-50/80 dark:bg-drive-darkBg/60 shrink-0">
+              {selectedEpisodeForDetail ? (
+                /* Header da Tela de Detalhes do Episódio */
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedEpisodeForDetail(null)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-200/70 hover:bg-gray-200 dark:bg-drive-darkSurface dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 text-xs font-bold transition-all active:scale-95 shadow-xs"
+                      title="Voltar para a lista de episódios"
+                    >
+                      <ArrowLeft className="w-4 h-4 text-emerald-500" />
+                      <span>Voltar para Lista</span>
+                    </button>
+
+                    <div className="hidden sm:flex items-center gap-1.5 ml-2 text-xs text-gray-500 dark:text-gray-400">
+                      <Radio className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="font-semibold truncate max-w-xs">{audioShow.title}</span>
+                    </div>
+                  </div>
+
+                  {/* Paginação / Próximo e Anterior Episódio */}
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const selIdx = tracks.findIndex(t => t.id === selectedEpisodeForDetail.id);
+                      return (
+                        <div className="flex items-center gap-1 bg-gray-100 dark:bg-drive-darkSurface p-1 rounded-xl border border-gray-200 dark:border-drive-darkBorder text-xs">
+                          <button
+                            disabled={selIdx <= 0}
+                            onClick={() => {
+                              if (selIdx > 0) setSelectedEpisodeForDetail(tracks[selIdx - 1]);
+                            }}
+                            className="p-1 rounded-lg text-gray-600 dark:text-gray-300 hover:text-emerald-500 hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                            title="Episódio Anterior"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <span className="px-1.5 text-[11px] font-mono font-bold text-gray-500">
+                            {selIdx + 1} / {tracks.length}
+                          </span>
+                          <button
+                            disabled={selIdx < 0 || selIdx >= tracks.length - 1}
+                            onClick={() => {
+                              if (selIdx >= 0 && selIdx < tracks.length - 1) setSelectedEpisodeForDetail(tracks[selIdx + 1]);
+                            }}
+                            className="p-1 rounded-lg text-gray-600 dark:text-gray-300 hover:text-emerald-500 hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                            title="Próximo Episódio"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })()}
+
+                    <button
+                      onClick={() => setIsEpisodesModalOpen(false)}
+                      className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ml-1"
+                      title="Fechar Janela"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Header da Listagem (Busca, Modo de Visualização e Ações) */
+                <>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="p-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0">
+                      <Radio className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white truncate">
+                          {audioShow.title}
+                        </h2>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-mono font-bold shrink-0">
+                          {tracks.length} {audioShow.showType === 'podcast' ? 'episódios' : 'faixas'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate hidden sm:block">
+                        Selecione um episódio para ouvir ou visualizar todas as informações e descrição
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Barra de Busca rápida */}
+                  <div className="flex-1 max-w-xs relative hidden md:block">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={episodeSearchQuery}
+                      onChange={(e) => setEpisodeSearchQuery(e.target.value)}
+                      placeholder="Pesquisar episódio..."
+                      className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder text-xs text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    {episodeSearchQuery && (
+                      <button
+                        onClick={() => setEpisodeSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Switcher de Visualização: Blocos (Grid) vs Lista & Ações */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Botões Blocos vs Lista */}
+                    <div className="flex items-center p-1 rounded-xl bg-gray-100 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder">
+                      <button
+                        onClick={() => handleToggleViewMode('grid')}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                          episodesViewMode === 'grid'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                        }`}
+                        title="Visualizar em Blocos / Cards"
+                      >
+                        <LayoutGrid className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline text-[11px]">Blocos</span>
+                      </button>
+                      <button
+                        onClick={() => handleToggleViewMode('list')}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                          episodesViewMode === 'list'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                        }`}
+                        title="Visualizar em Lista"
+                      >
+                        <List className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline text-[11px]">Lista</span>
+                      </button>
+                    </div>
+
+                    {audioShow.showType === 'podcast' && onRefreshSinglePodcast && (
+                      <button
+                        onClick={async () => {
+                          if (isRefreshingPodcast) return;
+                          setIsRefreshingPodcast(true);
+                          try {
+                            const res = await onRefreshSinglePodcast(audioShow.id);
+                            if (res.success && res.newEpisodesCount > 0) {
+                              setBackupSuccessMessage(`🎉 ${res.newEpisodesCount} novos episódios encontrados!`);
+                              setTimeout(() => setBackupSuccessMessage(null), 5000);
+                            }
+                          } finally {
+                            setIsRefreshingPodcast(false);
+                          }
+                        }}
+                        disabled={isRefreshingPodcast}
+                        className="hidden lg:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold border border-emerald-500/20 transition-colors disabled:opacity-50"
+                        title="Atualizar feed do podcast"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingPodcast ? 'animate-spin' : ''}`} />
+                        <span>{isRefreshingPodcast ? 'Atualizando...' : 'Atualizar Feed'}</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setIsEpisodesModalOpen(false)}
+                      className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ml-1"
+                      title="Fechar"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Sub-barra de busca mobile quando em tela pequena */}
+            {!selectedEpisodeForDetail && (
+              <div className="p-3 border-b border-gray-100 dark:border-drive-darkBorder md:hidden bg-gray-50/50 dark:bg-drive-darkBg/30">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={episodeSearchQuery}
+                    onChange={(e) => setEpisodeSearchQuery(e.target.value)}
+                    placeholder="Pesquisar episódio por título ou assunto..."
+                    className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder text-xs text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  {episodeSearchQuery && (
+                    <button
+                      onClick={() => setEpisodeSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {selectedEpisodeForDetail ? (
+              /* ========================================================== */
+              /* TELA DE DETALHES COMPLETOS DO EPISÓDIO                     */
+              /* ========================================================== */
+              (() => {
+                const epIndex = tracks.findIndex(t => t.id === selectedEpisodeForDetail.id);
+                const isCurrentActive = currentTrackIndex === epIndex;
+                const parsedDate = parseEpisodePublicationDate(selectedEpisodeForDetail, audioShow, epIndex >= 0 ? epIndex : 0);
+                const fullDateStr = formatEpisodeFullDate(parsedDate);
+                const isBackingUpThis = backingUpTrackIds.includes(selectedEpisodeForDetail.id);
+                
+                const matchedFile = selectedEpisodeForDetail.fileId
+                  ? allFiles.find(f => f.id === selectedEpisodeForDetail.fileId && !f.isTrash)
+                  : (audioShow.folderId
+                      ? allFiles.find(f => !f.isTrash && f.parentId === audioShow.folderId && f.name.toLowerCase().includes((selectedEpisodeForDetail.title || '').toLowerCase().trim()))
+                      : null);
+                const isSavedInTelegram = Boolean(matchedFile || selectedEpisodeForDetail.fileId);
+
+                return (
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-7 space-y-6">
+                    {/* Hero Card do Episódio */}
+                    <div className="p-5 sm:p-7 rounded-3xl bg-gradient-to-br from-emerald-950/40 via-teal-950/20 to-slate-900 border border-emerald-800/30 text-white shadow-xl flex flex-col md:flex-row gap-6 items-start">
+                      {/* Capa */}
+                      <div className="relative group shrink-0 mx-auto md:mx-0">
+                        <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-500/40 bg-black/40">
+                          <img
+                            src={selectedEpisodeForDetail.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                            alt={selectedEpisodeForDetail.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                        </div>
+                        {isCurrentActive && isPlaying && (
+                          <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-emerald-500 text-black text-[10px] font-bold shadow-md animate-pulse">
+                            Tocando
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Informações Principais & Ações */}
+                      <div className="flex-1 flex flex-col justify-between space-y-4 w-full">
+                        <div>
+                          {/* Badges de Metadados */}
+                          <div className="flex items-center gap-2 flex-wrap mb-2">
+                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/30">
+                              Episódio #{epIndex >= 0 ? epIndex + 1 : 1}
+                            </span>
+                            {fullDateStr && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-semibold border border-amber-500/30">
+                                <Calendar className="w-3 h-3 text-amber-400" />
+                                <span>{fullDateStr}</span>
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/10 text-gray-200 text-[10px] font-mono border border-white/10">
+                              <Clock className="w-3 h-3 text-emerald-400" />
+                              <span>{selectedEpisodeForDetail.duration || '45:00'}</span>
+                            </span>
+                            {isSavedInTelegram ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[10px] font-bold border border-sky-400/40">
+                                <ShieldCheck className="w-3 h-3 text-sky-400" />
+                                <span>Salvo no Telegram</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 text-[10px] font-semibold border border-white/10">
+                                <Radio className="w-3 h-3 text-emerald-400" />
+                                <span>Web RSS</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Título */}
+                          <h1 className="text-lg sm:text-2xl font-black text-white leading-tight mb-1">
+                            {selectedEpisodeForDetail.title}
+                          </h1>
+
+                          {/* Artista / Host */}
+                          {(selectedEpisodeForDetail.artist || audioShow.artist || audioShow.host) && (
+                            <p className="text-xs sm:text-sm text-gray-300 font-medium flex items-center gap-1.5">
+                              <Mic className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>{selectedEpisodeForDetail.artist || audioShow.artist || audioShow.host}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Barra de Ações: Tocar (Fecha Modal e mostra tela principal) */}
+                        <div className="flex items-center gap-2.5 flex-wrap pt-2 border-t border-white/10">
+                          <button
+                            onClick={() => {
+                              if (epIndex >= 0) {
+                                handlePlayEpisodeAndCloseModal(epIndex);
+                              }
+                            }}
+                            className="flex items-center gap-2 px-5 sm:px-6 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-gray-950 font-black text-xs sm:text-sm shadow-lg shadow-emerald-500/30 active:scale-95 transition-all cursor-pointer"
+                            title="Tocar este episódio e voltar para a tela principal"
+                          >
+                            <Play className="w-4 h-4 fill-current" />
+                            <span>{isCurrentActive && isPlaying ? 'Ver no Player Principal' : 'Ouvir Agora'}</span>
+                          </button>
+
+                          {/* Backup para o Telegram se não estiver salvo */}
+                          {!isSavedInTelegram && selectedEpisodeForDetail.audioUrl && (
+                            <button
+                              onClick={() => handleBackupTrackToTelegram(selectedEpisodeForDetail)}
+                              disabled={isBackingUpThis}
+                              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-md shadow-sky-600/30 active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
+                              title="Fazer backup deste episódio para o Telegram"
+                            >
+                              {isBackingUpThis ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Salvando no Telegram...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <CloudUpload className="w-3.5 h-3.5" />
+                                  <span>Salvar no Telegram</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+
+                          {/* Download MP3 se disponível */}
+                          {matchedFile && (
+                            <a
+                              href={`/api/stream/${matchedFile.id}?download=true`}
+                              download={`${selectedEpisodeForDetail.title}.mp3`}
+                              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-sky-950/60 hover:bg-sky-900/80 text-sky-200 border border-sky-500/40 text-xs font-bold transition-all"
+                              title="Baixar arquivo MP3 para o computador"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Baixar MP3</span>
+                            </a>
+                          )}
+
+                          {/* Concluir / Marcar como Ouvido */}
+                          <button
+                            onClick={() => onToggleTrackCompletion(selectedEpisodeForDetail.id)}
+                            className={`flex items-center gap-1 px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all border ${
+                              selectedEpisodeForDetail.isCompleted
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                : 'bg-white/5 hover:bg-white/10 text-gray-300 border-white/10'
+                            }`}
+                            title={selectedEpisodeForDetail.isCompleted ? 'Marcar como não ouvido' : 'Marcar como ouvido'}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{selectedEpisodeForDetail.isCompleted ? 'Concluído' : 'Marcar como Lido'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Descrição Detalhada do Episódio */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-emerald-500" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                          Sobre este Episódio
+                        </h3>
+                      </div>
+                      
+                      <div className="p-5 rounded-3xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder">
+                        {selectedEpisodeForDetail.description || selectedEpisodeForDetail.notes ? (
+                          <div className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap select-text space-y-2">
+                            {formatEpisodeDescription(selectedEpisodeForDetail.description || selectedEpisodeForDetail.notes)}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 text-gray-400 text-xs">
+                            <Info className="w-6 h-6 mx-auto mb-2 opacity-50" />
+                            <p>Nenhuma descrição detalhada fornecida para este episódio.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Marcadores / Timestamps deste episódio (se existirem) */}
+                    {selectedEpisodeForDetail.timestamps && selectedEpisodeForDetail.timestamps.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                          <BookmarkPlus className="w-4 h-4 text-amber-500" />
+                          <span>Marcadores do Episódio ({selectedEpisodeForDetail.timestamps.length})</span>
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {selectedEpisodeForDetail.timestamps.map(ts => (
+                            <button
+                              key={ts.id}
+                              onClick={() => {
+                                if (epIndex >= 0) {
+                                  playTrackByIndex(epIndex);
+                                  handleSeekTimestamp(ts.seconds);
+                                  setIsEpisodesModalOpen(false);
+                                }
+                              }}
+                              className="flex items-center justify-between p-3 rounded-2xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40 text-left transition-all group"
+                            >
+                              <div className="flex items-center gap-2.5 truncate">
+                                <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 font-mono font-bold text-xs shrink-0">
+                                  ▶ {ts.timeFormatted}
+                                </span>
+                                <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                                  {ts.label}
+                                </span>
+                              </div>
+                              <Play className="w-3.5 h-3.5 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
+            ) : (
+              /* ========================================================== */
+              /* LISTAGEM DE EPISÓDIOS (MODO BLOCOS OU MODO LISTA)          */
+              /* ========================================================== */
+              <div className="flex-1 overflow-y-auto">
+                {filteredEpisodes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center p-12 text-center text-gray-400">
+                    <Search className="w-8 h-8 mb-2 opacity-40 text-emerald-500" />
+                    <p className="text-sm font-bold text-gray-600 dark:text-gray-300">Nenhum episódio encontrado</p>
+                    <p className="text-xs mt-1">Tente pesquisar com outros termos ou limpe a busca.</p>
+                    {episodeSearchQuery && (
+                      <button
+                        onClick={() => setEpisodeSearchQuery('')}
+                        className="mt-3 px-3 py-1 rounded-xl bg-emerald-600 text-white text-xs font-bold"
+                      >
+                        Limpar Busca
+                      </button>
+                    )}
+                  </div>
+                ) : episodesViewMode === 'grid' ? (
+                  /* ---------------- VISUALIZAÇÃO EM BLOCOS (GRID) ---------------- */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4.5 p-4 sm:p-6">
+                    {filteredEpisodes.map((track) => {
+                      const realIndex = tracks.findIndex(t => t.id === track.id);
+                      const isCurrent = currentTrackIndex === realIndex;
+                      const parsedDate = parseEpisodePublicationDate(track, audioShow, realIndex >= 0 ? realIndex : 0);
+                      const badgeDateStr = formatEpisodeBadgeDate(parsedDate);
+                      const isBackingUpThis = backingUpTrackIds.includes(track.id);
+                      
+                      const matchedTrackFile = track.fileId
+                        ? allFiles.find(f => f.id === track.fileId && !f.isTrash)
+                        : (audioShow.folderId
+                            ? allFiles.find(f => !f.isTrash && f.parentId === audioShow.folderId && f.name.toLowerCase().includes((track.title || '').toLowerCase().trim()))
+                            : null);
+                      const isTrackSaved = Boolean(matchedTrackFile || track.fileId);
+
+                      return (
+                        <div
+                          key={track.id}
+                          onClick={() => setSelectedEpisodeForDetail(track)}
+                          className={`group relative flex flex-col justify-between rounded-3xl border transition-all duration-300 overflow-hidden cursor-pointer ${
+                            isCurrent
+                              ? 'bg-emerald-500/10 border-emerald-500/60 shadow-lg shadow-emerald-500/10 dark:bg-emerald-950/20'
+                              : 'bg-white dark:bg-drive-darkBg border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40 hover:shadow-xl dark:hover:border-emerald-500/30'
+                          }`}
+                        >
+                          {/* Topo do Card com Imagem e Badges */}
+                          <div className="relative aspect-video w-full overflow-hidden bg-gray-900">
+                            <img
+                              src={track.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                              alt={track.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+                            {/* Badge de Data no Topo Esquerdo */}
+                            {badgeDateStr && (
+                              <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md text-amber-300 text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
+                                <Calendar className="w-2.5 h-2.5" />
+                                <span>{badgeDateStr}</span>
+                              </div>
+                            )}
+
+                            {/* Badge de Status Salvo Telegram no Topo Direito */}
+                            <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                              {isTrackSaved ? (
+                                <span className="p-1 rounded-lg bg-sky-500/90 text-white shadow-xs" title="Salvo no Telegram">
+                                  <ShieldCheck className="w-3 h-3" />
+                                </span>
+                              ) : null}
+                              {isCurrent && (
+                                <span className="px-2 py-0.5 rounded-lg bg-emerald-500 text-black text-[10px] font-bold shadow-md animate-pulse">
+                                  {isPlaying ? 'Tocando' : 'Pausado'}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Duração no Canto Inferior Direito da Imagem */}
+                            <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-gray-200 text-[10px] font-mono font-semibold">
+                              {track.duration || '45:00'}
+                            </div>
+
+                            {/* Hover Quick Play Overlay Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (realIndex >= 0) {
+                                  handlePlayEpisodeAndCloseModal(realIndex);
+                                }
+                              }}
+                              className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                              title="Tocar este episódio agora"
+                            >
+                              <Play className="w-5 h-5 fill-current ml-0.5" />
+                            </button>
+                          </div>
+
+                          {/* Conteúdo Central do Card */}
+                          <div className="p-4 flex-1 flex flex-col justify-between">
+                            <div>
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mb-1">
+                                <span>Episódio #{realIndex >= 0 ? realIndex + 1 : 1}</span>
+                                {(track.artist || audioShow.artist) && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="truncate max-w-[140px] text-gray-400">{track.artist || audioShow.artist}</span>
+                                  </>
+                                )}
+                              </div>
+                              <h3 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-2 leading-snug">
+                                {track.title}
+                              </h3>
+                              {track.description && (
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 leading-normal">
+                                  {formatEpisodeDescription(track.description)}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Rodapé do Card com Ações Rápidas */}
+                            <div className="flex items-center justify-between pt-3 mt-3 border-t border-gray-100 dark:border-drive-darkBorder/60">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (realIndex >= 0) {
+                                    handlePlayEpisodeAndCloseModal(realIndex);
+                                  }
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
+                                title="Tocar episódio e voltar à tela principal"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                <span>Tocar</span>
+                              </button>
+
+                              <div className="flex items-center gap-1">
+                                {!isTrackSaved && track.audioUrl && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleBackupTrackToTelegram(track);
+                                    }}
+                                    disabled={isBackingUpThis}
+                                    className="p-1.5 rounded-xl text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-colors"
+                                    title="Salvar no Telegram"
+                                  >
+                                    {isBackingUpThis ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <CloudUpload className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedEpisodeForDetail(track);
+                                  }}
+                                  className="p-1.5 rounded-xl text-gray-400 hover:text-emerald-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                  title="Ver informações completas do episódio"
+                                >
+                                  <Info className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* ---------------- VISUALIZAÇÃO EM LISTA ---------------- */
+                  <div className="p-4 sm:p-6 space-y-2">
+                    {filteredEpisodes.map((track) => {
+                      const realIndex = tracks.findIndex(t => t.id === track.id);
+                      const isCurrent = currentTrackIndex === realIndex;
+                      const parsedDate = parseEpisodePublicationDate(track, audioShow, realIndex >= 0 ? realIndex : 0);
+                      const badgeDateStr = formatEpisodeBadgeDate(parsedDate);
+                      const isBackingUpThis = backingUpTrackIds.includes(track.id);
+                      
+                      const matchedTrackFile = track.fileId
+                        ? allFiles.find(f => f.id === track.fileId && !f.isTrash)
+                        : (audioShow.folderId
+                            ? allFiles.find(f => !f.isTrash && f.parentId === audioShow.folderId && f.name.toLowerCase().includes((track.title || '').toLowerCase().trim()))
+                            : null);
+                      const isTrackSaved = Boolean(matchedTrackFile || track.fileId);
+
+                      return (
+                        <div
+                          key={track.id}
+                          onClick={() => setSelectedEpisodeForDetail(track)}
+                          className={`group flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
+                            isCurrent
+                              ? 'bg-emerald-500/10 border-emerald-500/50 dark:bg-emerald-950/20 shadow-xs'
+                              : 'bg-white dark:bg-drive-darkBg border-gray-200 dark:border-drive-darkBorder hover:border-emerald-500/40 hover:bg-gray-50 dark:hover:bg-gray-800/40'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+                            {/* Número / Posição */}
+                            <span className="w-6 text-center text-xs font-mono font-bold text-gray-400 shrink-0">
+                              #{realIndex >= 0 ? realIndex + 1 : 1}
+                            </span>
+
+                            {/* Mini Capa */}
+                            <div className="w-11 h-11 rounded-xl overflow-hidden bg-gray-900 shrink-0 border border-gray-200 dark:border-drive-darkBorder">
+                              <img
+                                src={track.coverImage || audioShow.coverImage || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=60'}
+                                alt={track.title}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+
+                            {/* Textos */}
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors truncate">
+                                {track.title}
+                              </h4>
+                              <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                {badgeDateStr && (
+                                  <span className="text-amber-600 dark:text-amber-400 font-semibold">{badgeDateStr}</span>
+                                )}
+                                <span>•</span>
+                                <span className="font-mono">{track.duration || '45:00'}</span>
+                                {track.description && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="truncate max-w-xs">{formatEpisodeDescription(track.description)}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Ações da Lista */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            {isTrackSaved ? (
+                              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[10px] font-bold border border-sky-500/20">
+                                <ShieldCheck className="w-3 h-3" />
+                                <span>Telegram</span>
+                              </span>
+                            ) : null}
+
+                            {!isTrackSaved && track.audioUrl && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleBackupTrackToTelegram(track);
+                                }}
+                                disabled={isBackingUpThis}
+                                className="p-1.5 rounded-xl text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-colors"
+                                title="Salvar no Telegram"
+                              >
+                                {isBackingUpThis ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <CloudUpload className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
+
+                            {/* Botão Play Rápido */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (realIndex >= 0) {
+                                  handlePlayEpisodeAndCloseModal(realIndex);
+                                }
+                              }}
+                              className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
+                              title="Tocar episódio e ir para tela principal"
+                            >
+                              <Play className="w-3 h-3 fill-current" />
+                              <span className="hidden sm:inline">Tocar</span>
+                            </button>
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedEpisodeForDetail(track);
+                              }}
+                              className="p-1.5 rounded-xl text-gray-400 hover:text-emerald-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                              title="Ver detalhes"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
