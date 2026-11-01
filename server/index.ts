@@ -139,7 +139,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.24.0',
+    version: '1.24.1',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -3274,7 +3274,8 @@ app.get('/api/podcasts/episodes', async (req, res) => {
           order: index + 1,
           trackNumber: index + 1,
           releaseDate: ep.releaseDate,
-          description: ep.description || ep.shortDescription || ''
+          description: ep.description || ep.shortDescription || '',
+          coverImage: ep.artworkUrl600 || ep.artworkUrl160 || ep.artworkUrl60 || undefined
         };
       });
 
@@ -3388,7 +3389,8 @@ function parsePodcastRssXml(xmlText: string) {
       order: index + 1,
       trackNumber: index + 1,
       releaseDate: getTag(itemXml, 'pubDate'),
-      description: getTag(itemXml, 'description') || getTag(itemXml, 'itunes:summary') || ''
+      description: getTag(itemXml, 'description') || getTag(itemXml, 'itunes:summary') || '',
+      coverImage: getAttr(itemXml, 'itunes:image', 'href') || getAttr(itemXml, 'media:thumbnail', 'url') || undefined
     });
   });
 
@@ -3853,7 +3855,8 @@ async function refreshSinglePodcastInternal(show: any): Promise<{ show: any; new
         order: 0,
         trackNumber: 0,
         releaseDate: ep.releaseDate,
-        description: ep.description
+        description: ep.description,
+        coverImage: ep.coverImage || undefined
       });
       existingTrackKeys.add(key);
       newEpisodesCount++;
@@ -3864,6 +3867,7 @@ async function refreshSinglePodcastInternal(show: any): Promise<{ show: any; new
         if (!existing.releaseDate && ep.releaseDate) existing.releaseDate = ep.releaseDate;
         if (!existing.duration && ep.duration) existing.duration = ep.duration;
         if (!existing.durationSeconds && ep.durationSeconds) existing.durationSeconds = ep.durationSeconds;
+        if (!existing.coverImage && ep.coverImage) existing.coverImage = ep.coverImage;
       }
     }
   }

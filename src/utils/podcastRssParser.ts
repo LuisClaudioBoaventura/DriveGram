@@ -18,6 +18,7 @@ export interface ParsedPodcastRss {
     trackNumber: number;
     releaseDate?: string;
     description?: string;
+    coverImage?: string;
   }>;
 }
 
@@ -122,7 +123,8 @@ export function parsePodcastRssXmlString(xmlText: string): ParsedPodcastRss {
       order: index + 1,
       trackNumber: index + 1,
       releaseDate: getTag(itemXml, 'pubDate'),
-      description: getTag(itemXml, 'description') || getTag(itemXml, 'itunes:summary') || ''
+      description: getTag(itemXml, 'description') || getTag(itemXml, 'itunes:summary') || '',
+      coverImage: getAttr(itemXml, 'itunes:image', 'href') || getAttr(itemXml, 'media:thumbnail', 'url') || undefined
     });
   });
 
