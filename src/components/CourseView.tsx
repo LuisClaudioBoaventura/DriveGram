@@ -43,11 +43,13 @@ import {
   Shuffle,
   LayoutGrid,
   List,
-  Loader2
+  Loader2,
+  CloudUpload
 } from 'lucide-react';
 import { Course, Lesson, CourseModule, DriveItem, VideoTimestamp, VideoSubtitle } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { GenerateMarkersModal } from './GenerateMarkersModal.js';
+import { isYouTubeVideoUrl, saveYouTubeVideoToTelegram, YouTubeSaveProgress } from '../utils/youtubeTelegramSave.js';
 import { CastModal } from './CastModal.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
 
@@ -220,12 +222,60 @@ export const CourseView: React.FC<CourseViewProps> = ({
 
   // Video Transmission & Cast state
   const [isCastModalOpen, setIsCastModalOpen] = useState(false);
+  const [savingLessonMap, setSavingLessonMap] = useState<Record<string, YouTubeSaveProgress>>({});
+  const [ytSaveError, setYtSaveError] = useState<string | null>(null);
 
   const activeMediaFile = activeLesson?.fileId
     ? allFiles.find(f => f.id === activeLesson.fileId)
     : allFiles.find(f => f.name === activeLesson?.title || f.name.includes(activeLesson?.title || ''));
 
   const streamFileId = activeMediaFile?.id || activeLesson?.fileId;
+
+  const handleSaveLessonToTelegram = async (lesson: Lesson) => {
+    const targetUrl = lesson.videoUrl || lesson.embedUrl;
+    if (!targetUrl || savingLessonMap[lesson.id]) return;
+
+    setYtSaveError(null);
+    setSavingLessonMap(prev => ({
+      ...prev,
+      [lesson.id]: { progress: 2, stageLabel: 'Iniciando...' }
+    }));
+
+    try {
+      const result = await saveYouTubeVideoToTelegram(
+        {
+          videoUrl: targetUrl,
+          title: lesson.title,
+          targetType: 'course_lesson',
+          parentId: course.id,
+          lessonId: lesson.id,
+          folderId: course.folderId
+        },
+        (info) => {
+          setSavingLessonMap(prev => ({ ...prev, [lesson.id]: info }));
+        }
+      );
+
+      if (result.course && onUpdateCourse) {
+        await onUpdateCourse(result.course);
+        const updatedLesson = result.course.modules
+          ?.flatMap((m: any) => m.lessons || [])
+          .find((l: any) => l.id === lesson.id);
+        if (updatedLesson && activeLesson?.id === lesson.id) {
+          onSelectLesson(updatedLesson);
+        }
+      }
+    } catch (err: any) {
+      setYtSaveError(err?.message || 'Erro ao salvar aula no Telegram.');
+      setTimeout(() => setYtSaveError(null), 6000);
+    } finally {
+      setSavingLessonMap(prev => {
+        const next = { ...prev };
+        delete next[lesson.id];
+        return next;
+      });
+    }
+  };
 
   const handleTriggerCast = () => {
     setIsCastModalOpen(true);
@@ -1038,6 +1088,31 @@ export const CourseView: React.FC<CourseViewProps> = ({
 
             {/* Timestamps & Subtitle Action Buttons */}
             <div className="flex items-center gap-2">
+              {!activeMediaFile && !activeLesson?.fileId && activeLesson && isYouTubeVideoUrl(activeLesson.videoUrl || activeLesson.embedUrl) && (
+                <button
+                  onClick={() => handleSaveLessonToTelegram(activeLesson)}
+                  disabled={!!savingLessonMap[activeLesson.id]}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                    savingLessonMap[activeLesson.id]
+                      ? 'bg-sky-500/20 text-sky-700 dark:text-sky-300 border-sky-400/50 cursor-wait'
+                      : 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800/60 hover:bg-sky-100'
+                  }`}
+                  title={ytSaveError || savingLessonMap[activeLesson.id]?.stageLabel || 'Baixar do YouTube e salvar permanentemente no Telegram'}
+                >
+                  {savingLessonMap[activeLesson.id] ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>{savingLessonMap[activeLesson.id].progress}%</span>
+                    </>
+                  ) : (
+                    <>
+                      <CloudUpload className="w-3.5 h-3.5" />
+                      <span>Salvar no Telegram</span>
+                    </>
+                  )}
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   setIsAddingTimestamp(true);

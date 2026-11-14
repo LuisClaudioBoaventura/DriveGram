@@ -30,9 +30,14 @@ export interface YouTubeParsedResult {
   videos: YouTubeVideoItem[];
 }
 
+const DURATION_TEXT_REGEX = /^\d+(?::\d{1,2}){1,2}$/;
+
 export function parseDurationStringToSeconds(durationStr: string): number {
-  if (!durationStr) return 600;
-  const parts = durationStr.trim().split(':').map(p => parseInt(p, 10) || 0);
+  if (!durationStr) return 0;
+  const trimmed = durationStr.trim();
+  if (!/^\d+(?::\d{1,2}){0,2}$/.test(trimmed)) return 0;
+  const parts = trimmed.split(':').map(p => parseInt(p, 10));
+  if (parts.some(n => Number.isNaN(n))) return 0;
   if (parts.length === 3) {
     return parts[0] * 3600 + parts[1] * 60 + parts[2];
   }
@@ -42,7 +47,28 @@ export function parseDurationStringToSeconds(durationStr: string): number {
   if (parts.length === 1) {
     return parts[0];
   }
-  return 600;
+  return 0;
+}
+
+function parseDurationFromAccessibilityLabel(label?: string): { duration: string; durationSeconds: number } | null {
+  if (!label) return null;
+  const text = label.toLowerCase();
+  const hoursMatch = text.match(/(\d+)\s*(?:hora|horas|hour|hours|hr|hrs)\b/);
+  const minsMatch = text.match(/(\d+)\s*(?:minuto|minutos|minute|minutes|min|mins)\b/);
+  const secsMatch = text.match(/(\d+)\s*(?:segundo|segundos|second|seconds|sec|secs)\b/);
+
+  if (!hoursMatch && !minsMatch && !secsMatch) return null;
+
+  const hrs = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+  const mins = minsMatch ? parseInt(minsMatch[1], 10) : 0;
+  const secs = secsMatch ? parseInt(secsMatch[1], 10) : 0;
+  const totalSeconds = hrs * 3600 + mins * 60 + secs;
+
+  if (totalSeconds <= 0) return null;
+  return {
+    duration: formatSecondsToDuration(totalSeconds),
+    durationSeconds: totalSeconds
+  };
 }
 
 export function formatSecondsToDuration(seconds: number): string {
@@ -128,8 +154,8 @@ export function parseYouTubeRssXml(xml: string): { title?: string; author?: stri
       videoId,
       title,
       description,
-      duration: '10:00',
-      durationSeconds: 600,
+      duration: '00:00',
+      durationSeconds: 0,
       thumbnail,
       author,
       channelId: feedChannelIdMatch ? feedChannelIdMatch[1] : undefined,
@@ -188,6 +214,101 @@ function findObjectsWithKey(obj: any, key: string, results: any[] = []): any[] {
 }
 
 /**
+ * Extracts duration from modern lockupViewModel objects (supports both thumbnailBottomOverlayViewModel and legacy thumbnailOverlayBadgeViewModel)
+ */
+function extractDurationFromLockup(l: any): { duration: string; durationSeconds: number } {
+  const badgeViewModels = findObjectsWithKey(l, 'thumbnailBadgeViewModel');
+  for (const badge of badgeViewModels) {
+    const rawText = typeof badge?.text === 'string' ? badge.text.trim() : '';
+    if (DURATION_TEXT_REGEX.test(rawText)) {
+      const durationSeconds = parseDurationStringToSeconds(rawText);
+      if (durationSeconds > 0) {
+        return { duration: rawText, durationSeconds };
+      }
+    }
+    const labelParsed = parseDurationFromAccessibilityLabel(badge?.rendererContext?.accessibilityContext?.label);
+    if (labelParsed) return labelParsed;
+  }
+
+  const legacyOverlays = findObjectsWithKey(l, 'thumbnailOverlayBadgeViewModel');
+  for (const overlay of legacyOverlays) {
+    for (const tb of overlay?.thumbnailBadges || []) {
+      const rawText = typeof tb?.thumbnailBadgeViewModel?.text === 'string' ? tb.thumbnailBadgeViewModel.text.trim() : '';
+      if (DURATION_TEXT_REGEX.test(rawText)) {
+        const durationSeconds = parseDurationStringToSeconds(rawText);
+        if (durationSeconds > 0) {
+          return { duration: rawText, durationSeconds };
+        }
+      }
+    }
+  }
+
+  const timeRenderers = findObjectsWithKey(l, 'thumbnailOverlayTimeStatusRenderer');
+  for (const tr of timeRenderers) {
+    const rawText = (tr?.text?.simpleText || tr?.text?.runs?.[0]?.text || '').trim();
+    if (DURATION_TEXT_REGEX.test(rawText)) {
+      const durationSeconds = parseDurationStringToSeconds(rawText);
+      if (durationSeconds > 0) {
+        return { duration: rawText, durationSeconds };
+      }
+    }
+  }
+
+  const lengthSec = Number(l?.lengthSeconds);
+  if (Number.isFinite(lengthSec) && lengthSec > 0) {
+    return {
+      duration: formatSecondsToDuration(lengthSec),
+      durationSeconds: Math.floor(lengthSec)
+    };
+  }
+
+  const lockupLabel = parseDurationFromAccessibilityLabel(l?.rendererContext?.accessibilityContext?.label);
+  if (lockupLabel) return lockupLabel;
+
+  return { duration: '00:00', durationSeconds: 0 };
+}
+
+/**
+ * Extracts duration from classic YouTube video renderers (videoRenderer, gridVideoRenderer, playlistVideoRenderer, compactVideoRenderer)
+ */
+function extractDurationFromRenderer(vr: any): { duration: string; durationSeconds: number } {
+  const overlayText = vr?.thumbnailOverlays
+    ?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)
+    ?.thumbnailOverlayTimeStatusRenderer?.text;
+  const rawCandidates = [
+    overlayText?.simpleText,
+    overlayText?.runs?.[0]?.text,
+    vr?.lengthText?.simpleText,
+    vr?.lengthText?.runs?.[0]?.text
+  ];
+
+  for (const candidate of rawCandidates) {
+    const rawText = typeof candidate === 'string' ? candidate.trim() : '';
+    if (DURATION_TEXT_REGEX.test(rawText)) {
+      const durationSeconds = parseDurationStringToSeconds(rawText);
+      if (durationSeconds > 0) {
+        return { duration: rawText, durationSeconds };
+      }
+    }
+  }
+
+  const lengthSec = Number(vr?.lengthSeconds);
+  if (Number.isFinite(lengthSec) && lengthSec > 0) {
+    return {
+      duration: formatSecondsToDuration(lengthSec),
+      durationSeconds: Math.floor(lengthSec)
+    };
+  }
+
+  const labelParsed =
+    parseDurationFromAccessibilityLabel(vr?.lengthText?.accessibility?.accessibilityData?.label) ||
+    parseDurationFromAccessibilityLabel(vr?.title?.accessibility?.accessibilityData?.label);
+  if (labelParsed) return labelParsed;
+
+  return { duration: '00:00', durationSeconds: 0 };
+}
+
+/**
  * Extracts all video objects from any YouTube JSON payload (InitialData or Browse response)
  */
 function extractVideosFromPayload(
@@ -221,19 +342,15 @@ function extractVideosFromPayload(
       ? thumbSources[thumbSources.length - 1].url 
       : `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
 
-    const badges = findObjectsWithKey(l, 'thumbnailOverlayBadgeViewModel');
-    let durationStr = '10:00';
-    if (badges.length > 0) {
-      durationStr = badges[0].thumbnailBadges?.[0]?.thumbnailBadgeViewModel?.text || '10:00';
-    }
+    const { duration, durationSeconds } = extractDurationFromLockup(l);
 
     seenIds.add(vid);
     newVideos.push({
       id: `yt-${vid}`,
       videoId: vid,
       title,
-      duration: durationStr,
-      durationSeconds: parseDurationStringToSeconds(durationStr),
+      duration,
+      durationSeconds,
       thumbnail: thumb,
       author: defaultAuthor,
       url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
@@ -241,107 +358,32 @@ function extractVideosFromPayload(
     });
   }
 
-  // 2. Standard videoRenderer
-  const videoRenderers = findObjectsWithKey(payload, 'videoRenderer');
-  for (const vr of videoRenderers) {
-    const vid = vr.videoId;
-    if (!vid || seenIds.has(vid)) continue;
+  // 2-5. Classic YouTube renderers (videoRenderer, gridVideoRenderer, playlistVideoRenderer, compactVideoRenderer)
+  const classicRendererKeys = ['videoRenderer', 'gridVideoRenderer', 'playlistVideoRenderer', 'compactVideoRenderer'];
+  for (const rendererKey of classicRendererKeys) {
+    const renderers = findObjectsWithKey(payload, rendererKey);
+    for (const vr of renderers) {
+      const vid = vr.videoId;
+      if (!vid || seenIds.has(vid)) continue;
 
-    const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Vídeo';
-    const durationStr = vr.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText ||
-                        vr.lengthText?.simpleText ||
-                        vr.lengthText?.runs?.[0]?.text || '10:00';
-    const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
-    const author = vr.shortBylineText?.runs?.[0]?.text || vr.ownerText?.runs?.[0]?.text || defaultAuthor;
+      const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Vídeo';
+      const { duration, durationSeconds } = extractDurationFromRenderer(vr);
+      const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+      const author = vr.shortBylineText?.runs?.[0]?.text || vr.ownerText?.runs?.[0]?.text || defaultAuthor;
 
-    seenIds.add(vid);
-    newVideos.push({
-      id: `yt-${vid}`,
-      videoId: vid,
-      title: cleanHtmlText(title),
-      duration: durationStr,
-      durationSeconds: parseDurationStringToSeconds(durationStr),
-      thumbnail: thumb,
-      author: cleanHtmlText(author || ''),
-      url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
-      embedUrl: `https://www.youtube.com/embed/${vid}`
-    });
-  }
-
-  // 3. Grid gridVideoRenderer
-  const gridVideos = findObjectsWithKey(payload, 'gridVideoRenderer');
-  for (const vr of gridVideos) {
-    const vid = vr.videoId;
-    if (!vid || seenIds.has(vid)) continue;
-
-    const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Vídeo';
-    const durationStr = vr.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText ||
-                        vr.lengthText?.simpleText || '10:00';
-    const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
-    const author = vr.shortBylineText?.runs?.[0]?.text || defaultAuthor;
-
-    seenIds.add(vid);
-    newVideos.push({
-      id: `yt-${vid}`,
-      videoId: vid,
-      title: cleanHtmlText(title),
-      duration: durationStr,
-      durationSeconds: parseDurationStringToSeconds(durationStr),
-      thumbnail: thumb,
-      author: cleanHtmlText(author || ''),
-      url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
-      embedUrl: `https://www.youtube.com/embed/${vid}`
-    });
-  }
-
-  // 4. Playlist playlistVideoRenderer
-  const playlistVideos = findObjectsWithKey(payload, 'playlistVideoRenderer');
-  for (const vr of playlistVideos) {
-    const vid = vr.videoId;
-    if (!vid || seenIds.has(vid)) continue;
-
-    const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Vídeo';
-    const durationStr = vr.lengthText?.simpleText || vr.lengthText?.runs?.[0]?.text || '10:00';
-    const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
-    const author = vr.shortBylineText?.runs?.[0]?.text || defaultAuthor;
-
-    seenIds.add(vid);
-    newVideos.push({
-      id: `yt-${vid}`,
-      videoId: vid,
-      title: cleanHtmlText(title),
-      duration: durationStr,
-      durationSeconds: parseDurationStringToSeconds(durationStr),
-      thumbnail: thumb,
-      author: cleanHtmlText(author || ''),
-      url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
-      embedUrl: `https://www.youtube.com/embed/${vid}`
-    });
-  }
-
-  // 5. Compact compactVideoRenderer
-  const compactVideos = findObjectsWithKey(payload, 'compactVideoRenderer');
-  for (const vr of compactVideos) {
-    const vid = vr.videoId;
-    if (!vid || seenIds.has(vid)) continue;
-
-    const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Vídeo';
-    const durationStr = vr.lengthText?.simpleText || vr.lengthText?.runs?.[0]?.text || '10:00';
-    const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
-    const author = vr.shortBylineText?.runs?.[0]?.text || defaultAuthor;
-
-    seenIds.add(vid);
-    newVideos.push({
-      id: `yt-${vid}`,
-      videoId: vid,
-      title: cleanHtmlText(title),
-      duration: durationStr,
-      durationSeconds: parseDurationStringToSeconds(durationStr),
-      thumbnail: thumb,
-      author: cleanHtmlText(author || ''),
-      url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
-      embedUrl: `https://www.youtube.com/embed/${vid}`
-    });
+      seenIds.add(vid);
+      newVideos.push({
+        id: `yt-${vid}`,
+        videoId: vid,
+        title: cleanHtmlText(title),
+        duration,
+        durationSeconds,
+        thumbnail: thumb,
+        author: cleanHtmlText(author || ''),
+        url: listId ? `https://www.youtube.com/watch?v=${vid}&list=${listId}` : `https://www.youtube.com/watch?v=${vid}`,
+        embedUrl: `https://www.youtube.com/embed/${vid}`
+      });
+    }
   }
 
   return newVideos;
@@ -512,6 +554,75 @@ async function paginateYouTubeContinuations(
   return allVideos;
 }
 
+const DEFAULT_YOUTUBE_HEADERS: Record<string, string> = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+};
+
+/**
+ * Fetches a single video's exact duration in seconds from its YouTube watch page
+ */
+export async function fetchVideoDurationFromWatchPage(
+  videoId: string,
+  fetchHeaders: Record<string, string> = DEFAULT_YOUTUBE_HEADERS
+): Promise<{ duration: string; durationSeconds: number } | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: fetchHeaders,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+    const html = await res.text();
+    const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
+    if (lengthMatch) {
+      const secs = parseInt(lengthMatch[1], 10);
+      if (Number.isFinite(secs) && secs > 0) {
+        return { duration: formatSecondsToDuration(secs), durationSeconds: secs };
+      }
+    }
+    const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
+    if (approxMatch) {
+      const secs = Math.round(parseInt(approxMatch[1], 10) / 1000);
+      if (Number.isFinite(secs) && secs > 0) {
+        return { duration: formatSecondsToDuration(secs), durationSeconds: secs };
+      }
+    }
+  } catch {
+    // Ignore transient errors during optional duration enrichment
+  }
+  return null;
+}
+
+/**
+ * Enriches videos that have missing duration (durationSeconds <= 0), e.g. from RSS fallback
+ */
+async function enrichMissingVideoDurations(
+  videos: YouTubeVideoItem[],
+  fetchHeaders: Record<string, string>,
+  maxEnrich = 25
+): Promise<void> {
+  const missing = videos.filter(v => !v.durationSeconds || v.durationSeconds <= 0).slice(0, maxEnrich);
+  if (missing.length === 0) return;
+
+  const batchSize = 5;
+  for (let i = 0; i < missing.length; i += batchSize) {
+    const batch = missing.slice(i, i + batchSize);
+    await Promise.all(
+      batch.map(async (v) => {
+        const info = await fetchVideoDurationFromWatchPage(v.videoId, fetchHeaders);
+        if (info) {
+          v.duration = info.duration;
+          v.durationSeconds = info.durationSeconds;
+        }
+      })
+    );
+  }
+}
+
 /**
  * Main parser function: accepts a URL, detects its type, and parses the metadata and all videos
  */
@@ -666,6 +777,7 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
       }
 
       if (videos.length > 0) {
+        await enrichMissingVideoDurations(videos, fetchHeaders);
         if (!playlistCover && videos[0].thumbnail) {
           playlistCover = videos[0].thumbnail;
         }
@@ -778,6 +890,7 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
       }
 
       if (videos.length > 0) {
+        await enrichMissingVideoDurations(videos, fetchHeaders);
         const totalDurationSeconds = videos.reduce((acc, v) => acc + v.durationSeconds, 0);
 
         return {
@@ -805,7 +918,10 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
   if (videoId) {
     try {
       const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-      const oembedRes = await fetch(oembedUrl);
+      const [oembedRes, durationInfo] = await Promise.all([
+        fetch(oembedUrl),
+        fetchVideoDurationFromWatchPage(videoId, fetchHeaders)
+      ]);
       
       let videoTitle = `Vídeo ${videoId}`;
       let authorName = 'YouTube';
@@ -818,12 +934,15 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
         thumbnail = oembedData.thumbnail_url || thumbnail;
       }
 
+      const duration = durationInfo?.duration || '00:00';
+      const durationSeconds = durationInfo?.durationSeconds || 0;
+
       const singleVideo: YouTubeVideoItem = {
         id: `yt-${videoId}`,
         videoId,
         title: cleanHtmlText(videoTitle),
-        duration: '15:00',
-        durationSeconds: 900,
+        duration,
+        durationSeconds,
         thumbnail,
         author: cleanHtmlText(authorName),
         url: `https://www.youtube.com/watch?v=${videoId}`,
@@ -838,7 +957,7 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
         author: cleanHtmlText(authorName),
         coverImage: thumbnail,
         videoCount: 1,
-        totalDurationSeconds: 900,
+        totalDurationSeconds: durationSeconds,
         videos: [singleVideo]
       };
     } catch (e: any) {

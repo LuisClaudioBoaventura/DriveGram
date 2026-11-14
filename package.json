@@ -1,6 +1,6 @@
 {
   "name": "drivegram",
-  "version": "1.28.0",
+  "version": "1.29.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -68,7 +68,8 @@
     "telegram": "^2.22.2",
     "tsx": "^4.15.1",
     "typescript": "^5.4.5",
-    "vite": "^6.4.3"
+    "vite": "^6.4.3",
+    "youtubei.js": "^18.3.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { 
   ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, 
   Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2, Sparkles,
-  SkipBack, SkipForward, Shuffle, Repeat, List, X, Search, Cast, Tv, ExternalLink
+  SkipBack, SkipForward, Shuffle, Repeat, List, X, Search, Cast, Tv, ExternalLink, CloudUpload, Loader2
 } from 'lucide-react';
 import { MovieVideo, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
@@ -10,6 +10,7 @@ import { GenerateMarkersModal } from './GenerateMarkersModal.js';
 import { CastModal } from './CastModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
+import { isYouTubeVideoUrl, saveYouTubeVideoToTelegram, YouTubeSaveProgress } from '../utils/youtubeTelegramSave.js';
 
 interface VideoPlayerViewProps {
   video: MovieVideo;
@@ -44,6 +45,35 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   onUpdateVideo,
   isPiPHidden = false
 }) => {
+  const [savingToTelegram, setSavingToTelegram] = useState<YouTubeSaveProgress | null>(null);
+
+  const handleSaveToTelegram = async () => {
+    const targetUrl = video.videoUrl || video.embedUrl;
+    if (!targetUrl || savingToTelegram) return;
+    setSavingToTelegram({ progress: 2, stageLabel: 'Iniciando...' });
+    try {
+      const result = await saveYouTubeVideoToTelegram(
+        {
+          videoUrl: targetUrl,
+          title: video.titlePt || video.title,
+          targetType: 'movie_video',
+          videoId: video.id,
+          folderId: video.folderId
+        },
+        (info) => setSavingToTelegram(info)
+      );
+      if (result.video && onUpdateVideo) {
+        await onUpdateVideo(result.video);
+      }
+      setExternalPlayerFeedback('✅ Vídeo salvo no seu Telegram!');
+      setTimeout(() => setExternalPlayerFeedback(null), 5000);
+    } catch (err: any) {
+      setExternalPlayerFeedback(err?.message || 'Erro ao salvar vídeo no Telegram.');
+      setTimeout(() => setExternalPlayerFeedback(null), 6000);
+    } finally {
+      setSavingToTelegram(null);
+    }
+  };
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -580,6 +610,32 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   </span>
                 </button>
               </>
+            )}
+
+            {/* Save YouTube Video to Telegram (1-click) */}
+            {!video.fileId && isYouTubeVideoUrl(video.videoUrl || video.embedUrl) && (
+              <button
+                onClick={handleSaveToTelegram}
+                disabled={!!savingToTelegram}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border shadow-sm transition-all active:scale-95 shrink-0 ${
+                  savingToTelegram
+                    ? 'bg-sky-500/20 text-sky-700 dark:text-sky-300 border-sky-400/50 cursor-wait'
+                    : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-700 dark:text-sky-300 border-sky-400/40 dark:border-sky-500/40'
+                }`}
+                title={savingToTelegram?.stageLabel || 'Baixar do YouTube e salvar permanentemente no seu Telegram'}
+              >
+                {savingToTelegram ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                    <span>{savingToTelegram.progress}%</span>
+                  </>
+                ) : (
+                  <>
+                    <CloudUpload className="w-4 h-4 shrink-0" />
+                    <span className="hidden sm:inline">Salvar no Telegram</span>
+                  </>
+                )}
+              </button>
             )}
 
             {/* PiP Button */}

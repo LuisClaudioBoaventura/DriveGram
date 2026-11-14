@@ -2961,6 +2961,7 @@ class Database {
       folderId: seriesData.folderId,
       youtubeUrl: seriesData.youtubeUrl,
       lastSyncedAt: seriesData.lastSyncedAt,
+      durationsVerifiedAt: seriesData.durationsVerifiedAt,
       autoSyncDaily: seriesData.autoSyncDaily !== undefined ? seriesData.autoSyncDaily : (seriesData.youtubeUrl ? true : undefined),
       deletedEpisodeIds: seriesData.deletedEpisodeIds || [],
       seasons: seriesData.seasons || [],
@@ -4975,6 +4976,49 @@ class Database {
     if (reconcileCollection(this.data.comics, manifest.comics)) updated = true;
     if (reconcileCollection(this.data.videos, manifest.videos)) updated = true;
     if (reconcileCollection(this.data.series, manifest.series)) updated = true;
+
+    // Atualizar durações de episódios de séries já existentes se a base local tiver placeholder (10:00 / 15:00) e o manifesto remoto tiver duração real
+    if (Array.isArray(manifest.series) && Array.isArray(this.data.series)) {
+      const localSeriesMap = new Map(this.data.series.map(s => [s.id, s]));
+      for (const rSeries of manifest.series) {
+        const lSeries = localSeriesMap.get(rSeries.id);
+        if (!lSeries) continue;
+        const remoteEpsByKey = new Map<string, { duration?: string; durationSeconds?: number }>();
+        for (const rSeason of (rSeries.seasons || [])) {
+          for (const rEp of (rSeason.episodes || [])) {
+            const isRemotePlaceholder =
+              !rEp.duration ||
+              !rEp.durationSeconds ||
+              (rEp.duration === '10:00' && rEp.durationSeconds === 600) ||
+              (rEp.duration === '15:00' && rEp.durationSeconds === 900);
+            if (isRemotePlaceholder) continue;
+            if (rEp.videoId) remoteEpsByKey.set(rEp.videoId.toLowerCase(), rEp);
+            if (rEp.videoUrl) remoteEpsByKey.set(rEp.videoUrl.toLowerCase(), rEp);
+            if (rEp.id) remoteEpsByKey.set(rEp.id.toLowerCase(), rEp);
+          }
+        }
+        if (remoteEpsByKey.size === 0) continue;
+        for (const lSeason of (lSeries.seasons || [])) {
+          for (const lEp of (lSeason.episodes || [])) {
+            const isLocalPlaceholder =
+              !lEp.duration ||
+              !lEp.durationSeconds ||
+              (lEp.duration === '10:00' && lEp.durationSeconds === 600) ||
+              (lEp.duration === '15:00' && lEp.durationSeconds === 900);
+            if (!isLocalPlaceholder) continue;
+            const match =
+              (lEp.videoId ? remoteEpsByKey.get(lEp.videoId.toLowerCase()) : undefined) ||
+              (lEp.videoUrl ? remoteEpsByKey.get(lEp.videoUrl.toLowerCase()) : undefined) ||
+              (lEp.id ? remoteEpsByKey.get(lEp.id.toLowerCase()) : undefined);
+            if (match?.duration && match?.durationSeconds) {
+              lEp.duration = match.duration;
+              lEp.durationSeconds = match.durationSeconds;
+              updated = true;
+            }
+          }
+        }
+      }
+    }
     if (reconcileCollection(this.data.audioShows, manifest.audioShows)) updated = true;
     if (reconcileCollection(this.data.adultVideos, manifest.adultVideos)) updated = true;
     if (reconcileCollection(this.data.adultPerformers, manifest.adultPerformers)) updated = true;
