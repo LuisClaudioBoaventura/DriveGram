@@ -27,7 +27,8 @@ import { db, fixUtf8Encoding } from './database.js';
 import { telegramService, telegramEvents } from './telegram.js';
 import { castService } from './cast.js';
 import { comicService } from './comicService.js';
-import { parseYouTubeUrl, extractYouTubeVideoId } from './youtube-parser.js';
+import { parseYouTubeUrl, extractYouTubeVideoId, fetchVideoDurationFromWatchPage } from './youtube-parser.js';
+import { downloadYouTubeVideoToFile } from './youtube-downloader.js';
 import { FileType, DriveItem } from '../src/types/index.js';
 import {
   estimateAudioDurationSeconds,
@@ -139,7 +140,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.28.0',
+    version: '1.29.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -2979,12 +2980,27 @@ export async function refreshSingleSeriesInternal(series: any): Promise<{ series
 
   const allEpisodes = seasons.flatMap((s: any) => s.episodes || []);
   const existingKeys = new Set<string>();
+  const existingEpisodeByKey = new Map<string, any>();
   allEpisodes.forEach((e: any) => {
-    if (e.videoId) existingKeys.add(e.videoId.toLowerCase().trim());
-    if (e.videoUrl) existingKeys.add(e.videoUrl.toLowerCase().trim());
-    if (e.id) existingKeys.add(e.id.toLowerCase().trim());
+    const epVid = (e.videoId || extractYouTubeVideoId(e.videoUrl || e.embedUrl || '') || '').toLowerCase().trim();
+    if (epVid) {
+      existingKeys.add(epVid);
+      existingEpisodeByKey.set(epVid, e);
+    }
+    if (e.videoUrl) {
+      const k = e.videoUrl.toLowerCase().trim();
+      existingKeys.add(k);
+      existingEpisodeByKey.set(k, e);
+    }
+    if (e.id) {
+      const k = e.id.toLowerCase().trim();
+      existingKeys.add(k);
+      existingEpisodeByKey.set(k, e);
+    }
     if (e.title && e.title.toLowerCase().trim() !== 'vídeo' && e.title.toLowerCase().trim() !== 'video') {
-      existingKeys.add(e.title.toLowerCase().trim());
+      const k = e.title.toLowerCase().trim();
+      existingKeys.add(k);
+      existingEpisodeByKey.set(k, e);
     }
   });
 
@@ -2993,7 +3009,14 @@ export async function refreshSingleSeriesInternal(series: any): Promise<{ series
   );
 
   let newEpisodesCount = 0;
+  let repairedCount = 0;
   const newEpisodesToAdd: any[] = [];
+
+  const isPlaceholderEpisodeDuration = (ep: any): boolean =>
+    !ep.duration ||
+    !ep.durationSeconds ||
+    (ep.duration === '10:00' && ep.durationSeconds === 600) ||
+    (ep.duration === '15:00' && ep.durationSeconds === 900);
 
   for (const v of fetchedVideos) {
     const vid = (v.videoId || extractYouTubeVideoId(v.url) || '').trim();
@@ -3001,14 +3024,36 @@ export async function refreshSingleSeriesInternal(series: any): Promise<{ series
     const vTitle = (v.title || '').toLowerCase().trim();
     const vId = (v.id || '').toLowerCase().trim();
 
-    // Skip if already in existing episodes or in user-deleted episodes blacklist
-    const isGenericTitle = vTitle === 'vídeo' || vTitle === 'video';
+    // Skip if in user-deleted episodes blacklist
     if (
-      (vid && (existingKeys.has(vid.toLowerCase()) || deletedKeys.has(vid.toLowerCase()))) ||
-      (vUrl && (existingKeys.has(vUrl) || deletedKeys.has(vUrl))) ||
-      (vId && (existingKeys.has(vId) || deletedKeys.has(vId))) ||
-      (!isGenericTitle && vTitle && (existingKeys.has(vTitle) || deletedKeys.has(vTitle)))
+      (vid && deletedKeys.has(vid.toLowerCase())) ||
+      (vUrl && deletedKeys.has(vUrl)) ||
+      (vId && deletedKeys.has(vId)) ||
+      (vTitle && deletedKeys.has(vTitle))
     ) {
+      continue;
+    }
+
+    // Check if already exists; if so, repair placeholder/missing duration with real duration from YouTube
+    const isGenericTitle = vTitle === 'vídeo' || vTitle === 'video';
+    const matchedEpisode =
+      (vid && existingEpisodeByKey.get(vid.toLowerCase())) ||
+      (vUrl && existingEpisodeByKey.get(vUrl)) ||
+      (vId && existingEpisodeByKey.get(vId)) ||
+      (!isGenericTitle && vTitle && existingEpisodeByKey.get(vTitle)) ||
+      null;
+
+    if (matchedEpisode) {
+      if (isPlaceholderEpisodeDuration(matchedEpisode) && v.durationSeconds > 0 && v.duration) {
+        if (matchedEpisode.duration !== v.duration || matchedEpisode.durationSeconds !== v.durationSeconds) {
+          matchedEpisode.duration = v.duration;
+          matchedEpisode.durationSeconds = v.durationSeconds;
+          repairedCount++;
+        }
+      }
+      if (!matchedEpisode.videoId && vid) {
+        matchedEpisode.videoId = vid;
+      }
       continue;
     }
 
@@ -3019,8 +3064,8 @@ export async function refreshSingleSeriesInternal(series: any): Promise<{ series
       episodeNumber: nextNumber,
       title: v.title,
       videoId: vid || undefined,
-      duration: v.duration || '15:00',
-      durationSeconds: v.durationSeconds || 900,
+      duration: v.duration || '00:00',
+      durationSeconds: v.durationSeconds ?? 0,
       videoUrl: v.url,
       embedUrl: v.embedUrl,
       description: v.description || undefined
@@ -3032,11 +3077,46 @@ export async function refreshSingleSeriesInternal(series: any): Promise<{ series
     newEpisodesCount++;
   }
 
+  // Enrich any remaining existing episodes with placeholder durations that weren't in the feed
+  const remainingPlaceholders = allEpisodes
+    .filter((ep: any) => isPlaceholderEpisodeDuration(ep) && (ep.videoId || extractYouTubeVideoId(ep.videoUrl || ep.embedUrl || '')))
+    .slice(0, 40);
+
+  if (remainingPlaceholders.length > 0) {
+    const batchSize = 5;
+    for (let i = 0; i < remainingPlaceholders.length; i += batchSize) {
+      const batch = remainingPlaceholders.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (ep: any) => {
+          const vid = ep.videoId || extractYouTubeVideoId(ep.videoUrl || ep.embedUrl || '');
+          if (!vid) return;
+          const info = await fetchVideoDurationFromWatchPage(vid);
+          if (info && (ep.duration !== info.duration || ep.durationSeconds !== info.durationSeconds)) {
+            ep.duration = info.duration;
+            ep.durationSeconds = info.durationSeconds;
+            repairedCount++;
+          }
+          if (!ep.videoId) ep.videoId = vid;
+        })
+      );
+    }
+  }
+
   season1.episodes = [...(season1.episodes || []), ...newEpisodesToAdd];
   series.seasons = seasons;
-  series.lastSyncedAt = new Date().toISOString();
+  const nowIso = new Date().toISOString();
+  series.lastSyncedAt = nowIso;
+  series.durationsVerifiedAt = nowIso;
 
   const savedSeries = db.saveSeries(series);
+  if (repairedCount > 0 || newEpisodesCount > 0) {
+    console.log(`[YouTube Sync] "${series.title}": +${newEpisodesCount} novo(s), ${repairedCount} duração(ões) corrigida(s).`);
+    telegramEvents.emit('metadata-updated', {
+      source: 'youtube-sync',
+      seriesId: savedSeries.id,
+      timestamp: nowIso
+    });
+  }
   return { series: savedSeries, newEpisodesCount };
 }
 
@@ -3132,7 +3212,11 @@ setTimeout(async () => {
     for (const s of allSeries) {
       const lastSync = s.lastSyncedAt ? new Date(s.lastSyncedAt).getTime() : 0;
       const hoursSinceSync = (now - lastSync) / (1000 * 60 * 60);
-      if (hoursSinceSync >= 24 || !s.lastSyncedAt) {
+      const episodes = (s.seasons || []).flatMap((sn: any) => sn.episodes || []);
+      const placeholderCount = episodes.filter((ep: any) => !ep.duration || !ep.durationSeconds || (ep.duration === '10:00' && ep.durationSeconds === 600)).length;
+      const needsDurationVerification = !s.durationsVerifiedAt && episodes.length > 0 && placeholderCount > 0;
+      const hasManyPlaceholders = episodes.length > 0 && (placeholderCount === episodes.length || placeholderCount >= 3);
+      if (hoursSinceSync >= 24 || !s.lastSyncedAt || needsDurationVerification || hasManyPlaceholders) {
         console.log(`[AutoSync] Startup sync check for YouTube series "${s.title}"...`);
         await refreshSingleSeriesInternal(s).catch(() => {});
       }
@@ -3683,8 +3767,8 @@ app.post('/api/youtube/import', async (req, res) => {
             lessons: videos.map((v: any, idx: number) => ({
               id: `les-${Date.now()}-${idx}`,
               title: v.title,
-              duration: v.duration || '15:00',
-              durationSeconds: v.durationSeconds || 900,
+              duration: v.duration || '00:00',
+              durationSeconds: v.durationSeconds ?? 0,
               videoUrl: v.url,
               embedUrl: v.embedUrl,
               order: idx + 1,
@@ -3714,8 +3798,8 @@ app.post('/api/youtube/import', async (req, res) => {
           id: `track-${Date.now()}-${idx}`,
           title: v.title,
           artist: author || 'YouTube',
-          duration: v.duration || '15:00',
-          durationSeconds: v.durationSeconds || 900,
+          duration: v.duration || '00:00',
+          durationSeconds: v.durationSeconds ?? 0,
           audioUrl: v.url,
           embedUrl: v.embedUrl,
           order: idx + 1,
@@ -3753,8 +3837,8 @@ app.post('/api/youtube/import', async (req, res) => {
               episodeNumber: idx + 1,
               title: v.title,
               videoId: v.videoId || extractYouTubeVideoId(v.url) || undefined,
-              duration: v.duration || '15:00',
-              durationSeconds: v.durationSeconds || 900,
+              duration: v.duration || '00:00',
+              durationSeconds: v.durationSeconds ?? 0,
               videoUrl: v.url,
               embedUrl: v.embedUrl,
               description: v.description || undefined
@@ -3821,6 +3905,290 @@ app.post('/api/youtube/import', async (req, res) => {
     }
     console.error('Error importing YouTube content:', error);
     res.status(500).json({ error: error.message || 'Falha ao importar conteúdo do YouTube' });
+  }
+});
+
+const inFlightYouTubeSavesMap = new Map<string, Promise<any>>();
+
+app.post('/api/youtube/save-to-telegram', async (req, res) => {
+  const {
+    videoUrl,
+    title,
+    targetType, // 'series_episode' | 'course_lesson' | 'movie_video' | 'standalone'
+    parentId,   // seriesId or courseId
+    episodeId,
+    lessonId,
+    videoId,    // MovieVideo.id
+    folderId,
+    uploadId: providedUploadId
+  } = req.body || {};
+
+  const ytId = videoUrl ? extractYouTubeVideoId(String(videoUrl)) : null;
+  if (!videoUrl || !ytId) {
+    return res.status(400).json({ error: 'URL ou ID do YouTube inválido ou não informado.' });
+  }
+
+  const dedupeKey = `${targetType || 'standalone'}:${episodeId || lessonId || videoId || ytId}`;
+  const existingTask = inFlightYouTubeSavesMap.get(dedupeKey);
+  if (existingTask) {
+    try {
+      const result = await existingTask;
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Falha ao salvar vídeo no Telegram' });
+    }
+  }
+
+  const uploadId = providedUploadId || `yt-save-${ytId}-${Date.now()}`;
+  const displayTitle = (title || `YouTube-${ytId}`).trim();
+
+  const runSaveTask = async () => {
+    // 1. Check if already saved in DB
+    if (targetType === 'series_episode' && parentId && episodeId) {
+      const s = db.getSeries().find((x: any) => x.id === parentId);
+      const ep = s?.seasons?.flatMap((sn: any) => sn.episodes || []).find((e: any) => e.id === episodeId);
+      if (ep?.fileId) {
+        const existingFile = db.getFiles().find((f: any) => f.id === ep.fileId);
+        if (existingFile) {
+          return { success: true, alreadySaved: true, file: existingFile, series: s };
+        }
+      }
+    } else if (targetType === 'course_lesson' && parentId && lessonId) {
+      const c = db.getCourses().find((x: any) => x.id === parentId);
+      const lesson = c?.modules?.flatMap((m: any) => m.lessons || []).find((l: any) => l.id === lessonId);
+      if (lesson?.fileId) {
+        const existingFile = db.getFiles().find((f: any) => f.id === lesson.fileId);
+        if (existingFile) {
+          return { success: true, alreadySaved: true, file: existingFile, course: c };
+        }
+      }
+    } else if (targetType === 'movie_video' && videoId) {
+      const v = db.getVideos().find((x: any) => x.id === videoId);
+      if (v?.fileId) {
+        const existingFile = db.getFiles().find((f: any) => f.id === v.fileId);
+        if (existingFile) {
+          return { success: true, alreadySaved: true, file: existingFile, video: v };
+        }
+      }
+    }
+
+    // 2. Verify Telegram connection before downloading large video (unless in demo mode)
+    const settings = db.getData().settings;
+    if (settings.telegramSession) {
+      const client = await telegramService.ensureClient();
+      if (!client) {
+        throw new Error('Telegram não conectado. Conecte sua conta nas Configurações antes de salvar vídeos.');
+      }
+    }
+
+    activeUploadsMap.set(uploadId, {
+      uploadId,
+      fileName: displayTitle,
+      size: 0,
+      transferred: 0,
+      progress: 3,
+      speed: 'Conectando...',
+      stage: 'local',
+      stageLabel: '1/2 • Baixando vídeo do YouTube...',
+      updatedAt: Date.now()
+    });
+
+    // 3. Download video from YouTube to UPLOADS_DIR
+    const dlResult = await downloadYouTubeVideoToFile(String(videoUrl), UPLOADS_DIR, {
+      titleOverride: displayTitle,
+      onProgress: (info) => {
+        const mappedProgress = Math.max(5, Math.min(48, Math.round(info.percent * 0.48)));
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: `${displayTitle}.mp4`,
+          size: info.totalBytes,
+          transferred: info.downloadedBytes,
+          progress: mappedProgress,
+          speed: info.speedLabel,
+          stage: 'local',
+          stageLabel: `1/2 • Baixando do YouTube (${info.percent}%)...`,
+          updatedAt: Date.now()
+        });
+      }
+    });
+
+    // 4. Resolve target folderId
+    let targetFolderId: string | null = folderId || null;
+    let targetSeries: any = null;
+    let targetCourse: any = null;
+    let targetVideo: any = null;
+
+    if (targetType === 'series_episode' && parentId) {
+      targetSeries = db.getSeries().find((x: any) => x.id === parentId);
+      if (targetSeries) {
+        targetFolderId = targetSeries.folderId || db.getOrCreateSeriesFolder(targetSeries.title).id;
+        if (!targetSeries.folderId && targetFolderId) {
+          targetSeries.folderId = targetFolderId;
+        }
+      }
+    } else if (targetType === 'course_lesson' && parentId) {
+      targetCourse = db.getCourses().find((x: any) => x.id === parentId);
+      if (targetCourse) {
+        targetFolderId = targetCourse.folderId || db.getOrCreateCourseFolder(targetCourse.title).id;
+        if (!targetCourse.folderId && targetFolderId) {
+          targetCourse.folderId = targetFolderId;
+        }
+      }
+    } else if (targetType === 'movie_video' && videoId) {
+      targetVideo = db.getVideos().find((x: any) => x.id === videoId);
+      if (targetVideo) {
+        targetFolderId = targetVideo.folderId || null;
+      }
+    }
+
+    // 5. Upload to Telegram Saved Messages
+    const caption = db.buildTelegramCaption({
+      name: dlResult.fileName,
+      size: dlResult.size,
+      parentId: targetFolderId,
+      type: 'video',
+      mimeType: dlResult.mimeType
+    });
+
+    const uploadStart = Date.now();
+    const telegramResult = await telegramService.uploadToSavedMessages(
+      dlResult.filePath,
+      dlResult.fileName,
+      caption,
+      (percent) => {
+        const transferred = Math.round((percent / 100) * dlResult.size);
+        const elapsedSec = (Date.now() - uploadStart) / 1000;
+        const speedMBs = elapsedSec > 0 ? ((transferred / (1024 * 1024)) / elapsedSec).toFixed(1) : '1.0';
+        const mappedProgress = 50 + Math.round(percent * 0.49);
+
+        activeUploadsMap.set(uploadId, {
+          uploadId,
+          fileName: dlResult.fileName,
+          size: dlResult.size,
+          transferred,
+          progress: mappedProgress,
+          speed: `${speedMBs} MB/s`,
+          stage: 'cloud',
+          stageLabel: `2/2 • Enviando para o Telegram (${percent}%)...`,
+          updatedAt: Date.now()
+        });
+      }
+    );
+
+    if (!telegramResult.success && telegramResult.error) {
+      try { if (fs.existsSync(dlResult.filePath)) fs.unlinkSync(dlResult.filePath); } catch {}
+      throw new Error(telegramResult.error);
+    }
+
+    // 6. Register DriveItem in database
+    const newFile = db.createFile({
+      name: dlResult.fileName,
+      parentId: targetFolderId,
+      size: dlResult.size,
+      mimeType: dlResult.mimeType,
+      extension: 'mp4',
+      type: 'video',
+      telegramMeta: {
+        messageId: telegramResult.messageId,
+        chatId: 'me',
+        fileSize: dlResult.size,
+        mimeType: dlResult.mimeType,
+        telegramFileName: dlResult.diskFileName,
+        uploadDate: new Date().toISOString(),
+        isUploadedToTelegram: telegramResult.success
+      },
+      courseId: targetType === 'course_lesson' ? parentId : undefined,
+      lessonId: targetType === 'course_lesson' ? lessonId : undefined
+    });
+
+    // 7. Link fileId to the corresponding SeriesEpisode / Lesson / MovieVideo
+    let updatedSeries: any = undefined;
+    let updatedCourse: any = undefined;
+    let updatedVideo: any = undefined;
+
+    if (targetType === 'series_episode' && targetSeries && episodeId) {
+      for (const season of targetSeries.seasons || []) {
+        const ep = (season.episodes || []).find((e: any) => e.id === episodeId);
+        if (ep) {
+          ep.fileId = newFile.id;
+          if (dlResult.durationSeconds && !ep.durationSeconds) {
+            ep.durationSeconds = dlResult.durationSeconds;
+          }
+          break;
+        }
+      }
+      updatedSeries = db.saveSeries(targetSeries);
+    } else if (targetType === 'course_lesson' && targetCourse && lessonId) {
+      for (const mod of targetCourse.modules || []) {
+        const lesson = (mod.lessons || []).find((l: any) => l.id === lessonId);
+        if (lesson) {
+          lesson.fileId = newFile.id;
+          if (dlResult.durationSeconds && !lesson.durationSeconds) {
+            lesson.durationSeconds = dlResult.durationSeconds;
+          }
+          break;
+        }
+      }
+      updatedCourse = db.saveCourse(targetCourse);
+    } else if (targetType === 'movie_video' && targetVideo) {
+      targetVideo.fileId = newFile.id;
+      if (dlResult.durationSeconds && !targetVideo.durationSeconds) {
+        targetVideo.durationSeconds = dlResult.durationSeconds;
+      }
+      updatedVideo = db.saveVideo(targetVideo);
+    }
+
+    // 8. Sync metadata manifest to Telegram in background
+    telegramService.syncMetadataToTelegram().catch(() => {});
+
+    activeUploadsMap.set(uploadId, {
+      uploadId,
+      fileName: dlResult.fileName,
+      size: dlResult.size,
+      transferred: dlResult.size,
+      progress: 100,
+      speed: 'Concluído',
+      stage: 'completed',
+      stageLabel: 'Salvo no Telegram com sucesso!',
+      updatedAt: Date.now()
+    });
+    setTimeout(() => activeUploadsMap.delete(uploadId), 8000);
+
+    return {
+      success: true,
+      file: newFile,
+      series: updatedSeries,
+      course: updatedCourse,
+      video: updatedVideo
+    };
+  };
+
+  const taskPromise = runSaveTask().catch((error: any) => {
+    activeUploadsMap.set(uploadId, {
+      uploadId,
+      fileName: displayTitle,
+      size: 0,
+      transferred: 0,
+      progress: 0,
+      speed: 'Erro',
+      stage: 'error',
+      stageLabel: error?.message || 'Falha ao salvar no Telegram',
+      updatedAt: Date.now()
+    });
+    setTimeout(() => activeUploadsMap.delete(uploadId), 8000);
+    throw error;
+  }).finally(() => {
+    inFlightYouTubeSavesMap.delete(dedupeKey);
+  });
+
+  inFlightYouTubeSavesMap.set(dedupeKey, taskPromise);
+
+  try {
+    const result = await taskPromise;
+    return res.json(result);
+  } catch (error: any) {
+    console.error('[YouTube SaveToTelegram] Error:', error);
+    return res.status(500).json({ error: error?.message || 'Falha ao salvar vídeo do YouTube no Telegram' });
   }
 });
 

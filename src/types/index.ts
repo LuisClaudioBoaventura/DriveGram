@@ -437,6 +437,7 @@ export interface SeriesShow {
   folderId?: string;
   youtubeUrl?: string; // URL da Playlist ou Canal do YouTube
   lastSyncedAt?: string; // Timestamp ISO da última sincronização
+  durationsVerifiedAt?: string; // Timestamp ISO da última verificação/reparo de durações reais
   autoSyncDaily?: boolean; // Se deve sincronizar automaticamente uma vez por dia
   deletedEpisodeIds?: string[]; // IDs/videoIds de vídeos excluídos pelo usuário para evitar reimportação
   seasons: SeriesSeason[];

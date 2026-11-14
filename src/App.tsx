@@ -107,7 +107,7 @@ export function App() {
     comics.fetchComics();
     videos.fetchVideos();
     personalVideos.refresh();
-    series.refreshAllSeries?.();
+    series.fetchSeries?.();
     audioShows.refreshAllPodcasts?.();
   };
 

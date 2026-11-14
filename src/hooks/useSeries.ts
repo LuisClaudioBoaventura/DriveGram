@@ -21,18 +21,22 @@ export function useSeries() {
     try {
       const res = await fetch('/api/series');
       if (res.ok) {
-        const data = await res.json();
+        const data: SeriesShow[] = await res.json();
         setSeriesList(data);
-        if (data.length > 0 && !activeSeries) {
-          setActiveSeries(data[0]);
-          const firstEp = data[0].seasons?.[0]?.episodes?.[0];
-          if (firstEp) setActiveEpisode(firstEp);
-        }
+        setActiveSeries(prev => {
+          if (!prev) {
+            const firstEp = data[0]?.seasons?.[0]?.episodes?.[0];
+            if (firstEp) setActiveEpisode(firstEp);
+            return data[0] || null;
+          }
+          const updated = data.find(s => s.id === prev.id);
+          return updated || prev;
+        });
       }
     } catch (e) {
       console.warn('Backend unavailable for series');
     }
-  }, [activeSeries]);
+  }, []);
 
   const fetchCategories = useCallback(async () => {
     try {

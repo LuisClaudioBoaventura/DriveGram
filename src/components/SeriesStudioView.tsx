@@ -38,11 +38,15 @@ import {
   ChevronDown,
   RotateCcw,
   SlidersHorizontal,
-  Cast
+  Cast,
+  CloudUpload,
+  Cloud,
+  Loader2
 } from 'lucide-react';
 import { SeriesShow, SeriesEpisode, DriveItem } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
 import { CastModal } from './CastModal.js';
+import { isYouTubeVideoUrl, saveYouTubeVideoToTelegram, YouTubeSaveProgress } from '../utils/youtubeTelegramSave.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
 
@@ -110,6 +114,7 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
   const [countdown, setCountdown] = useState<number | null>(null);
   const [nextEpisodeToPlay, setNextEpisodeToPlay] = useState<SeriesEpisode | null>(null);
   const [downloadTargetFile, setDownloadTargetFile] = useState<DriveItem | null>(null);
+  const [savingEpisodeMap, setSavingEpisodeMap] = useState<Record<string, YouTubeSaveProgress>>({});
 
   // Sorting and Filtering states for YouTube Playlist / Series Videos
   const [sortOption, setSortOption] = useState<'oldest' | 'newest' | 'title-asc' | 'title-desc' | 'duration-desc' | 'duration-asc'>('oldest');
@@ -239,8 +244,22 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
   useEffect(() => {
     if (playingEpisode) {
       const refreshed = allEpisodes.find(e => e.id === playingEpisode.id);
-      if (refreshed && refreshed.isCompleted !== playingEpisode.isCompleted) {
-        setPlayingEpisode(prev => prev && prev.id === refreshed.id ? { ...prev, isCompleted: refreshed.isCompleted } : prev);
+      if (
+        refreshed &&
+        (refreshed.isCompleted !== playingEpisode.isCompleted ||
+          refreshed.duration !== playingEpisode.duration ||
+          refreshed.durationSeconds !== playingEpisode.durationSeconds)
+      ) {
+        setPlayingEpisode(prev =>
+          prev && prev.id === refreshed.id
+            ? {
+                ...prev,
+                isCompleted: refreshed.isCompleted,
+                duration: refreshed.duration,
+                durationSeconds: refreshed.durationSeconds
+              }
+            : prev
+        );
       }
     }
   }, [series]);
@@ -441,6 +460,53 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
   };
 
   const playingFile = playingEpisode?.fileId ? allFiles.find(f => f.id === playingEpisode.fileId) : null;
+
+  const handleSaveEpisodeToTelegram = async (ep: SeriesEpisode) => {
+    const targetUrl = ep.videoUrl || ep.embedUrl;
+    if (!targetUrl || savingEpisodeMap[ep.id]) return;
+
+    setSavingEpisodeMap(prev => ({
+      ...prev,
+      [ep.id]: { progress: 2, stageLabel: 'Iniciando...' }
+    }));
+
+    try {
+      const result = await saveYouTubeVideoToTelegram(
+        {
+          videoUrl: targetUrl,
+          title: ep.title,
+          targetType: 'series_episode',
+          parentId: series.id,
+          episodeId: ep.id,
+          folderId: series.folderId
+        },
+        (progressInfo) => {
+          setSavingEpisodeMap(prev => ({ ...prev, [ep.id]: progressInfo }));
+        }
+      );
+
+      if (result.series) {
+        onUpdateSeries(result.series);
+        if (playingEpisode?.id === ep.id) {
+          const updatedEp = result.series.seasons
+            ?.flatMap((s: any) => s.episodes || [])
+            .find((e: any) => e.id === ep.id);
+          if (updatedEp) setPlayingEpisode(updatedEp);
+        }
+      }
+      setSyncFeedback({ type: 'success', message: `✅ "${ep.title}" salvo no seu Telegram!` });
+      setTimeout(() => setSyncFeedback(null), 5000);
+    } catch (err: any) {
+      setSyncFeedback({ type: 'error', message: err?.message || 'Erro ao salvar vídeo no Telegram.' });
+      setTimeout(() => setSyncFeedback(null), 6000);
+    } finally {
+      setSavingEpisodeMap(prev => {
+        const next = { ...prev };
+        delete next[ep.id];
+        return next;
+      });
+    }
+  };
 
 
   // Extract YouTube ID helper for clean thumbnail and embed
@@ -780,6 +846,32 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                     <CheckCircle2 className="w-4 h-4" />
                     <span>{playingEpisode.isCompleted ? 'Concluído' : 'Marcar Visto'}</span>
                   </button>
+
+                  {/* Save YouTube Video to Telegram Button (1-click) */}
+                  {!playingFile && !playingEpisode.fileId && isYouTubeVideoUrl(playingEpisode.videoUrl || playingEpisode.embedUrl) && (
+                    <button
+                      onClick={() => handleSaveEpisodeToTelegram(playingEpisode)}
+                      disabled={!!savingEpisodeMap[playingEpisode.id]}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border active:scale-95 ${
+                        savingEpisodeMap[playingEpisode.id]
+                          ? 'bg-sky-500/20 text-sky-700 dark:text-sky-300 border-sky-400/50 cursor-wait'
+                          : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-700 dark:text-sky-300 border-sky-400/40 dark:border-sky-500/40 shadow-sm'
+                      }`}
+                      title="Baixar do YouTube e salvar permanentemente no seu Telegram (não depende mais do YouTube)"
+                    >
+                      {savingEpisodeMap[playingEpisode.id] ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                          <span>{savingEpisodeMap[playingEpisode.id].progress}%</span>
+                        </>
+                      ) : (
+                        <>
+                          <CloudUpload className="w-4 h-4 shrink-0" />
+                          <span>Salvar no Telegram</span>
+                        </>
+                      )}
+                    </button>
+                  )}
 
                   {/* Download to Cache Button */}
                   {playingFile && (
@@ -1148,19 +1240,52 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                             )}
                           </div>
 
-                          {/* Download Button */}
-                          {epFile && (
+                          {/* Save to Telegram (1-click) or Download Button */}
+                          {!epFile && !ep.fileId && isYouTubeVideoUrl(ep.videoUrl || ep.embedUrl) ? (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setDownloadTargetFile(epFile);
+                                handleSaveEpisodeToTelegram(ep);
                               }}
-                              className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                              title="Baixar para Cache Local"
+                              disabled={!!savingEpisodeMap[ep.id]}
+                              className={`p-1.5 rounded-lg transition-all shrink-0 flex items-center gap-1 ${
+                                savingEpisodeMap[ep.id]
+                                  ? 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 opacity-100 cursor-wait'
+                                  : 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40 opacity-80 group-hover:opacity-100'
+                              }`}
+                              title={savingEpisodeMap[ep.id]?.stageLabel || 'Salvar vídeo no Telegram (1 clique)'}
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              {savingEpisodeMap[ep.id] ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span className="text-[10px] font-bold">{savingEpisodeMap[ep.id].progress}%</span>
+                                </>
+                              ) : (
+                                <CloudUpload className="w-3.5 h-3.5" />
+                              )}
                             </button>
-                          )}
+                          ) : (epFile || ep.fileId) ? (
+                            <>
+                              <span
+                                className="p-1 text-emerald-600 dark:text-emerald-400 shrink-0"
+                                title="Salvo no Telegram"
+                              >
+                                <Cloud className="w-3.5 h-3.5" />
+                              </span>
+                              {epFile && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDownloadTargetFile(epFile);
+                                  }}
+                                  className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                                  title="Baixar para Cache Local"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
+                          ) : null}
 
                           {/* Delete Video Button */}
                           <button
@@ -1256,18 +1381,48 @@ export const SeriesStudioView: React.FC<SeriesStudioViewProps> = ({
                                 {ep.isCompleted ? '✓ Visto' : 'Marcar visto'}
                               </button>
                               <div className="flex items-center gap-1">
-                                {epFile && (
+                                {!epFile && !ep.fileId && isYouTubeVideoUrl(ep.videoUrl || ep.embedUrl) ? (
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setDownloadTargetFile(epFile);
+                                      handleSaveEpisodeToTelegram(ep);
                                     }}
-                                    className="p-1 rounded-md text-gray-400 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 opacity-0 group-hover:opacity-100 transition-all"
-                                    title="Baixar para Cache Local"
+                                    disabled={!!savingEpisodeMap[ep.id]}
+                                    className={`p-1 rounded-md transition-all flex items-center gap-0.5 ${
+                                      savingEpisodeMap[ep.id]
+                                        ? 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 opacity-100 cursor-wait'
+                                        : 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40 opacity-85 group-hover:opacity-100'
+                                    }`}
+                                    title={savingEpisodeMap[ep.id]?.stageLabel || 'Salvar vídeo no Telegram (1 clique)'}
                                   >
-                                    <Download className="w-3 h-3" />
+                                    {savingEpisodeMap[ep.id] ? (
+                                      <>
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        <span className="text-[9px] font-bold">{savingEpisodeMap[ep.id].progress}%</span>
+                                      </>
+                                    ) : (
+                                      <CloudUpload className="w-3 h-3" />
+                                    )}
                                   </button>
-                                )}
+                                ) : (epFile || ep.fileId) ? (
+                                  <>
+                                    <span className="p-0.5 text-emerald-600 dark:text-emerald-400" title="Salvo no Telegram">
+                                      <Cloud className="w-3 h-3" />
+                                    </span>
+                                    {epFile && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDownloadTargetFile(epFile);
+                                        }}
+                                        className="p-1 rounded-md text-gray-400 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 opacity-0 group-hover:opacity-100 transition-all"
+                                        title="Baixar para Cache Local"
+                                      >
+                                        <Download className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </>
+                                ) : null}
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
