@@ -16,6 +16,7 @@ import {
   MovieVideo,
   MovieSagaGroup,
   PersonalVideo,
+  RecipeVideo,
   SeriesShow,
   SeriesSeason,
   SeriesEpisode,
@@ -62,6 +63,8 @@ export interface DatabaseSchema {
   sagaCovers?: Record<string, string>;
   personalVideos: PersonalVideo[];
   personalVideoCategories: string[];
+  recipes: RecipeVideo[];
+  recipeCategories: string[];
   series: SeriesShow[];
   seriesCategories: string[];
   audioShows: AudioShow[];
@@ -136,6 +139,19 @@ const initialDemoData: DatabaseSchema = {
     'Memórias & Momentos',
     'Gravações & Projetos',
     'Vlogs & Dia a Dia',
+    'Outros'
+  ],
+  recipes: [],
+  recipeCategories: [
+    'Doces & Sobremesas',
+    'Massas & Risotos',
+    'Carnes & Aves',
+    'Airfryer',
+    'Lanches & Salgados',
+    'Pães & Bolos',
+    'Saudável & Fit',
+    'Bebidas & Drinks',
+    'Molhos & Dicas',
     'Outros'
   ],
   series: [],
@@ -304,6 +320,10 @@ class Database {
         if (!parsed.personalVideos) parsed.personalVideos = [];
         if (!parsed.personalVideoCategories || parsed.personalVideoCategories.length === 0) {
           parsed.personalVideoCategories = initialDemoData.personalVideoCategories;
+        }
+        if (!parsed.recipes) parsed.recipes = [];
+        if (!parsed.recipeCategories || parsed.recipeCategories.length === 0) {
+          parsed.recipeCategories = initialDemoData.recipeCategories;
         }
         if (!parsed.series) parsed.series = [];
         if (!parsed.seriesCategories || parsed.seriesCategories.length === 0) {
@@ -567,6 +587,12 @@ class Database {
           if (this.data.personalVideos) {
             for (const pv of this.data.personalVideos) {
               if (pv.fileId === dup.id) pv.fileId = canonical.id;
+            }
+          }
+          // Remapear receitas
+          if (this.data.recipes) {
+            for (const r of this.data.recipes) {
+              if (r.fileId === dup.id) r.fileId = canonical.id;
             }
           }
           // Remapear adult videos
@@ -1161,6 +1187,37 @@ class Database {
     }
   }
 
+  // ---------------- AUTO-SYNC RECEITAS & CULINÁRIA ----------------
+  public syncRecipesWithFolderStructure() {
+    if (!this.data.recipes) this.data.recipes = [];
+    const recipes = this.data.recipes;
+    const files = this.data.files.filter(f => !f.isTrash);
+
+    for (const recipe of recipes) {
+      if (recipe.fileId) {
+        const file = files.find(f => f.id === recipe.fileId);
+        if (file) {
+          if (!recipe.title) recipe.title = file.name.replace(/\.[^/.]+$/, "");
+          if (file.timestamps && file.timestamps.length > 0 && (!recipe.timestamps || recipe.timestamps.length === 0)) {
+            recipe.timestamps = file.timestamps;
+          }
+          if (file.subtitles && file.subtitles.length > 0 && (!recipe.subtitles || recipe.subtitles.length === 0)) {
+            recipe.subtitles = file.subtitles;
+          }
+        }
+      } else if (recipe.folderId && !recipe.embedUrl && !recipe.videoUrl) {
+        const videoFiles = files.filter(f => f.parentId === recipe.folderId && f.type === 'video');
+        if (videoFiles.length > 0) {
+          const primary = videoFiles[0];
+          recipe.fileId = primary.id;
+          if (primary.timestamps) recipe.timestamps = primary.timestamps;
+          if (primary.subtitles) recipe.subtitles = primary.subtitles;
+        }
+      }
+      recipe.updatedAt = new Date().toISOString();
+    }
+  }
+
   // ---------------- AUTO-SYNC SÉRIES & TV SHOWS ----------------
   public syncSeriesWithFolderStructure() {
     if (!this.data.series) this.data.series = [];
@@ -1481,6 +1538,7 @@ class Database {
     this.syncComicsWithFolderStructure();
     this.syncVideosWithFolderStructure();
     this.syncPersonalVideosWithFolderStructure();
+    this.syncRecipesWithFolderStructure();
     this.syncSeriesWithFolderStructure();
     this.syncAudioShowsWithFolderStructure();
     this.syncAdultVideosWithFolderStructure();
@@ -1846,6 +1904,16 @@ class Database {
           if (pv.fileId === id) {
             pv.title = cleanTitle;
             pv.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+
+      // 4b. Receitas & Culinária
+      if (this.data.recipes) {
+        for (const r of this.data.recipes) {
+          if (r.fileId === id) {
+            r.title = cleanTitle;
+            r.updatedAt = new Date().toISOString();
           }
         }
       }
@@ -2929,6 +2997,171 @@ class Database {
     this.data.personalVideoCategories = categories.filter(c => c !== category);
     this.save(this.data);
     return this.data.personalVideoCategories;
+  }
+
+  // ---------------- RECEITAS & CULINÁRIA CRUD ----------------
+  public getRecipes(): RecipeVideo[] {
+    return this.data.recipes || [];
+  }
+
+  public getRecipeById(id: string): RecipeVideo | undefined {
+    return (this.data.recipes || []).find(r => r.id === id);
+  }
+
+  public saveRecipe(recipeData: Partial<RecipeVideo> & { title: string }): RecipeVideo {
+    if (!this.data.recipes) this.data.recipes = [];
+    const id = recipeData.id || 'recipe-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+    const existingIdx = this.data.recipes.findIndex(r => r.id === id);
+
+    const recipe: RecipeVideo = {
+      id,
+      title: recipeData.title,
+      description: recipeData.description || '',
+      author: recipeData.author,
+      sourcePlatform: recipeData.sourcePlatform,
+      sourceUrl: recipeData.sourceUrl,
+      videoUrl: recipeData.videoUrl,
+      embedUrl: recipeData.embedUrl,
+      category: recipeData.category || 'Outros',
+      tags: recipeData.tags || [],
+      prepTime: recipeData.prepTime,
+      servings: recipeData.servings,
+      difficulty: recipeData.difficulty || 'facil',
+      ingredients: recipeData.ingredients || [],
+      instructions: recipeData.instructions || '',
+      duration: recipeData.duration || '00:00',
+      durationSeconds: recipeData.durationSeconds,
+      resolution: recipeData.resolution || '1080p',
+      coverImage: recipeData.coverImage || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&auto=format&fit=crop&q=60',
+      fileId: recipeData.fileId,
+      folderId: recipeData.folderId,
+      timestamps: (recipeData.timestamps || []).sort((a: any, b: any) => (a.seconds || 0) - (b.seconds || 0)),
+      subtitles: recipeData.subtitles || [],
+      lastPositionSeconds: recipeData.lastPositionSeconds || 0,
+      isCompleted: recipeData.isCompleted || false,
+      isFavorite: recipeData.isFavorite || false,
+      rating: recipeData.rating,
+      createdAt: recipeData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (existingIdx >= 0) {
+      this.data.recipes[existingIdx] = recipe;
+    } else {
+      this.data.recipes.push(recipe);
+    }
+
+    if (recipe.fileId && recipe.title) {
+      const file = this.data.files.find(f => f.id === recipe.fileId);
+      if (file) {
+        const ext = file.extension ? `.${file.extension}` : '';
+        const expectedName = `${recipe.title}${ext}`;
+        if (file.name !== expectedName) {
+          file.name = expectedName;
+          file.updatedAt = new Date().toISOString();
+        }
+      }
+    }
+
+    this.save(this.data);
+    return recipe;
+  }
+
+  public deleteRecipe(id: string): boolean {
+    if (!this.data.recipes) return false;
+    const initialLen = this.data.recipes.length;
+    this.data.recipes = this.data.recipes.filter(r => r.id !== id);
+    if (this.data.recipes.length !== initialLen) {
+      this.save(this.data);
+      return true;
+    }
+    return false;
+  }
+
+  public getRecipeCategories(): string[] {
+    return this.data.recipeCategories || initialDemoData.recipeCategories;
+  }
+
+  public addRecipeCategory(category: string): string[] {
+    const trimmed = category.trim();
+    if (!trimmed) return this.getRecipeCategories();
+    const categories = this.getRecipeCategories();
+    if (!categories.includes(trimmed)) {
+      categories.push(trimmed);
+      this.data.recipeCategories = categories;
+      this.save(this.data);
+    }
+    return this.data.recipeCategories;
+  }
+
+  public updateRecipeCategory(oldCategory: string, newCategory: string): string[] {
+    const trimmedNew = newCategory.trim();
+    if (!trimmedNew) return this.getRecipeCategories();
+    const categories = this.getRecipeCategories();
+    const idx = categories.indexOf(oldCategory);
+    if (idx >= 0) {
+      categories[idx] = trimmedNew;
+      if (this.data.recipes) {
+        this.data.recipes.forEach(r => {
+          if (r.category === oldCategory) r.category = trimmedNew;
+        });
+      }
+      this.data.recipeCategories = categories;
+      this.save(this.data);
+    }
+    return this.data.recipeCategories;
+  }
+
+  public deleteRecipeCategory(category: string): string[] {
+    const categories = this.getRecipeCategories();
+    this.data.recipeCategories = categories.filter(c => c !== category);
+    this.save(this.data);
+    return this.data.recipeCategories;
+  }
+
+  public getOrCreateRecipeFolder(subFolderName?: string, parentFolderId?: string): FolderItem {
+    const allFolders = this.data.folders.filter(f => !f.isTrash);
+    let recipeRoot = parentFolderId ? allFolders.find(f => f.id === parentFolderId) : null;
+
+    if (!recipeRoot) {
+      const rootAliases = [
+        'receitas',
+        'receita',
+        'receitas e culinaria',
+        'receitas & culinaria',
+        'receitas e culinária',
+        'receitas & culinária',
+        'culinaria',
+        'culinária',
+        'gastronomia',
+        'cozinha',
+        'recipes',
+        'cooking'
+      ];
+      recipeRoot = allFolders.find(f => {
+        if (f.parentId) return false;
+        const normalized = f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+        return rootAliases.some(alias => normalized === alias || normalized.includes(alias));
+      });
+
+      if (!recipeRoot) {
+        recipeRoot = this.createFolder('🍳 Receitas', null, '#f97316', 'Biblioteca dedicada para vídeos de receitas e culinária');
+      }
+    }
+
+    if (subFolderName && subFolderName.trim()) {
+      const title = subFolderName.trim();
+      let subFolder = allFolders.find(f =>
+        f.parentId === recipeRoot!.id &&
+        f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim() === title.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim()
+      );
+      if (!subFolder) {
+        subFolder = this.createFolder(title, recipeRoot.id, '#f97316', `Receitas de ${title}`);
+      }
+      return subFolder;
+    }
+
+    return recipeRoot;
   }
 
   // ---------------- SÉRIES & TV SHOWS CRUD ----------------
@@ -4444,6 +4677,116 @@ class Database {
     };
   }
 
+  // ---------------- SYNC RECEITAS FROM ROOT FOLDER ----------------
+  public syncRecipesFromRootFolder(): {
+    importedCount: number;
+    updatedCount: number;
+    totalRecipes: number;
+    recipes: RecipeVideo[];
+  } {
+    if (!this.data.recipes) this.data.recipes = [];
+    const rootAliases = [
+      'receitas',
+      'receita',
+      'receitas e culinaria',
+      'receitas & culinaria',
+      'receitas e culinária',
+      'receitas & culinária',
+      'culinaria',
+      'culinária',
+      'gastronomia',
+      'cozinha',
+      'recipes',
+      'cooking'
+    ];
+    let rootFolders = this.findLibraryRootFolders(rootAliases);
+
+    if (rootFolders.length === 0) {
+      const createdRoot = this.getOrCreateRecipeFolder();
+      rootFolders = [createdRoot];
+    }
+
+    const rootFolderIds = new Set(rootFolders.map(r => r.id));
+    const allRecipeFolderIds = this.collectDescendantFolderIds(Array.from(rootFolderIds));
+    const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
+    const allFiles = (this.data.files || []).filter(f => !f.isTrash);
+    const videoExts = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv'];
+
+    const recipeFiles = allFiles.filter(f =>
+      allRecipeFolderIds.has(f.parentId || '') &&
+      (f.type === 'video' || videoExts.includes((f.extension || '').toLowerCase()))
+    );
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    for (const file of recipeFiles) {
+      const existing = this.data.recipes.find(r => r.fileId === file.id);
+
+      if (existing) {
+        if (file.parentId && existing.folderId !== file.parentId) {
+          existing.folderId = file.parentId;
+          existing.updatedAt = new Date().toISOString();
+          updatedCount++;
+        }
+        continue;
+      }
+
+      const parentFolder = allFolders.find(f => f.id === file.parentId);
+      const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/^[🍳🍲🥘🍰🍝🎬🎥🎞️📽️📹📼\s]+/, '').trim();
+
+      const existingByTitleAndFolder = this.data.recipes.find(r =>
+        (r.folderId === file.parentId || (!r.folderId && file.parentId === rootFolders[0].id)) &&
+        r.title.toLowerCase().trim() === cleanFileName.toLowerCase().trim()
+      );
+
+      if (existingByTitleAndFolder) {
+        if (!existingByTitleAndFolder.fileId || existingByTitleAndFolder.fileId !== file.id) {
+          existingByTitleAndFolder.fileId = file.id;
+          existingByTitleAndFolder.updatedAt = new Date().toISOString();
+          updatedCount++;
+        }
+        continue;
+      }
+
+      const folderCover = file.parentId ? this.findFolderImageCover(file.parentId) : undefined;
+      const defaultCover = folderCover || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&auto=format&fit=crop&q=60';
+      const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Outros';
+
+      const newRecipe: RecipeVideo = {
+        id: 'recipe-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        title: cleanFileName,
+        category,
+        tags: [],
+        difficulty: 'facil',
+        ingredients: [],
+        instructions: '',
+        sourcePlatform: 'local',
+        description: parentFolder?.description || '',
+        coverImage: defaultCover,
+        folderId: file.parentId || rootFolders[0].id,
+        fileId: file.id,
+        timestamps: file.timestamps || [],
+        subtitles: file.subtitles || [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      this.data.recipes.push(newRecipe);
+      importedCount++;
+    }
+
+    this.syncRecipesWithFolderStructure();
+    this.save(this.data);
+
+    return {
+      importedCount,
+      updatedCount,
+      totalRecipes: this.data.recipes.length,
+      recipes: this.data.recipes
+    };
+  }
+
   // ---------------- SYNC SERIES FROM ROOT FOLDER ----------------
   public syncSeriesFromRootFolder(): {
     importedCount: number;
@@ -4858,6 +5201,8 @@ class Database {
     this.syncBooksWithFolderStructure();
     this.syncComicsWithFolderStructure();
     this.syncVideosWithFolderStructure();
+    this.syncPersonalVideosWithFolderStructure();
+    this.syncRecipesWithFolderStructure();
     this.syncSeriesWithFolderStructure();
     this.syncAudioShowsWithFolderStructure();
     this.syncAdultVideosWithFolderStructure();
@@ -4873,6 +5218,8 @@ class Database {
       books: this.data.books,
       comics: this.data.comics,
       videos: this.data.videos,
+      personalVideos: this.data.personalVideos,
+      recipes: this.data.recipes,
       series: this.data.series,
       audioShows: this.data.audioShows,
       adultVideos: this.data.adultVideos,
@@ -4889,6 +5236,8 @@ class Database {
     if (manifest.books) this.data.books = manifest.books;
     if (manifest.comics) this.data.comics = manifest.comics;
     if (manifest.videos) this.data.videos = manifest.videos;
+    if (manifest.personalVideos) this.data.personalVideos = manifest.personalVideos;
+    if (manifest.recipes) this.data.recipes = manifest.recipes;
     if (manifest.series) this.data.series = manifest.series;
     if (manifest.audioShows) this.data.audioShows = manifest.audioShows;
     if (manifest.adultVideos) this.data.adultVideos = manifest.adultVideos;
@@ -4898,6 +5247,8 @@ class Database {
     this.syncBooksWithFolderStructure();
     this.syncComicsWithFolderStructure();
     this.syncVideosWithFolderStructure();
+    this.syncPersonalVideosWithFolderStructure();
+    this.syncRecipesWithFolderStructure();
     this.syncSeriesWithFolderStructure();
     this.syncAudioShowsWithFolderStructure();
     this.syncAdultVideosWithFolderStructure();
@@ -4975,6 +5326,8 @@ class Database {
     if (reconcileCollection(this.data.books, manifest.books)) updated = true;
     if (reconcileCollection(this.data.comics, manifest.comics)) updated = true;
     if (reconcileCollection(this.data.videos, manifest.videos)) updated = true;
+    if (reconcileCollection(this.data.personalVideos, manifest.personalVideos)) updated = true;
+    if (reconcileCollection(this.data.recipes, manifest.recipes)) updated = true;
     if (reconcileCollection(this.data.series, manifest.series)) updated = true;
 
     // Atualizar durações de episódios de séries já existentes se a base local tiver placeholder (10:00 / 15:00) e o manifesto remoto tiver duração real

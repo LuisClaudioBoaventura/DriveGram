@@ -24,6 +24,10 @@ import { ApiKeysManagerModal } from './components/ApiKeysManagerModal.js';
 import { PersonalVideosCatalog } from './components/PersonalVideosCatalog.js';
 import { NewPersonalVideoModal } from './components/NewPersonalVideoModal.js';
 import { EditPersonalVideoModal } from './components/EditPersonalVideoModal.js';
+import { RecipesCatalog } from './components/RecipesCatalog.js';
+import { RecipePlayerView } from './components/RecipePlayerView.js';
+import { NewRecipeModal } from './components/NewRecipeModal.js';
+import { EditRecipeModal } from './components/EditRecipeModal.js';
 import { SeriesCatalog } from './components/SeriesCatalog.js';
 import { SeriesStudioView } from './components/SeriesStudioView.js';
 import { NewSeriesModal } from './components/NewSeriesModal.js';
@@ -64,10 +68,11 @@ import { useBooks } from './hooks/useBooks.js';
 import { useComics } from './hooks/useComics.js';
 import { useVideos } from './hooks/useVideos.js';
 import { usePersonalVideos } from './hooks/usePersonalVideos.js';
+import { useRecipes } from './hooks/useRecipes.js';
 import { useSeries } from './hooks/useSeries.js';
 import { useAudioShows } from './hooks/useAudioShows.js';
 import { useAdultVault } from './hooks/useAdultVault.js';
-import { DriveItem, FolderItem, Course, Book, ComicBook, MovieVideo, PersonalVideo, SeriesShow, SeriesEpisode, AudioShow, AdultVideo, AdultPerformer } from './types/index.js';
+import { DriveItem, FolderItem, Course, Book, ComicBook, MovieVideo, PersonalVideo, RecipeVideo, SeriesShow, SeriesEpisode, AudioShow, AdultVideo, AdultPerformer } from './types/index.js';
 import { getFilesFromDataTransfer } from './utils/dragDropUtils.js';
 import { isRedLockerFolder } from './utils/libraryFolderUtils.js';
 import { useTheme } from './utils/theme.js';
@@ -94,6 +99,7 @@ export function App() {
   const comics = useComics();
   const videos = useVideos();
   const personalVideos = usePersonalVideos();
+  const recipes = useRecipes();
   const series = useSeries();
   const audioShows = useAudioShows();
   const adultVault = useAdultVault();
@@ -107,6 +113,7 @@ export function App() {
     comics.fetchComics();
     videos.fetchVideos();
     personalVideos.refresh();
+    recipes.refresh();
     series.fetchSeries?.();
     audioShows.refreshAllPodcasts?.();
   };
@@ -143,6 +150,7 @@ export function App() {
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [isApiKeysModalOpen, setIsApiKeysModalOpen] = useState(false);
   const [isPersonalVideoModalOpen, setIsPersonalVideoModalOpen] = useState(false);
+  const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false);
   const [isSeriesModalOpen, setIsSeriesModalOpen] = useState(false);
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
   const [isAdultLockModalOpen, setIsAdultLockModalOpen] = useState(false);
@@ -181,6 +189,7 @@ export function App() {
   const [editingComic, setEditingComic] = useState<ComicBook | null>(null);
   const [editingVideo, setEditingVideo] = useState<MovieVideo | null>(null);
   const [editingPersonalVideo, setEditingPersonalVideo] = useState<PersonalVideo | null>(null);
+  const [editingRecipe, setEditingRecipe] = useState<RecipeVideo | null>(null);
   const [editingSeries, setEditingSeries] = useState<SeriesShow | null>(null);
   const [editingAudioShow, setEditingAudioShow] = useState<AudioShow | null>(null);
   const [editingAdultVideo, setEditingAdultVideo] = useState<AdultVideo | null>(null);
@@ -197,6 +206,7 @@ export function App() {
     isShuffle?: boolean;
   } | null>(null);
   const [selectedPersonalVideoForView, setSelectedPersonalVideoForView] = useState<PersonalVideo | null>(null);
+  const [selectedRecipeForView, setSelectedRecipeForView] = useState<RecipeVideo | null>(null);
   const [activePipVideo, setActivePipVideo] = useState<{ video: MovieVideo; isPersonal?: boolean } | null>(null);
   const [activePipCourse, setActivePipCourse] = useState<Course | null>(null);
 
@@ -259,11 +269,11 @@ export function App() {
 
   const isAnyModalOrViewerOpen = isAuthModalOpen || isLoginPromptOpen || isSyncModalOpen || 
     isFolderModalOpen || isCourseModalOpen || isBookModalOpen || isComicModalOpen || 
-    isVideoModalOpen || isSeriesModalOpen || isAudioModalOpen || isAdultLockModalOpen || isNewAdultVideoModalOpen ||
+    isVideoModalOpen || isRecipeModalOpen || isSeriesModalOpen || isAudioModalOpen || isAdultLockModalOpen || isNewAdultVideoModalOpen ||
     isDuplicatesModalOpen || isCategoryManagerOpen || editingBook !== null || 
-    editingComic !== null || editingVideo !== null || editingSeries !== null || editingAudioShow !== null ||
+    editingComic !== null || editingVideo !== null || editingRecipe !== null || editingSeries !== null || editingAudioShow !== null ||
     editingAdultVideo !== null || editingItem !== null || activePreviewFile !== null || selectedVideoForView !== null ||
-    selectedSeriesForView !== null || selectedAudioForView !== null || selectedAdultVideoForView !== null;
+    selectedRecipeForView !== null || selectedSeriesForView !== null || selectedAudioForView !== null || selectedAdultVideoForView !== null;
 
   const handleDragOver = (e: React.DragEvent) => {
     if (isAnyModalOrViewerOpen) return;
@@ -300,6 +310,8 @@ export function App() {
     books.refreshBooks();
     comics.fetchComics();
     videos.fetchVideos();
+    personalVideos.refresh();
+    recipes.refresh();
     series.fetchSeries();
     audioShows.fetchAudioShows();
     if (adultVault.isUnlocked) {
@@ -338,6 +350,11 @@ export function App() {
       videos.fetchVideos();
       fs.setActiveTab('videos');
       showToast('🎉 Vídeos importados do YouTube com sucesso!', 'success');
+    } else if (result.targetType === 'recipe') {
+      recipes.refresh();
+      fs.setActiveTab('recipes');
+      if (result.item) setSelectedRecipeForView(result.item);
+      showToast('🍳 Receita(s) importada(s) do YouTube com sucesso!', 'success');
     }
   };
 
@@ -457,6 +474,7 @@ export function App() {
     } else if (activePipVideo && activePipVideo.isPersonal) {
       setSelectedPersonalVideoForView(activePipVideo.video as any);
     }
+    if (tab !== 'recipes') setSelectedRecipeForView(null);
     if (tab !== 'series') setSelectedSeriesForView(null);
     if (tab !== 'podcasts') setSelectedAudioForView(null);
     if (tab !== 'adult') setSelectedAdultVideoForView(null);
@@ -528,6 +546,7 @@ export function App() {
           onNewComic={() => setIsComicModalOpen(true)}
           onNewVideo={() => setIsVideoModalOpen(true)}
           onNewPersonalVideo={() => setIsPersonalVideoModalOpen(true)}
+          onNewRecipe={() => setIsRecipeModalOpen(true)}
           onNewSeries={() => setIsSeriesModalOpen(true)}
           onNewAudio={() => setIsAudioModalOpen(true)}
           onNewAdultVideo={() => {
@@ -869,6 +888,19 @@ export function App() {
                 setSelectedAdultVideoForView(null);
               }}
             />
+          ) : selectedRecipeForView && fs.activeTab === 'recipes' ? (
+            /* Active Dedicated Recipe Player & Kitchen Workspace */
+            <RecipePlayerView
+              recipe={selectedRecipeForView}
+              allFiles={fs.allFiles}
+              onBackToCatalog={() => setSelectedRecipeForView(null)}
+              onUpdateProgress={recipes.updateProgress}
+              onUpdateRecipe={async (updated) => {
+                await recipes.updateRecipe(updated);
+                setSelectedRecipeForView(updated);
+              }}
+              onOpenEditModal={() => setEditingRecipe(selectedRecipeForView)}
+            />
           ) : fs.activeTab === 'courses' ? (
             /* Courses Catalog */
             <CourseCatalog
@@ -996,6 +1028,33 @@ export function App() {
               onToggleFavorite={personalVideos.toggleFavorite}
               onSyncRootFolder={async () => {
                 const res = await personalVideos.syncFromDriveRoot();
+                fs.refresh();
+                return res;
+              }}
+              onShowToast={showToast}
+            />
+          ) : fs.activeTab === 'recipes' ? (
+            /* Dedicated Recipes & Cooking Catalog */
+            <RecipesCatalog
+              recipes={recipes.recipes}
+              categories={recipes.categories}
+              folders={fs.allFolders}
+              allFiles={fs.allFiles}
+              onSelectRecipe={(r) => {
+                recipes.setActiveRecipe(r);
+                setSelectedRecipeForView(r);
+              }}
+              onOpenNewModal={() => setIsRecipeModalOpen(true)}
+              onOpenYouTubeModal={() => handleOpenYouTubeModal('recipe')}
+              onEditRecipe={(r) => setEditingRecipe(r)}
+              onDeleteRecipe={(id) => {
+                recipes.deleteRecipe(id);
+                fs.refresh();
+              }}
+              onToggleFavorite={recipes.toggleFavorite}
+              onToggleCompleted={recipes.toggleCompleted}
+              onSyncRootFolder={async () => {
+                const res = await recipes.syncFromDriveRoot();
                 fs.refresh();
                 return res;
               }}
@@ -1310,6 +1369,7 @@ export function App() {
           comics.fetchComics();
           videos.fetchVideos();
           personalVideos.refresh();
+          recipes.refresh();
           series.refreshAllSeries?.();
           audioShows.refreshAllPodcasts?.();
         }}
@@ -1501,6 +1561,55 @@ export function App() {
           fs.refresh();
           if (selectedPersonalVideoForView?.id === updated.id) {
             setSelectedPersonalVideoForView(updated);
+          }
+        }}
+      />
+
+      {/* Recipe Creation Modal */}
+      <NewRecipeModal
+        isOpen={isRecipeModalOpen}
+        onClose={() => setIsRecipeModalOpen(false)}
+        folders={fs.allFolders}
+        categories={recipes.categories}
+        onAddCategory={recipes.addCategory}
+        onEnsureDedicatedFolder={async () => {
+          try {
+            const res = await fetch('/api/recipes/ensure-folder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({})
+            });
+            if (res.ok) {
+              const folder = await res.json();
+              fs.refresh();
+              return folder;
+            }
+          } catch {}
+          return null;
+        }}
+        onCreateRecipe={async (data) => {
+          const newRecipe = await recipes.createRecipeFromFolder(data);
+          fs.refresh();
+          if (newRecipe) {
+            setSelectedRecipeForView(newRecipe);
+            fs.setActiveTab('recipes');
+          }
+        }}
+      />
+
+      {/* Recipe Metadata Editor Modal */}
+      <EditRecipeModal
+        isOpen={editingRecipe !== null}
+        onClose={() => setEditingRecipe(null)}
+        recipe={editingRecipe}
+        categories={recipes.categories}
+        allFiles={fs.allFiles}
+        onAddCategory={recipes.addCategory}
+        onSave={async (updated) => {
+          await recipes.updateRecipe(updated);
+          fs.refresh();
+          if (selectedRecipeForView?.id === updated.id) {
+            setSelectedRecipeForView(updated);
           }
         }}
       />
@@ -1913,6 +2022,7 @@ export function App() {
         onNewComic={() => setIsComicModalOpen(true)}
         onNewVideo={() => setIsVideoModalOpen(true)}
         onNewPersonalVideo={() => setIsPersonalVideoModalOpen(true)}
+        onNewRecipe={() => setIsRecipeModalOpen(true)}
         onNewSeries={() => setIsSeriesModalOpen(true)}
         onNewAudio={() => setIsAudioModalOpen(true)}
         onNewAdultVideo={() => {

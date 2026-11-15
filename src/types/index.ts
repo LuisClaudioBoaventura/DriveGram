@@ -397,6 +397,39 @@ export interface PersonalVideo {
   updatedAt: string;
 }
 
+// ---------------- RECEITAS & CULINÁRIA ----------------
+export interface RecipeVideo {
+  id: string;
+  title: string;
+  description?: string;
+  author?: string; // Canal, chef ou perfil criador
+  sourcePlatform?: 'youtube' | 'instagram' | 'tiktok' | 'local' | 'other';
+  sourceUrl?: string; // Link original (Reels, TikTok, YouTube, blog)
+  videoUrl?: string;
+  embedUrl?: string;
+  category?: string; // Doces & Sobremesas, Massas & Risotos, Airfryer, etc.
+  tags?: string[];
+  prepTime?: string; // ex: "25 min"
+  servings?: string; // ex: "4 porções"
+  difficulty?: 'facil' | 'medio' | 'dificil';
+  ingredients?: string[]; // Lista de ingredientes
+  instructions?: string; // Modo de preparo / notas de cozinha
+  duration?: string;
+  durationSeconds?: number;
+  resolution?: string;
+  coverImage?: string;
+  fileId?: string; // driveItem id
+  folderId?: string; // drive folder
+  timestamps?: VideoTimestamp[];
+  subtitles?: VideoSubtitle[];
+  lastPositionSeconds?: number;
+  isCompleted?: boolean; // Receita já testada / feita
+  isFavorite?: boolean;
+  rating?: number; // 1 a 5 estrelas
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---------------- SÉRIES & TV SHOWS ----------------
 export interface SeriesEpisode {
   id: string;
@@ -550,6 +583,8 @@ export interface DriveGramSyncManifest {
   books?: Book[];
   comics?: ComicBook[];
   videos?: MovieVideo[];
+  personalVideos?: PersonalVideo[];
+  recipes?: RecipeVideo[];
   series?: SeriesShow[];
   audioShows?: AudioShow[];
   adultVideos?: AdultVideo[];

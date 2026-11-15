@@ -9,7 +9,7 @@ export interface YouTubeSaveProgress {
 export interface SaveYouTubeToTelegramParams {
   videoUrl: string;
   title?: string;
-  targetType: 'series_episode' | 'course_lesson' | 'movie_video' | 'standalone';
+  targetType: 'series_episode' | 'course_lesson' | 'movie_video' | 'recipe' | 'standalone';
   parentId?: string;
   episodeId?: string;
   lessonId?: string;

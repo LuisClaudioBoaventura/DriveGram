@@ -17,7 +17,8 @@ import {
   Youtube, 
   X,
   Star,
-  Trash2
+  Trash2,
+  UtensilsCrossed
 } from 'lucide-react';
 import { SidebarTab } from './Sidebar.js';
 import { YouTubeTargetType } from './YouTubeImportModal.js';
@@ -33,6 +34,7 @@ interface BottomNavProps {
   onNewComic: () => void;
   onNewVideo?: () => void;
   onNewPersonalVideo?: () => void;
+  onNewRecipe?: () => void;
   onNewSeries?: () => void;
   onNewAudio?: () => void;
   onNewAdultVideo?: () => void;
@@ -51,6 +53,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onNewComic,
   onNewVideo,
   onNewPersonalVideo,
+  onNewRecipe,
   onNewSeries,
   onNewAudio,
   onNewAdultVideo,
@@ -303,6 +306,23 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                     </div>
                     <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
                       Vídeo Pessoal
+                    </span>
+                  </button>
+                )}
+
+                {onNewRecipe && (
+                  <button
+                    onClick={() => {
+                      setShowActionSheet(false);
+                      onNewRecipe();
+                    }}
+                    className="flex items-center gap-2.5 p-2.5 rounded-2xl bg-gray-50 dark:bg-drive-darkBg border border-gray-200 dark:border-drive-darkBorder hover:bg-orange-50 dark:hover:bg-orange-950/30 text-left transition-all active:scale-95"
+                  >
+                    <div className="p-2 rounded-xl bg-orange-500/10 text-orange-500 shrink-0">
+                      <UtensilsCrossed className="w-4 h-4" />
+                    </div>
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                      Nova Receita
                     </span>
                   </button>
                 )}
