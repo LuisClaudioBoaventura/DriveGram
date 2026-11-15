@@ -695,6 +695,7 @@ class Database {
       { name: "HQ's", color: '#ec4899', aliases: ["hq's", 'hqs', 'hqs e mangás', 'hqs & mangas', 'quadrinhos', 'mangás', 'mangas'] },
       { name: 'Filmes', color: '#ef4444', aliases: ['filmes', 'filme', 'cinema', 'movies', 'filmes e cinema', 'filmes & cinema', 'longas', 'filmes e videos', 'filmes e vídeos'] },
       { name: 'Vídeos e Mídias Pessoais', color: '#f59e0b', aliases: ['videos e midias pessoais', 'vídeos e mídias pessoais', 'videos e midias', 'vídeos e mídias', 'midias pessoais', 'mídias pessoais', 'videos pessoais', 'vídeos pessoais', 'gravacoes', 'gravações', 'home videos', 'familia', 'família', 'pessoal'] },
+      { name: 'Receitas', color: '#f97316', aliases: ['receitas', 'receita', 'receitas e culinaria', 'receitas & culinaria', 'receitas e culinária', 'receitas & culinária', 'culinaria', 'culinária', 'gastronomia', 'cozinha', 'recipes', 'cooking'] },
       { name: 'Séries e Animes', color: '#8b5cf6', aliases: ['séries e animes', 'series e animes', 'séries & animes', 'series & animes', 'séries', 'series', 'animes'] },
       { name: 'Musicas e Podcasts', color: '#10b981', aliases: ['musicas e podcasts', 'músicas e podcasts', 'musicas & podcasts', 'músicas & podcasts', 'músicas', 'musicas', 'podcasts', 'albuns', 'álbuns'] },
       { name: 'Red Locker', color: '#e11d48', aliases: ['red locker', 'redlocker'] }
@@ -3145,7 +3146,7 @@ class Database {
       });
 
       if (!recipeRoot) {
-        recipeRoot = this.createFolder('🍳 Receitas', null, '#f97316', 'Biblioteca dedicada para vídeos de receitas e culinária');
+        recipeRoot = this.createFolder('Receitas', null, '#f97316', 'Biblioteca dedicada para vídeos de receitas e culinária');
       }
     }
 
