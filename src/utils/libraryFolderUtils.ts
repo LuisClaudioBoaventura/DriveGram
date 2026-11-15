@@ -1,6 +1,6 @@
 import { FolderItem } from '../types/index.js';
 
-export type LibraryType = 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult';
+export type LibraryType = 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'recipes' | 'series' | 'podcasts' | 'adult';
 
 export interface LibraryFolderConfig {
   type: LibraryType;
@@ -72,6 +72,28 @@ export const LIBRARY_FOLDERS_CONFIG: Record<LibraryType, LibraryFolderConfig> = 
     defaultColor: '#f59e0b',
     emoji: '📹',
     accentColor: 'amber'
+  },
+  recipes: {
+    type: 'recipes',
+    displayName: 'Receitas & Culinária',
+    folderName: 'Receitas',
+    folderNameAliases: [
+      'receitas',
+      'receita',
+      'receitas e culinaria',
+      'receitas & culinaria',
+      'receitas e culinária',
+      'receitas & culinária',
+      'culinaria',
+      'culinária',
+      'gastronomia',
+      'cozinha',
+      'recipes',
+      'cooking'
+    ],
+    defaultColor: '#f97316',
+    emoji: '🍳',
+    accentColor: 'orange'
   },
   series: {
     type: 'series',

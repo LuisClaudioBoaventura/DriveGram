@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { DriveItem, FolderItem, UploadProgress, FileType } from '../types/index.js';
 import { triggerUploadCompleteSound } from '../utils/soundEffects.js';
 
-export type ActiveTabType = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
+export type ActiveTabType = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'recipes' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
 
 export function useFileSystem() {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);

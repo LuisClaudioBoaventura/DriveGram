@@ -140,7 +140,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.29.0',
+    version: '1.30.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -2853,6 +2853,152 @@ app.delete('/api/personal-video-categories/:category', (req, res) => {
   res.json(updated);
 });
 
+// ---------------- RECEITAS & CULINÁRIA ----------------
+app.get('/api/recipes', (_req, res) => {
+  res.json(db.getRecipes());
+});
+
+app.get('/api/recipes/:id', (req, res) => {
+  const recipe = db.getRecipeById(req.params.id);
+  if (!recipe) return res.status(404).json({ error: 'Receita não encontrada' });
+  res.json(recipe);
+});
+
+app.post('/api/recipes', (req, res) => {
+  const body = req.body || {};
+  if (!body.title || !String(body.title).trim()) {
+    return res.status(400).json({ error: 'Título da receita é obrigatório' });
+  }
+  const targetFolder = body.folderId
+    ? db.getFolderById(body.folderId) || db.getOrCreateRecipeFolder()
+    : db.getOrCreateRecipeFolder();
+
+  const recipe = db.saveRecipe({
+    ...body,
+    title: String(body.title).trim(),
+    folderId: targetFolder.id
+  });
+  res.status(201).json(recipe);
+});
+
+app.post('/api/recipes/ensure-folder', (req, res) => {
+  try {
+    const { subFolderName, parentFolderId } = req.body || {};
+    const folder = db.getOrCreateRecipeFolder(subFolderName, parentFolderId);
+    res.json(folder);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao criar pasta dedicada de receitas' });
+  }
+});
+
+app.post('/api/recipes/from-folder', (req, res) => {
+  try {
+    const {
+      folderId,
+      fileId,
+      title,
+      author,
+      sourcePlatform,
+      sourceUrl,
+      videoUrl,
+      embedUrl,
+      category,
+      prepTime,
+      servings,
+      difficulty,
+      ingredients,
+      instructions,
+      description,
+      coverImage,
+      tags
+    } = req.body || {};
+
+    if (!folderId && !videoUrl && !sourceUrl && !fileId) {
+      return res.status(400).json({ error: 'Informe uma pasta, arquivo ou link de vídeo para a receita' });
+    }
+
+    const folder = folderId ? db.getFolderById(folderId) : db.getOrCreateRecipeFolder();
+    if (folderId && !folder) return res.status(404).json({ error: 'Pasta não encontrada' });
+    const resolvedFolder = folder || db.getOrCreateRecipeFolder();
+
+    const files = db.getFiles(resolvedFolder.id);
+    const videoFile = fileId
+      ? db.getFiles().find(f => f.id === fileId)
+      : files.find(f => f.type === 'video');
+
+    const newRecipe = db.saveRecipe({
+      title: (title && String(title).trim()) || resolvedFolder.name.replace(/^[🍳🍲🥘🍰🍝🎬🎥🎞️📽️📹📼\s]+/, '').trim(),
+      author,
+      sourcePlatform: sourcePlatform || (videoUrl ? 'youtube' : videoFile ? 'local' : 'other'),
+      sourceUrl: sourceUrl || videoUrl,
+      videoUrl,
+      embedUrl,
+      category: category || 'Outros',
+      prepTime,
+      servings,
+      difficulty: difficulty || 'facil',
+      ingredients: Array.isArray(ingredients) ? ingredients : [],
+      instructions: instructions || '',
+      tags: Array.isArray(tags) ? tags : [],
+      description: description || resolvedFolder.description || '',
+      coverImage: coverImage || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&auto=format&fit=crop&q=60',
+      folderId: resolvedFolder.id,
+      fileId: videoFile?.id,
+      timestamps: videoFile?.timestamps || [],
+      subtitles: videoFile?.subtitles || []
+    });
+
+    res.status(201).json(newRecipe);
+  } catch (e: any) {
+    console.error('Error creating recipe:', e);
+    res.status(500).json({ error: e.message || 'Erro ao criar receita' });
+  }
+});
+
+app.post('/api/recipes/sync-root', (_req, res) => {
+  try {
+    const result = db.syncRecipesFromRootFolder();
+    res.json(result);
+  } catch (e: any) {
+    console.error('Error syncing recipes from root folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao sincronizar receitas do Drive' });
+  }
+});
+
+app.put('/api/recipes/:id', (req, res) => {
+  const existing = db.getRecipeById(req.params.id);
+  const updated = db.saveRecipe({ ...existing, ...req.body, id: req.params.id });
+  res.json(updated);
+});
+
+app.delete('/api/recipes/:id', (req, res) => {
+  db.deleteRecipe(req.params.id);
+  res.status(204).end();
+});
+
+app.get('/api/recipe-categories', (_req, res) => {
+  res.json(db.getRecipeCategories());
+});
+
+app.post('/api/recipe-categories', (req, res) => {
+  const { category } = req.body;
+  if (!category) return res.status(400).json({ error: 'Categoria é obrigatória' });
+  const updated = db.addRecipeCategory(category);
+  res.json(updated);
+});
+
+app.put('/api/recipe-categories', (req, res) => {
+  const { oldCategory, newCategory } = req.body;
+  if (!oldCategory || !newCategory) return res.status(400).json({ error: 'Categorias são obrigatórias' });
+  const updated = db.updateRecipeCategory(oldCategory, newCategory);
+  res.json(updated);
+});
+
+app.delete('/api/recipe-categories/:category', (req, res) => {
+  const updated = db.deleteRecipeCategory(decodeURIComponent(req.params.category));
+  res.json(updated);
+});
+
 // ---------------- SÉRIES & TV SHOWS ----------------
 app.get('/api/series', (_req, res) => {
   res.json(db.getSeries());
@@ -3848,8 +3994,43 @@ app.post('/api/youtube/import', async (req, res) => {
       });
 
       responseData = { success: true, targetType: 'series', item: newSeries };
+    } else if (targetType === 'recipe') {
+      // 4. IMPORT AS RECIPES
+      const recipeFolder = db.getOrCreateRecipeFolder(category || undefined, folderId || undefined);
+      const finalFolderId = recipeFolder.id;
+
+      const savedRecipes = [];
+      for (const v of videos) {
+        let itemCover = finalCoverUrl;
+        if (videos.length > 1 && v.thumbnail) {
+          itemCover = v.thumbnail;
+        }
+        const newRecipe = db.saveRecipe({
+          title: videos.length === 1 ? title.trim() : v.title,
+          author: v.author || author || 'YouTube',
+          sourcePlatform: 'youtube',
+          sourceUrl: v.url,
+          videoUrl: v.url,
+          embedUrl: v.embedUrl,
+          category: category || 'Outros',
+          description: v.description || description || '',
+          coverImage: itemCover,
+          folderId: finalFolderId,
+          duration: v.duration,
+          durationSeconds: v.durationSeconds,
+          difficulty: 'facil',
+          tags: ['YouTube']
+        });
+        savedRecipes.push(newRecipe);
+      }
+      responseData = {
+        success: true,
+        targetType: 'recipe',
+        item: savedRecipes[0],
+        items: savedRecipes
+      };
     } else {
-      // 4. IMPORT AS MOVIE VIDEOS
+      // 5. IMPORT AS MOVIE VIDEOS
       const videoFolder = db.getOrCreateVideoFolder(videos.length > 1 ? title : undefined, folderId || undefined);
       const finalFolderId = videoFolder.id;
 
@@ -3970,6 +4151,14 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
           return { success: true, alreadySaved: true, file: existingFile, video: v };
         }
       }
+    } else if (targetType === 'recipe' && videoId) {
+      const r = db.getRecipeById(videoId);
+      if (r?.fileId) {
+        const existingFile = db.getFiles().find((f: any) => f.id === r.fileId);
+        if (existingFile) {
+          return { success: true, alreadySaved: true, file: existingFile, video: r };
+        }
+      }
     }
 
     // 2. Verify Telegram connection before downloading large video (unless in demo mode)
@@ -4038,6 +4227,11 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
       targetVideo = db.getVideos().find((x: any) => x.id === videoId);
       if (targetVideo) {
         targetFolderId = targetVideo.folderId || null;
+      }
+    } else if (targetType === 'recipe' && videoId) {
+      targetVideo = db.getRecipeById(videoId);
+      if (targetVideo) {
+        targetFolderId = targetVideo.folderId || db.getOrCreateRecipeFolder().id;
       }
     }
 
@@ -4136,6 +4330,15 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
         targetVideo.durationSeconds = dlResult.durationSeconds;
       }
       updatedVideo = db.saveVideo(targetVideo);
+    } else if (targetType === 'recipe' && targetVideo) {
+      targetVideo.fileId = newFile.id;
+      if (!targetVideo.folderId && targetFolderId) {
+        targetVideo.folderId = targetFolderId;
+      }
+      if (dlResult.durationSeconds && !targetVideo.durationSeconds) {
+        targetVideo.durationSeconds = dlResult.durationSeconds;
+      }
+      updatedVideo = db.saveRecipe(targetVideo);
     }
 
     // 8. Sync metadata manifest to Telegram in background

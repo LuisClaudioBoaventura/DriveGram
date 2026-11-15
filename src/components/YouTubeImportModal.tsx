@@ -21,11 +21,12 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
-  Plus
+  Plus,
+  UtensilsCrossed
 } from 'lucide-react';
 import { FolderItem } from '../types/index.js';
 
-export type YouTubeTargetType = 'course' | 'podcast' | 'series' | 'video';
+export type YouTubeTargetType = 'course' | 'podcast' | 'series' | 'video' | 'recipe';
 
 interface YouTubeVideoItem {
   id: string;
@@ -97,6 +98,7 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
       case 'podcast': return '🎙️ Músicas & Podcasts';
       case 'series': return '🎬 Séries & TV Shows';
       case 'video': return '🎥 Filmes & Vídeos';
+      case 'recipe': return '🍳 Receitas';
     }
   };
 
@@ -105,7 +107,8 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
       course: ['cursos & treinamentos', 'cursos e treinamentos', 'cursos', 'treinamentos', 'aulas'],
       podcast: ['musicas e podcasts', 'músicas e podcasts', 'musicas & podcasts', 'músicas & podcasts', 'podcasts', 'músicas', 'musicas'],
       series: ['séries & tv shows', 'series & tv shows', 'séries e tv shows', 'series e tv shows', 'séries', 'series'],
-      video: ['filmes & vídeos', 'filmes e vídeos', 'filmes & videos', 'filmes e videos', 'filmes', 'vídeos', 'videos']
+      video: ['filmes & vídeos', 'filmes e vídeos', 'filmes & videos', 'filmes e videos', 'filmes', 'vídeos', 'videos'],
+      recipe: ['receitas', 'receita', 'receitas e culinaria', 'receitas & culinaria', 'receitas e culinária', 'culinaria', 'culinária', 'recipes']
     };
     const targetAliases = aliases[type] || [];
     return allFolders.find(f => {
@@ -178,12 +181,13 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
       setCustomTitle(data.title || 'Conteúdo do YouTube');
       setCustomAuthor(data.author || 'YouTube');
 
-      // Auto-detect best destination if not explicitly locked
-      if (data.type === 'playlist') {
-        // Playlists are great as courses or podcasts
-        if (targetType === 'video') handleSelectTargetType('course');
-      } else if (data.type === 'video') {
-        handleSelectTargetType('video');
+      // Auto-detect best destination if not explicitly locked to recipe
+      if (targetType !== 'recipe') {
+        if (data.type === 'playlist') {
+          if (targetType === 'video') handleSelectTargetType('course');
+        } else if (data.type === 'video') {
+          handleSelectTargetType('video');
+        }
       }
 
       // Pre-select all videos
@@ -475,7 +479,7 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
                   Como deseja salvar este conteúdo?
                 </label>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                   {/* Option 1: Course */}
                   <button
                     type="button"
@@ -568,6 +572,30 @@ export const YouTubeImportModal: React.FC<YouTubeImportModalProps> = ({
                       <div className="font-bold text-xs">🎥 Vídeos / Filmes</div>
                       <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
                         Catálogo de vídeos
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Option 5: Recipes */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectTargetType('recipe')}
+                    className={`p-3.5 rounded-2xl text-left border transition-all flex flex-col justify-between ${
+                      targetType === 'recipe'
+                        ? 'bg-orange-500/10 border-orange-500 text-orange-600 dark:text-orange-400 ring-2 ring-orange-500/30'
+                        : 'bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="p-2 rounded-xl bg-orange-500/20 text-orange-600 dark:text-orange-400">
+                        <UtensilsCrossed className="w-4 h-4" />
+                      </div>
+                      {targetType === 'recipe' && <Check className="w-4 h-4 text-orange-500" />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs">🍳 Receitas</div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                        Culinária e ingredientes
                       </div>
                     </div>
                   </button>

@@ -72,6 +72,7 @@ export interface Translations {
     comics: string;
     moviesVideos: string;
     personalVideos: string;
+    recipes: string;
     series: string;
     podcasts: string;
     redLocker: string;
@@ -286,6 +287,7 @@ export const translations: Record<AppLanguage, Translations> = {
       comics: 'HQs & Quadrinhos',
       moviesVideos: 'Filmes & Vídeos',
       personalVideos: 'Vídeos Pessoais',
+      recipes: 'Receitas & Culinária',
       series: 'Séries & Programas',
       podcasts: 'Músicas & Podcasts',
       redLocker: 'Red Locker',
@@ -498,6 +500,7 @@ export const translations: Record<AppLanguage, Translations> = {
       comics: 'Comics & Manga',
       moviesVideos: 'Movies & Videos',
       personalVideos: 'Personal Videos',
+      recipes: 'Recipes & Cooking',
       series: 'Series & TV Shows',
       podcasts: 'Music & Podcasts',
       redLocker: 'Red Locker',
@@ -710,6 +713,7 @@ export const translations: Record<AppLanguage, Translations> = {
       comics: 'Cómics y Manga',
       moviesVideos: 'Películas y Videos',
       personalVideos: 'Videos Personales',
+      recipes: 'Recetas y Cocina',
       series: 'Series y Programas',
       podcasts: 'Música y Podcasts',
       redLocker: 'Red Locker',

@@ -23,7 +23,8 @@ import {
   ChevronLeft,
   Youtube,
   FolderOpen,
-  X
+  X,
+  UtensilsCrossed
 } from 'lucide-react';
 import { TelegramAuthState } from '../types/index.js';
 import { YouTubeTargetType } from './YouTubeImportModal.js';
@@ -31,7 +32,7 @@ import { getFilesFromDataTransfer } from '../utils/dragDropUtils.js';
 import { CURRENT_APP_VERSION } from '../utils/updater.js';
 import { useTranslation } from '../i18n/index.js';
 
-export type SidebarTab = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
+export type SidebarTab = 'drive' | 'courses' | 'books' | 'comics' | 'videos' | 'personal-videos' | 'recipes' | 'series' | 'podcasts' | 'adult' | 'favorites' | 'trash';
 
 interface SidebarProps {
   activeTab: SidebarTab;
@@ -42,6 +43,7 @@ interface SidebarProps {
   onNewComic: () => void;
   onNewVideo?: () => void;
   onNewPersonalVideo?: () => void;
+  onNewRecipe?: () => void;
   onNewSeries?: () => void;
   onNewAudio?: () => void;
   onNewAdultVideo?: () => void;
@@ -70,6 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewComic,
   onNewVideo,
   onNewPersonalVideo,
+  onNewRecipe,
   onNewSeries,
   onNewAudio,
   onNewAdultVideo,
@@ -129,6 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'comics', label: t('sidebar.comics', 'HQs & Mangás'), icon: <Sparkles className="w-4 h-4 text-pink-500" />, badge: 'Biblioteca', color: 'pink' },
     { id: 'videos', label: t('sidebar.moviesVideos', 'Filmes & Cinema'), icon: <Film className="w-4 h-4 text-red-500" />, badge: 'Cinema', color: 'red' },
     { id: 'personal-videos', label: t('sidebar.personalVideos', 'Vídeos Pessoais'), icon: <Video className="w-4 h-4 text-amber-500" />, badge: 'Memórias', color: 'amber' },
+    { id: 'recipes', label: t('sidebar.recipes', 'Receitas & Culinária'), icon: <UtensilsCrossed className="w-4 h-4 text-orange-500" />, badge: 'Cozinha', color: 'orange' },
     { id: 'series', label: t('sidebar.series', 'Séries & Animes'), icon: <Tv className="w-4 h-4 text-purple-500" />, badge: 'TV Shows', color: 'purple' },
     { id: 'podcasts', label: t('sidebar.podcasts', 'Músicas & Podcasts'), icon: <Headphones className="w-4 h-4 text-emerald-500" />, badge: 'Áudios', color: 'emerald' },
     { 
@@ -376,6 +380,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <Video className="w-4 h-4 text-amber-500" />
                   <span>Novo Vídeo Pessoal</span>
+                </button>
+              )}
+
+              {onNewRecipe && (
+                <button
+                  onClick={() => {
+                    setShowNewMenu(false);
+                    onNewRecipe();
+                  }}
+                  className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-orange-50 dark:hover:bg-orange-900/30 transition-colors"
+                >
+                  <UtensilsCrossed className="w-4 h-4 text-orange-500" />
+                  <span>Nova Receita em Vídeo</span>
                 </button>
               )}
 
