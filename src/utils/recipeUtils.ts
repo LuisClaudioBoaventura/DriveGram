@@ -60,7 +60,14 @@ export function buildYouTubeThumbnailUrl(videoId: string): string {
 export function parseIngredientsText(text: string): string[] {
   return text
     .split(/\r?\n/)
-    .map(line => line.replace(/^[-*•\d.)\s]+(?=\S)/, '').trim())
+    .map(line =>
+      line
+        .trim()
+        // Strip bullet markers (-, *, •) or explicit list numbering (1., 2)),
+        // while preserving leading measurement numbers such as "100 g" or "1.5 kg".
+        .replace(/^(?:[-*•–—]+\s+|•\s*|\d+[.)]\s+)/, '')
+        .trim()
+    )
     .filter(Boolean);
 }
 
