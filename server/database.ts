@@ -3009,7 +3009,7 @@ class Database {
     return (this.data.recipes || []).find(r => r.id === id);
   }
 
-  public saveRecipe(recipeData: Partial<RecipeVideo> & { title: string }): RecipeVideo {
+  public saveRecipe(recipeData: Partial<RecipeVideo> & { title: string }, skipSave: boolean = false): RecipeVideo {
     if (!this.data.recipes) this.data.recipes = [];
     const id = recipeData.id || 'recipe-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
     const existingIdx = this.data.recipes.findIndex(r => r.id === id);
@@ -3064,7 +3064,9 @@ class Database {
       }
     }
 
-    this.save(this.data);
+    if (!skipSave) {
+      this.save(this.data);
+    }
     return recipe;
   }
 
