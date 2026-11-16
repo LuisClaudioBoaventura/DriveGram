@@ -214,6 +214,58 @@ function findObjectsWithKey(obj: any, key: string, results: any[] = []): any[] {
 }
 
 /**
+ * Extracts the "Show unavailable videos" playlist browseEndpoint params (typically wgYCCAA=),
+ * explicitly ignoring filter chips inside chipBarViewModel (e.g. Videos / Shorts chips).
+ */
+export function extractShowUnavailablePlaylistParams(ytData: any, playlistId: string): string | null {
+  if (!ytData || typeof ytData !== 'object') return null;
+
+  const targetBrowseId = `VL${playlistId}`;
+  const candidates: string[] = [];
+
+  const isUnavailableParams = (params: string): boolean => {
+    try {
+      return decodeURIComponent(params) === 'wgYCCAA=';
+    } catch {
+      return params === 'wgYCCAA=' || params === 'wgYCCAA%3D';
+    }
+  };
+
+  const collect = (node: any) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) collect(item);
+      return;
+    }
+
+    if (node.browseEndpoint && node.browseEndpoint.browseId === targetBrowseId && node.browseEndpoint.params) {
+      candidates.push(String(node.browseEndpoint.params));
+    }
+
+    for (const k of Object.keys(node)) {
+      // Never pick playlist filter chips ("Tudo", "Vídeos", "Shorts") as the unavailable-videos endpoint
+      if (k === 'chipBarViewModel' || k === 'chipViewModel') continue;
+      if (typeof node[k] === 'object' && node[k] !== null) {
+        collect(node[k]);
+      }
+    }
+  };
+
+  // Prefer header/sidebar menu items ("Show unavailable videos")
+  if (ytData.sidebar) collect(ytData.sidebar);
+  if (ytData.header) collect(ytData.header);
+
+  const exactHeaderMatch = candidates.find(isUnavailableParams);
+  if (exactHeaderMatch) return exactHeaderMatch;
+  if (candidates.length > 0) return candidates[0];
+
+  // Fallback across the rest of ytData (still skipping filter chips), accepting only explicit unavailable param
+  candidates.length = 0;
+  collect(ytData);
+  return candidates.find(isUnavailableParams) || null;
+}
+
+/**
  * Extracts duration from modern lockupViewModel objects (supports both thumbnailBottomOverlayViewModel and legacy thumbnailOverlayBadgeViewModel)
  */
 function extractDurationFromLockup(l: any): { duration: string; durationSeconds: number } {
@@ -686,15 +738,11 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
 
         // Check if playlist contains hidden/unavailable videos endpoint with params (e.g. wgYCCAA=)
         // When unavailable videos are hidden, YouTube default continuation token dies early (~170 items).
-        // Fetching with the unhidden browse endpoint unveils the full 500+ playlist!
-        let showUnavailableParams: string | null = null;
-        const browseEndpoints = findObjectsWithKey(ytData, 'browseEndpoint');
-        for (const ep of browseEndpoints) {
-          if (ep.browseId === `VL${playlistId}` && ep.params) {
-            showUnavailableParams = ep.params;
-            break;
-          }
-        }
+        // Fetching with the unhidden browse endpoint unveils the full 500+ playlist, while explicitly
+        // ignoring Videos/Shorts filter chips (chipBarViewModel) that would otherwise drop Shorts!
+        const ytInitialVideos = extractVideosFromPayload(ytData, new Set<string>(), playlistAuthor, playlistId);
+        const showUnavailableParams = extractShowUnavailablePlaylistParams(ytData, playlistId);
+        let unavailVideosAll: YouTubeVideoItem[] = [];
 
         if (showUnavailableParams && apiKey) {
           try {
@@ -716,21 +764,22 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
 
             if (unavailRes.ok) {
               const unavailData = await unavailRes.json();
-              const unavailVideos = extractVideosFromPayload(unavailData, seenIds, playlistAuthor, playlistId);
-              if (unavailVideos.length > 0) {
-                videos.push(...unavailVideos);
+              const unavailSeenIds = new Set<string>();
+              const firstPage = extractVideosFromPayload(unavailData, unavailSeenIds, playlistAuthor, playlistId);
+              if (firstPage.length > 0) {
+                unavailVideosAll = [...firstPage];
                 const paginated = await paginateYouTubeContinuations(
                   unavailData,
                   apiKey,
                   clientVersion,
                   fetchHeaders,
-                  seenIds,
+                  unavailSeenIds,
                   80,
                   5000,
                   playlistAuthor,
                   playlistId
                 );
-                videos.push(...paginated);
+                unavailVideosAll.push(...paginated);
               }
             }
           } catch (err) {
@@ -738,7 +787,17 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
           }
         }
 
-        // If no videos were extracted yet (e.g. no unavailable params or request failed), extract from initial html
+        if (unavailVideosAll.length >= ytInitialVideos.length && unavailVideosAll.length > 0) {
+          for (const v of unavailVideosAll) {
+            if (!seenIds.has(v.videoId)) {
+              seenIds.add(v.videoId);
+              videos.push(v);
+            }
+          }
+        }
+
+        // Fallback/safety net: extract from initial html + its continuations whenever the unhidden endpoint
+        // failed or returned fewer videos than ytInitialData already contains
         if (videos.length === 0) {
           const initialVideos = extractVideosFromPayload(ytData, seenIds, playlistAuthor, playlistId);
           videos.push(...initialVideos);
@@ -756,6 +815,14 @@ export async function parseYouTubeUrl(rawUrl: string): Promise<YouTubeParsedResu
             playlistId
           );
           videos.push(...paginatedVideos);
+
+          // Merge any extra items found only via the unhidden browse endpoint
+          for (const v of unavailVideosAll) {
+            if (!seenIds.has(v.videoId)) {
+              seenIds.add(v.videoId);
+              videos.push(v);
+            }
+          }
         }
       }
 
