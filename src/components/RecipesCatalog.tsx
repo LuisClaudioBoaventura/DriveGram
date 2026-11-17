@@ -136,17 +136,17 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
   return (
     <div className="w-full max-w-full overflow-x-hidden flex-1 flex flex-col bg-gray-50 dark:bg-drive-darkBg text-gray-900 dark:text-gray-100 p-3 sm:p-6 space-y-6">
       {/* Hero Spotlight Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-orange-900 via-amber-900 to-slate-900 p-5 sm:p-8 text-white shadow-2xl relative overflow-hidden border border-orange-700/40 shrink-0">
-        <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="rounded-3xl bg-gradient-to-r from-orange-900 via-amber-900 to-slate-900 p-5 sm:p-6 lg:p-7 text-white shadow-2xl relative overflow-hidden border border-orange-700/40 shrink-0">
+        <div className="absolute -right-10 -top-10 w-72 h-72 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute right-6 -bottom-8 opacity-10 pointer-events-none text-white">
-          <UtensilsCrossed className="w-80 h-80" />
+          <UtensilsCrossed className="w-64 h-64 sm:w-72 sm:h-72" />
         </div>
 
-        <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+        <div className="relative z-10 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 lg:gap-6">
           {featuredRecipe ? (
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 flex-1">
+            <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6 flex-1 min-w-0">
               {/* 16:9 Thumbnail Preview */}
-              <div className="relative w-52 sm:w-64 aspect-video rounded-2xl overflow-hidden shadow-2xl border-2 border-orange-400/40 shrink-0 bg-black/60 group">
+              <div className="relative w-full max-w-[280px] sm:w-56 md:w-64 lg:w-60 xl:w-72 aspect-video rounded-2xl overflow-hidden shadow-2xl border border-orange-400/40 ring-1 ring-white/10 shrink-0 bg-black/60 group">
                 <img
                   src={featuredRecipe.coverImage || RECIPE_PRESET_COVERS[0]}
                   alt={featuredRecipe.title}
@@ -156,6 +156,7 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
                 <button
                   onClick={() => onSelectRecipe(featuredRecipe)}
                   className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                  aria-label={`Abrir receita ${featuredRecipe.title}`}
                 >
                   <div className="w-12 h-12 rounded-full bg-orange-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/50">
                     <Play className="w-5 h-5 ml-0.5 fill-current" />
@@ -164,32 +165,35 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
               </div>
 
               {/* Info */}
-              <div className="space-y-2.5 text-center sm:text-left flex-1">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/20 backdrop-blur-md text-orange-200 text-xs font-bold uppercase tracking-wider border border-orange-400/30">
-                  <ChefHat className="w-3.5 h-3.5 text-orange-300" />
-                  <span>Receitas & Culinária • {recipes.length} {recipes.length === 1 ? 'Receita' : 'Receitas'}</span>
+              <div className="space-y-2 text-center sm:text-left flex-1 min-w-0 w-full">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/20 backdrop-blur-md text-orange-200 text-[11px] font-bold uppercase tracking-wider border border-orange-400/30 max-w-full">
+                  <ChefHat className="w-3.5 h-3.5 text-orange-300 shrink-0" />
+                  <span className="truncate">Receitas & Culinária • {recipes.length} {recipes.length === 1 ? 'Receita' : 'Receitas'}</span>
                 </div>
 
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight py-1 drop-shadow-sm">
+                <h1
+                  title={featuredRecipe.title}
+                  className="text-xl sm:text-2xl xl:text-3xl font-black text-white tracking-tight leading-tight line-clamp-2 drop-shadow-sm"
+                >
                   {featuredRecipe.title}
                 </h1>
 
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-xs text-orange-100/90 font-medium">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1 text-xs text-orange-100/90 font-medium">
                   {featuredRecipe.author && (
                     <span className="flex items-center gap-1">
-                      <User className="w-3.5 h-3.5 text-orange-300" />
+                      <User className="w-3.5 h-3.5 text-orange-300 shrink-0" />
                       <span>{featuredRecipe.author}</span>
                     </span>
                   )}
                   {featuredRecipe.prepTime && (
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-orange-300" />
+                      <Clock className="w-3.5 h-3.5 text-orange-300 shrink-0" />
                       <span>{featuredRecipe.prepTime}</span>
                     </span>
                   )}
                   {featuredRecipe.servings && (
                     <span className="flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5 text-orange-300" />
+                      <Users className="w-3.5 h-3.5 text-orange-300 shrink-0" />
                       <span>{featuredRecipe.servings}</span>
                     </span>
                   )}
@@ -200,25 +204,25 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
                   )}
                 </div>
 
-                <p className="text-xs text-gray-200 line-clamp-2 max-w-xl leading-relaxed">
+                <p className="text-xs text-orange-50/80 line-clamp-2 max-w-xl leading-relaxed">
                   {featuredRecipe.description || 'Sua biblioteca dedicada de receitas da internet com ingredientes, modo de preparo e backup no Telegram.'}
                 </p>
 
-                <div className="pt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+                <div className="pt-1.5 flex flex-wrap items-center justify-center sm:justify-start gap-2">
                   <button
                     onClick={() => onSelectRecipe(featuredRecipe)}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-orange-950 hover:bg-orange-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-orange-950 hover:bg-orange-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-[1.03] active:scale-95 whitespace-nowrap"
                   >
-                    <Play className="w-4 h-4 fill-current text-orange-600" />
+                    <Play className="w-3.5 h-3.5 fill-current text-orange-600 shrink-0" />
                     <span>Abrir Receita</span>
                   </button>
 
                   {onOpenNewModal && (
                     <button
                       onClick={onOpenNewModal}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold shadow-md shadow-black/15 transition-all hover:scale-105 active:scale-95"
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold shadow-md shadow-black/15 transition-all hover:scale-[1.03] active:scale-95 whitespace-nowrap"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-3.5 h-3.5 shrink-0" />
                       <span>Nova Receita</span>
                     </button>
                   )}
@@ -226,9 +230,9 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
                   {onOpenYouTubeModal && (
                     <button
                       onClick={onOpenYouTubeModal}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-600/85 hover:bg-red-600 text-white text-xs font-bold shadow-md shadow-black/15 transition-all hover:scale-105 active:scale-95"
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-red-600/90 hover:bg-red-600 text-white text-xs font-bold shadow-md shadow-black/15 transition-all hover:scale-[1.03] active:scale-95 whitespace-nowrap"
                     >
-                      <Youtube className="w-4 h-4" />
+                      <Youtube className="w-3.5 h-3.5 shrink-0" />
                       <span>Importar YouTube</span>
                     </button>
                   )}
@@ -237,10 +241,10 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
                     <button
                       onClick={handleSync}
                       disabled={isSyncing}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-orange-600/30 hover:bg-orange-600/50 border border-orange-400/40 text-orange-100 hover:text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-orange-600/30 hover:bg-orange-600/50 border border-orange-400/40 text-orange-100 hover:text-white text-xs font-bold transition-all hover:scale-[1.03] active:scale-95 disabled:opacity-50 whitespace-nowrap"
                       title="Escanear e sincronizar pasta dedicada Receitas automaticamente"
                     >
-                      <RefreshCw className={`w-4 h-4 text-orange-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={`w-3.5 h-3.5 text-orange-200 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
                       <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pasta'}</span>
                     </button>
                   )}
@@ -248,13 +252,13 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
               </div>
             </div>
           ) : (
-            <div className="space-y-2.5 z-10 max-w-xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/20 backdrop-blur-md text-orange-200 text-xs font-bold uppercase tracking-wider border border-orange-400/30">
-                <ChefHat className="w-3.5 h-3.5 text-orange-300" />
+            <div className="space-y-2.5 z-10 max-w-xl flex-1 min-w-0 text-center sm:text-left">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/20 backdrop-blur-md text-orange-200 text-[11px] font-bold uppercase tracking-wider border border-orange-400/30">
+                <ChefHat className="w-3.5 h-3.5 text-orange-300 shrink-0" />
                 <span>Receitas & Culinária</span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight leading-tight py-1 drop-shadow-sm">
+              <h1 className="text-xl sm:text-2xl xl:text-3xl font-black tracking-tight leading-tight drop-shadow-sm">
                 Seu Livro de Receitas em Vídeo
               </h1>
 
@@ -262,13 +266,13 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
                 Guarde vídeos de receitas do YouTube, Reels, TikTok ou arquivos da pasta dedicada <strong>Receitas</strong>, com lista de ingredientes interativa e backup na nuvem.
               </p>
 
-              <div className="pt-2 flex flex-wrap items-center gap-2.5">
+              <div className="pt-1.5 flex flex-wrap items-center justify-center sm:justify-start gap-2">
                 {onOpenNewModal && (
                   <button
                     onClick={onOpenNewModal}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-orange-950 hover:bg-orange-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-orange-950 hover:bg-orange-50 text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-[1.03] active:scale-95 whitespace-nowrap"
                   >
-                    <Plus className="w-4 h-4 text-orange-600" />
+                    <Plus className="w-3.5 h-3.5 text-orange-600 shrink-0" />
                     <span>Nova Receita</span>
                   </button>
                 )}
@@ -276,9 +280,9 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
                 {onOpenYouTubeModal && (
                   <button
                     onClick={onOpenYouTubeModal}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-105 active:scale-95"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-black/20 transition-all hover:scale-[1.03] active:scale-95 whitespace-nowrap"
                   >
-                    <Youtube className="w-4 h-4" />
+                    <Youtube className="w-3.5 h-3.5 shrink-0" />
                     <span>Importar do YouTube</span>
                   </button>
                 )}
@@ -287,9 +291,9 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
                   <button
                     onClick={handleSync}
                     disabled={isSyncing}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-orange-600/30 hover:bg-orange-600/50 border border-orange-400/40 text-orange-100 text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-orange-600/30 hover:bg-orange-600/50 border border-orange-400/40 text-orange-100 text-xs font-bold transition-all hover:scale-[1.03] active:scale-95 disabled:opacity-50 whitespace-nowrap"
                   >
-                    <RefreshCw className={`w-4 h-4 text-orange-200 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-3.5 h-3.5 text-orange-200 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
                     <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Pasta'}</span>
                   </button>
                 )}
@@ -298,29 +302,29 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
           )}
 
           {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full lg:w-auto z-10">
-            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
-              <UtensilsCrossed className="w-4 h-4 text-orange-300 mb-1" />
-              <span className="text-base font-black">{totalRecipes}</span>
-              <span className="text-[10px] text-orange-200 uppercase font-semibold">Receitas</span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2.5 w-full lg:w-[220px] xl:w-[236px] shrink-0 z-10">
+            <div className="px-3 py-2.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center text-center min-w-0">
+              <UtensilsCrossed className="w-4 h-4 text-orange-300 mb-1 shrink-0" />
+              <span className="text-base font-black leading-none mb-1">{totalRecipes}</span>
+              <span className="text-[10px] text-orange-200 uppercase font-semibold tracking-wide whitespace-nowrap">Receitas</span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
-              <Heart className="w-4 h-4 text-rose-300 mb-1 fill-current" />
-              <span className="text-base font-black">{favoritesCount}</span>
-              <span className="text-[10px] text-orange-200 uppercase font-semibold">Favoritas</span>
+            <div className="px-3 py-2.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center text-center min-w-0">
+              <Heart className="w-4 h-4 text-rose-300 mb-1 fill-current shrink-0" />
+              <span className="text-base font-black leading-none mb-1">{favoritesCount}</span>
+              <span className="text-[10px] text-orange-200 uppercase font-semibold tracking-wide whitespace-nowrap">Favoritas</span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
-              <CheckCircle2 className="w-4 h-4 text-emerald-300 mb-1" />
-              <span className="text-base font-black">{completedCount}</span>
-              <span className="text-[10px] text-orange-200 uppercase font-semibold">Testadas</span>
+            <div className="px-3 py-2.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center text-center min-w-0">
+              <CheckCircle2 className="w-4 h-4 text-emerald-300 mb-1 shrink-0" />
+              <span className="text-base font-black leading-none mb-1">{completedCount}</span>
+              <span className="text-[10px] text-orange-200 uppercase font-semibold tracking-wide whitespace-nowrap">Testadas</span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center min-w-0">
-              <Clock className="w-4 h-4 text-amber-300 mb-1" />
-              <span className="text-base font-black">{todoCount}</span>
-              <span className="text-[10px] text-orange-200 uppercase font-semibold">Para Testar</span>
+            <div className="px-3 py-2.5 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 flex flex-col items-center justify-center text-center min-w-0">
+              <Clock className="w-4 h-4 text-amber-300 mb-1 shrink-0" />
+              <span className="text-base font-black leading-none mb-1">{todoCount}</span>
+              <span className="text-[10px] text-orange-200 uppercase font-semibold tracking-wide whitespace-nowrap">Para Testar</span>
             </div>
           </div>
         </div>
