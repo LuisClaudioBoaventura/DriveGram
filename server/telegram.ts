@@ -774,11 +774,14 @@ class TelegramService {
           return { success: false, error: 'Telegram não conectado ou sessão indisponível.' };
         }
 
+        const fileSize = fs.statSync(filePath).size;
+        const uploadWorkers = fileSize > 5 * 1024 * 1024 ? 8 : 4;
+
         const doUpload = async (c: TelegramClient) => {
           return await c.sendFile('me', {
             file: filePath,
             caption: caption,
-            workers: 4, // 4 workers paralelos aceleram muito uploads de vídeos grandes (>100MB)
+            workers: uploadWorkers, // 8 workers paralelos aceleram uploads de vídeos (>5MB)
             progressCallback: (p: any) => {
               if (onProgress && typeof p === 'number') {
                 onProgress(Math.min(Math.round(p * 100), 99));
@@ -966,7 +969,8 @@ class TelegramService {
       // Serialização compacta sem identação pesada para economizar até 50% de memória heap
       const manifestJson = JSON.stringify(manifest);
       const manifestSizeBytes = Buffer.byteLength(manifestJson);
-      const manifestHash = crypto.createHash('md5').update(manifestJson).digest('hex');
+      const manifestForHash = manifestJson.replace(/"exportedAt":"[^"]*"/, '"exportedAt":""');
+      const manifestHash = crypto.createHash('md5').update(manifestForHash).digest('hex');
 
       // Evita loops infinitos e uploads redundantes: se o manifesto for exatamente igual ao último enviado, não reenvia
       if (this.lastUploadedManifestHash === manifestHash && !force) {
@@ -1461,7 +1465,7 @@ class TelegramService {
         console.log(`[DriveGram Startup Sync] Reconciliação concluída: +${reconcileResult.addedFiles} arquivos, +${reconcileResult.addedFolders} pastas.`);
 
         db.updateSettings({ lastMetadataMessageId: latestMsg.id });
-        const currentManifestJson = JSON.stringify(db.exportManifest(), null, 2);
+        const currentManifestJson = JSON.stringify(db.exportManifest()).replace(/"exportedAt":"[^"]*"/, '"exportedAt":""');
         this.lastUploadedManifestHash = crypto.createHash('md5').update(currentManifestJson).digest('hex');
         this.isInitialSyncCompleted = true;
 

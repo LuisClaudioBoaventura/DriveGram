@@ -32,7 +32,7 @@ interface RecipesCatalogProps {
   onOpenNewModal?: () => void;
   onOpenYouTubeModal?: () => void;
   onEditRecipe?: (recipe: RecipeVideo) => void;
-  onDeleteRecipe?: (id: string) => void;
+  onDeleteRecipe?: (id: string) => Promise<void> | void;
   onToggleFavorite?: (id: string) => void;
   onToggleCompleted?: (id: string) => void;
   onSyncRootFolder?: () => Promise<{ importedCount: number; updatedCount: number; totalRecipes: number } | void>;
@@ -59,6 +59,8 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'favorites' | 'completed' | 'todo'>('all');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<RecipeVideo | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSync = async () => {
     if (!onSyncRootFolder || isSyncing) return;
@@ -547,9 +549,7 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(`Excluir a receita "${recipe.title}"?`)) {
-                            onDeleteRecipe(recipe.id);
-                          }
+                          setDeleteTarget(recipe);
                         }}
                         className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white shadow transition-colors"
                         title="Excluir Receita"
@@ -684,6 +684,62 @@ export const RecipesCatalog: React.FC<RecipesCatalogProps> = ({
           isOpen={!!downloadTargetFile}
           onClose={() => setDownloadTargetFile(null)}
         />
+      )}
+
+      {deleteTarget && onDeleteRecipe && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          onClick={() => !isDeleting && setDeleteTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl bg-white dark:bg-drive-darkSurface border border-gray-200 dark:border-drive-darkBorder shadow-2xl overflow-hidden p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-rose-500/15 text-rose-500 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Excluir Receita?</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{deleteTarget.title}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+              Esta receita será removida permanentemente do seu catálogo de Receitas &amp; Culinária e sincronizada com a nuvem para não voltar.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 rounded-xl border border-gray-200 dark:border-drive-darkBorder hover:bg-gray-100 dark:hover:bg-drive-darkHover text-xs font-semibold text-gray-700 dark:text-gray-300 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  const target = deleteTarget;
+                  if (!target) return;
+                  setIsDeleting(true);
+                  try {
+                    await onDeleteRecipe(target.id);
+                    setDeleteTarget(null);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-600/20 flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Excluindo...' : 'Excluir Receita'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

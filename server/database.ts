@@ -85,6 +85,8 @@ export interface DatabaseSchema {
     lastMetadataMessageId?: number;
     metadataRetentionCount?: number;
     deletedFileIds?: string[];
+    deletedRecipeIds?: string[];
+    deletedRecipeFileIds?: string[];
     language?: 'pt' | 'en' | 'es';
   };
 }
@@ -736,6 +738,7 @@ class Database {
 
   private cloudBackupCallback: (() => void) | null = null;
   private autoBackupDebounceTimer: NodeJS.Timeout | null = null;
+  private isWritingBackupSnapshot: boolean = false;
 
   public setCloudBackupCallback(cb: () => void) {
     this.cloudBackupCallback = cb;
@@ -761,7 +764,21 @@ class Database {
       }
       const manifest = this.exportManifest();
       const backupFile = path.join(backupDir, 'drivegram_metadata_backup.json');
-      fs.writeFileSync(backupFile, JSON.stringify(manifest), 'utf-8');
+      const payload = JSON.stringify(manifest);
+
+      if (!this.isWritingBackupSnapshot) {
+        this.isWritingBackupSnapshot = true;
+        const tempBackupFile = `${backupFile}.tmp`;
+        fs.promises
+          .writeFile(tempBackupFile, payload, 'utf-8')
+          .then(() => fs.promises.rename(tempBackupFile, backupFile))
+          .catch((err: any) => {
+            console.warn('[DriveGram Auto-Backup] Erro ao gravar snapshot local:', err?.message || err);
+          })
+          .finally(() => {
+            this.isWritingBackupSnapshot = false;
+          });
+      }
 
       if (triggerCloudCallback && this.cloudBackupCallback) {
         this.cloudBackupCallback();
@@ -1133,15 +1150,21 @@ class Database {
     const files = this.data.files.filter(f => !f.isTrash);
 
     for (let video of videos) {
+      let changed = false;
       if (video.fileId) {
         const file = files.find(f => f.id === video.fileId);
         if (file) {
-          if (!video.title) video.title = file.name.replace(/\.[^/.]+$/, "");
+          if (!video.title) {
+            video.title = file.name.replace(/\.[^/.]+$/, "");
+            changed = true;
+          }
           if (file.timestamps && file.timestamps.length > 0 && (!video.timestamps || video.timestamps.length === 0)) {
             video.timestamps = file.timestamps;
+            changed = true;
           }
           if (file.subtitles && file.subtitles.length > 0 && (!video.subtitles || video.subtitles.length === 0)) {
             video.subtitles = file.subtitles;
+            changed = true;
           }
         }
       } else if (video.folderId) {
@@ -1151,9 +1174,12 @@ class Database {
           video.fileId = primary.id;
           if (primary.timestamps) video.timestamps = primary.timestamps;
           if (primary.subtitles) video.subtitles = primary.subtitles;
+          changed = true;
         }
       }
-      video.updatedAt = new Date().toISOString();
+      if (changed) {
+        video.updatedAt = new Date().toISOString();
+      }
     }
   }
 
@@ -1226,15 +1252,21 @@ class Database {
     const files = this.data.files.filter(f => !f.isTrash);
 
     for (const recipe of recipes) {
+      let changed = false;
       if (recipe.fileId) {
         const file = files.find(f => f.id === recipe.fileId);
         if (file) {
-          if (!recipe.title) recipe.title = file.name.replace(/\.[^/.]+$/, "");
+          if (!recipe.title) {
+            recipe.title = file.name.replace(/\.[^/.]+$/, "");
+            changed = true;
+          }
           if (file.timestamps && file.timestamps.length > 0 && (!recipe.timestamps || recipe.timestamps.length === 0)) {
             recipe.timestamps = file.timestamps;
+            changed = true;
           }
           if (file.subtitles && file.subtitles.length > 0 && (!recipe.subtitles || recipe.subtitles.length === 0)) {
             recipe.subtitles = file.subtitles;
+            changed = true;
           }
         }
       } else if (recipe.folderId && !recipe.embedUrl && !recipe.videoUrl) {
@@ -1244,9 +1276,12 @@ class Database {
           recipe.fileId = primary.id;
           if (primary.timestamps) recipe.timestamps = primary.timestamps;
           if (primary.subtitles) recipe.subtitles = primary.subtitles;
+          changed = true;
         }
       }
-      recipe.updatedAt = new Date().toISOString();
+      if (changed) {
+        recipe.updatedAt = new Date().toISOString();
+      }
     }
   }
 
@@ -1812,7 +1847,7 @@ class Database {
     return this.data.files;
   }
 
-  public createFile(item: Partial<DriveItem>): DriveItem {
+  public createFile(item: Partial<DriveItem>, skipSave: boolean = false): DriveItem {
     const newFile: DriveItem = {
       id: item.id || 'file-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
       name: item.name || 'Sem nome',
@@ -1835,8 +1870,10 @@ class Database {
       lessonId: item.lessonId
     };
     this.data.files.push(newFile);
-    this.syncAllLibrariesWithFolderStructure();
-    this.save(this.data);
+    if (!skipSave) {
+      this.syncAllLibrariesWithFolderStructure();
+      this.save(this.data);
+    }
     return newFile;
   }
 
@@ -2745,7 +2782,7 @@ class Database {
     return (this.data.videos || []).find(v => v.id === id);
   }
 
-  public saveVideo(videoData: Partial<MovieVideo> & { title: string }): MovieVideo {
+  public saveVideo(videoData: Partial<MovieVideo> & { title: string }, skipSave: boolean = false): MovieVideo {
     if (!this.data.videos) this.data.videos = [];
     const id = videoData.id || 'vid-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
     const existingIdx = this.data.videos.findIndex(v => v.id === id);
@@ -2805,8 +2842,10 @@ class Database {
       }
     }
 
-    this.syncVideosWithFolderStructure();
-    this.save(this.data);
+    if (!skipSave) {
+      this.syncVideosWithFolderStructure();
+      this.save(this.data);
+    }
     return video;
   }
 
@@ -3163,6 +3202,13 @@ class Database {
       this.data.recipes.push(recipe);
     }
 
+    if (this.data.settings.deletedRecipeIds) {
+      this.data.settings.deletedRecipeIds = this.data.settings.deletedRecipeIds.filter(delId => delId !== recipe.id);
+    }
+    if (recipe.fileId && this.data.settings.deletedRecipeFileIds) {
+      this.data.settings.deletedRecipeFileIds = this.data.settings.deletedRecipeFileIds.filter(fid => fid !== recipe.fileId);
+    }
+
     if (recipe.fileId && recipe.title) {
       const file = this.data.files.find(f => f.id === recipe.fileId);
       if (file) {
@@ -3183,12 +3229,24 @@ class Database {
 
   public deleteRecipe(id: string): boolean {
     if (!this.data.recipes) return false;
+    const target = this.data.recipes.find(r => r.id === id);
     const initialLen = this.data.recipes.length;
     this.data.recipes = this.data.recipes.filter(r => r.id !== id);
+    if (!this.data.settings.deletedRecipeIds) this.data.settings.deletedRecipeIds = [];
+    if (!this.data.settings.deletedRecipeIds.includes(id)) {
+      this.data.settings.deletedRecipeIds.push(id);
+    }
+    if (target?.fileId) {
+      if (!this.data.settings.deletedRecipeFileIds) this.data.settings.deletedRecipeFileIds = [];
+      if (!this.data.settings.deletedRecipeFileIds.includes(target.fileId)) {
+        this.data.settings.deletedRecipeFileIds.push(target.fileId);
+      }
+    }
     if (this.data.recipes.length !== initialLen) {
       this.save(this.data);
       return true;
     }
+    this.save(this.data);
     return false;
   }
 
@@ -4888,8 +4946,10 @@ class Database {
     const allFiles = (this.data.files || []).filter(f => !f.isTrash);
     const videoExts = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv'];
 
+    const deletedRecipeFileIds = new Set(this.data.settings?.deletedRecipeFileIds || []);
     const recipeFiles = allFiles.filter(f =>
       allRecipeFolderIds.has(f.parentId || '') &&
+      !deletedRecipeFileIds.has(f.id) &&
       (f.type === 'video' || videoExts.includes((f.extension || '').toLowerCase()))
     );
 
@@ -5396,6 +5456,8 @@ class Database {
       videos: this.data.videos,
       personalVideos: this.data.personalVideos,
       recipes: this.data.recipes,
+      deletedRecipeIds: this.data.settings.deletedRecipeIds,
+      deletedRecipeFileIds: this.data.settings.deletedRecipeFileIds,
       series: this.data.series,
       audioShows: this.data.audioShows,
       adultVideos: this.data.adultVideos,
@@ -5413,7 +5475,18 @@ class Database {
     if (manifest.comics) this.data.comics = manifest.comics;
     if (manifest.videos) this.data.videos = manifest.videos;
     if (manifest.personalVideos) this.data.personalVideos = manifest.personalVideos;
-    if (manifest.recipes) this.data.recipes = manifest.recipes;
+    if (manifest.deletedRecipeIds) {
+      const merged = new Set([...(this.data.settings.deletedRecipeIds || []), ...manifest.deletedRecipeIds]);
+      this.data.settings.deletedRecipeIds = Array.from(merged);
+    }
+    if (manifest.deletedRecipeFileIds) {
+      const mergedFiles = new Set([...(this.data.settings.deletedRecipeFileIds || []), ...manifest.deletedRecipeFileIds]);
+      this.data.settings.deletedRecipeFileIds = Array.from(mergedFiles);
+    }
+    if (manifest.recipes) {
+      const deletedSet = new Set(this.data.settings.deletedRecipeIds || []);
+      this.data.recipes = manifest.recipes.filter(r => !deletedSet.has(r.id));
+    }
     if (manifest.series) this.data.series = manifest.series;
     if (manifest.audioShows) this.data.audioShows = manifest.audioShows;
     if (manifest.adultVideos) this.data.adultVideos = manifest.adultVideos;
@@ -5503,7 +5576,39 @@ class Database {
     if (reconcileCollection(this.data.comics, manifest.comics)) updated = true;
     if (reconcileCollection(this.data.videos, manifest.videos)) updated = true;
     if (reconcileCollection(this.data.personalVideos, manifest.personalVideos)) updated = true;
-    if (reconcileCollection(this.data.recipes, manifest.recipes)) updated = true;
+
+    if (Array.isArray(manifest.deletedRecipeIds) && manifest.deletedRecipeIds.length > 0) {
+      if (!this.data.settings.deletedRecipeIds) this.data.settings.deletedRecipeIds = [];
+      const existingDelSet = new Set(this.data.settings.deletedRecipeIds);
+      for (const delId of manifest.deletedRecipeIds) {
+        if (!existingDelSet.has(delId)) {
+          this.data.settings.deletedRecipeIds.push(delId);
+          existingDelSet.add(delId);
+          updated = true;
+        }
+      }
+    }
+    if (Array.isArray(manifest.deletedRecipeFileIds) && manifest.deletedRecipeFileIds.length > 0) {
+      if (!this.data.settings.deletedRecipeFileIds) this.data.settings.deletedRecipeFileIds = [];
+      const existingDelFileSet = new Set(this.data.settings.deletedRecipeFileIds);
+      for (const delFid of manifest.deletedRecipeFileIds) {
+        if (!existingDelFileSet.has(delFid)) {
+          this.data.settings.deletedRecipeFileIds.push(delFid);
+          existingDelFileSet.add(delFid);
+          updated = true;
+        }
+      }
+    }
+    const deletedRecipeIds = new Set(this.data.settings.deletedRecipeIds || []);
+    if (deletedRecipeIds.size > 0 && Array.isArray(this.data.recipes)) {
+      const beforeLen = this.data.recipes.length;
+      this.data.recipes = this.data.recipes.filter(r => !deletedRecipeIds.has(r.id));
+      if (this.data.recipes.length !== beforeLen) updated = true;
+    }
+    const filteredRemoteRecipes = Array.isArray(manifest.recipes)
+      ? manifest.recipes.filter(r => !deletedRecipeIds.has(r.id))
+      : undefined;
+    if (reconcileCollection(this.data.recipes, filteredRemoteRecipes)) updated = true;
     if (reconcileCollection(this.data.series, manifest.series)) updated = true;
 
     // Atualizar durações de episódios de séries já existentes se a base local tiver placeholder (10:00 / 15:00) e o manifesto remoto tiver duração real
