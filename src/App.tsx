@@ -269,9 +269,9 @@ export function App() {
 
   const isAnyModalOrViewerOpen = isAuthModalOpen || isLoginPromptOpen || isSyncModalOpen || 
     isFolderModalOpen || isCourseModalOpen || isBookModalOpen || isComicModalOpen || 
-    isVideoModalOpen || isRecipeModalOpen || isSeriesModalOpen || isAudioModalOpen || isAdultLockModalOpen || isNewAdultVideoModalOpen ||
+    isVideoModalOpen || isPersonalVideoModalOpen || isRecipeModalOpen || isSeriesModalOpen || isAudioModalOpen || isAdultLockModalOpen || isNewAdultVideoModalOpen ||
     isDuplicatesModalOpen || isCategoryManagerOpen || editingBook !== null || 
-    editingComic !== null || editingVideo !== null || editingRecipe !== null || editingSeries !== null || editingAudioShow !== null ||
+    editingComic !== null || editingVideo !== null || editingPersonalVideo !== null || editingRecipe !== null || editingSeries !== null || editingAudioShow !== null ||
     editingAdultVideo !== null || editingItem !== null || activePreviewFile !== null || selectedVideoForView !== null ||
     selectedRecipeForView !== null || selectedSeriesForView !== null || selectedAudioForView !== null || selectedAdultVideoForView !== null;
 
@@ -361,17 +361,71 @@ export function App() {
   const handleSafeUpload = async (
     files: FileList | File[] | { file: File; relativePath?: string }[],
     targetFolderId = fs.currentFolderId
-  ) => {
+  ): Promise<DriveItem[]> => {
     if (!tg.authState.isConnected) {
       setLoginPromptReason({
         title: 'Login Necessário para Upload',
         description: 'Você precisa estar conectado à sua conta do Telegram para enviar arquivos diretamente para o armazenamento ilimitado em nuvem.'
       });
       setIsLoginPromptOpen(true);
+      return [];
+    }
+    const uploaded = await fs.uploadFiles(files, targetFolderId);
+    refreshAllLibraries();
+    return uploaded;
+  };
+
+  const handleUploadPersonalMedia = async (params: {
+    files: File[];
+    subFolderName?: string;
+    targetFolderId?: string;
+    title?: string;
+    category?: string;
+    date?: string;
+    location?: string;
+    people?: string;
+    description?: string;
+    tags?: string[];
+  }) => {
+    if (!tg.authState.isConnected) {
+      setLoginPromptReason({
+        title: 'Login Necessário para Upload',
+        description: 'Você precisa estar conectado à sua conta do Telegram para enviar fotos e vídeos pessoais diretamente para o armazenamento em nuvem.'
+      });
+      setIsLoginPromptOpen(true);
       return;
     }
-    await fs.uploadFiles(files, targetFolderId);
-    refreshAllLibraries();
+
+    let destinationFolderId = params.targetFolderId;
+    if (!destinationFolderId) {
+      const folder = await personalVideos.ensurePersonalFolder(params.subFolderName);
+      destinationFolderId = folder?.id;
+    }
+
+    const uploadedItems = await handleSafeUpload(params.files, destinationFolderId ?? null);
+    if (uploadedItems.length === 0) return;
+
+    let catalogedCount = 0;
+    for (let i = 0; i < uploadedItems.length; i++) {
+      const uploadedFile = uploadedItems[i];
+      const created = await personalVideos.createPersonalMediaFromFile({
+        fileId: uploadedFile.id,
+        title: uploadedItems.length === 1 ? params.title : undefined,
+        category: params.category || 'Memórias & Momentos',
+        date: params.date,
+        location: params.location,
+        people: params.people,
+        description: params.description,
+        tags: params.tags
+      });
+      if (created) catalogedCount++;
+    }
+
+    fs.refresh();
+    await personalVideos.refresh();
+    if (catalogedCount > 0) {
+      showToast(`✨ ${catalogedCount} ${catalogedCount === 1 ? 'mídia adicionada' : 'mídias adicionadas'} à biblioteca!`, 'success');
+    }
   };
 
   const handleMoveItemWithFeedback = async (id: string, isFolder: boolean, targetParentId: string | null): Promise<boolean> => {
@@ -633,6 +687,29 @@ export function App() {
                   await personalVideos.updatePersonalVideo(updated as any);
                 } else {
                   await videos.updateVideo(updated);
+                }
+              }}
+              onUpdateCoverImage={async (videoId, coverDataUrl) => {
+                if (isPersonalMovie) {
+                  const target = personalVideos.personalVideos.find(v => v.id === videoId) || selectedPersonalVideoForView;
+                  if (target) {
+                    const updated = { ...target, coverImage: coverDataUrl };
+                    await personalVideos.updatePersonalVideo(updated);
+                    if (selectedPersonalVideoForView?.id === videoId) {
+                      setSelectedPersonalVideoForView(updated);
+                    }
+                    showToast('📸 Capa atualizada a partir do frame do vídeo!', 'success');
+                  }
+                } else {
+                  const target = videos.videos.find(v => v.id === videoId) || selectedVideoForView;
+                  if (target) {
+                    const updated = { ...target, coverImage: coverDataUrl };
+                    await videos.updateVideo(updated);
+                    if (selectedVideoForView?.id === videoId) {
+                      setSelectedVideoForView(updated);
+                    }
+                    showToast('📸 Capa do filme atualizada!', 'success');
+                  }
                 }
               }}
             />
@@ -1008,24 +1085,29 @@ export function App() {
               onShowToast={showToast}
             />
           ) : fs.activeTab === 'personal-videos' ? (
-            /* Personal Videos & Media Catalog */
+            /* Personal Videos & Photos Catalog */
             <PersonalVideosCatalog
               videos={personalVideos.personalVideos}
               categories={personalVideos.categories}
               folders={fs.allFolders}
               allFiles={fs.allFiles}
+              capturingCoverIds={personalVideos.capturingCoverIds}
               onSelectVideo={(v) => {
                 personalVideos.setActiveVideo(v);
                 setSelectedPersonalVideoForView(v);
                 setActiveVideoPlaylist(null);
               }}
               onOpenNewModal={() => setIsPersonalVideoModalOpen(true)}
+              onUploadQuickFiles={async (files) => {
+                await handleUploadPersonalMedia({ files });
+              }}
               onEditVideo={(v) => setEditingPersonalVideo(v)}
               onDeleteVideo={(id) => {
                 personalVideos.deletePersonalVideo(id);
                 fs.refresh();
               }}
               onToggleFavorite={personalVideos.toggleFavorite}
+              onExtractCover={personalVideos.extractCoverForVideo}
               onSyncRootFolder={async () => {
                 const res = await personalVideos.syncFromDriveRoot();
                 fs.refresh();
@@ -1211,7 +1293,7 @@ export function App() {
                 onOpenDuplicates={() => setIsDuplicatesModalOpen(true)}
                 onOpenUploadsFolder={handleOpenUploadsFolder}
                 onMoveItem={handleMoveItemWithFeedback}
-                onUploadToFolder={(files, targetId) => handleSafeUpload(files, targetId)}
+                onUploadToFolder={async (files, targetId) => { await handleSafeUpload(files, targetId); }}
               />
 
               {fs.viewMode === 'grid' ? (
@@ -1246,7 +1328,7 @@ export function App() {
                   onEditItem={(item, isFolder) => setEditingItem({ item, isFolder })}
                   onOpenMoveModal={(item, isFolder) => setMovingItem({ item, isFolder })}
                   onMoveItem={handleMoveItemWithFeedback}
-                  onUploadToFolder={(files, targetId) => handleSafeUpload(files, targetId)}
+                  onUploadToFolder={async (files, targetId) => { await handleSafeUpload(files, targetId); }}
                   onRetryUploadTelegram={(id) => fs.retryUploadToTelegram(id)}
                   retryingFileIds={fs.retryingFileIds}
                 />
@@ -1282,7 +1364,7 @@ export function App() {
                   onEditItem={(item, isFolder) => setEditingItem({ item, isFolder })}
                   onOpenMoveModal={(item, isFolder) => setMovingItem({ item, isFolder })}
                   onMoveItem={handleMoveItemWithFeedback}
-                  onUploadToFolder={(files, targetId) => handleSafeUpload(files, targetId)}
+                  onUploadToFolder={async (files, targetId) => { await handleSafeUpload(files, targetId); }}
                   onRetryUploadTelegram={(id) => fs.retryUploadToTelegram(id)}
                   retryingFileIds={fs.retryingFileIds}
                 />
@@ -1531,18 +1613,21 @@ export function App() {
         onOpenAuth={() => setIsAuthModalOpen(true)}
       />
 
-      {/* Personal Video Creation Modal */}
+      {/* Personal Video & Photo Creation Modal */}
       <NewPersonalVideoModal
         isOpen={isPersonalVideoModalOpen}
         onClose={() => setIsPersonalVideoModalOpen(false)}
         folders={fs.allFolders}
         categories={personalVideos.categories}
         onAddCategory={personalVideos.addCategory}
+        onUploadMedia={async (params) => {
+          await handleUploadPersonalMedia(params);
+          fs.setActiveTab('personal-videos');
+        }}
         onCreateVideo={async (data) => {
           const newVideo = await personalVideos.createPersonalVideoFromFolder(data);
           fs.refresh();
           if (newVideo) {
-            setSelectedPersonalVideoForView(newVideo);
             fs.setActiveTab('personal-videos');
           }
         }}

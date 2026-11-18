@@ -140,7 +140,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.30.3',
+    version: '1.31.0',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -2777,36 +2777,137 @@ app.post('/api/personal-videos', (req, res) => {
   res.status(201).json(video);
 });
 
+app.post('/api/personal-videos/ensure-folder', (req, res) => {
+  try {
+    const { subFolderName, parentFolderId } = req.body || {};
+    const folder = db.getOrCreatePersonalVideosFolder(subFolderName, parentFolderId);
+    res.json(folder);
+  } catch (e: any) {
+    console.error('Error ensuring personal videos folder:', e);
+    res.status(500).json({ error: e.message || 'Erro ao preparar pasta de Vídeos e Mídias Pessoais' });
+  }
+});
+
+app.post('/api/personal-videos/from-file', (req, res) => {
+  try {
+    const { fileId, title, category, date, location, people, description, coverImage, tags } = req.body || {};
+    if (!fileId) return res.status(400).json({ error: 'fileId é obrigatório' });
+
+    const file = db.getAllFiles().find(f => f.id === fileId && !f.isTrash);
+    if (!file) return res.status(404).json({ error: 'Arquivo não encontrado' });
+
+    const existing = db.getPersonalVideos().find(v => v.fileId === file.id);
+    if (existing) {
+      return res.json(existing);
+    }
+
+    const imageExts = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif']);
+    const isPhoto =
+      file.type === 'image' ||
+      (file.mimeType?.toLowerCase().startsWith('image/') ?? false) ||
+      imageExts.has((file.extension || '').toLowerCase());
+
+    const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/^[🎬🎥🎞️📽️📹📼📷📸🖼️\s]+/, '').trim();
+    const dateMatch = file.name.match(/(\d{4}[-_.]\d{2}[-_.]\d{2})/);
+    const inferredDate = date || (dateMatch ? dateMatch[1].replace(/[_.]/g, '-') : undefined);
+
+    const newItem = db.savePersonalVideo({
+      title: (title && String(title).trim()) || cleanName,
+      mediaType: isPhoto ? 'photo' : 'video',
+      category: category || 'Memórias & Momentos',
+      date: inferredDate,
+      location,
+      people,
+      tags: Array.isArray(tags) ? tags : [],
+      description: description || '',
+      coverImage: coverImage || (isPhoto ? `/api/stream/${file.id}` : ''),
+      folderId: file.parentId || undefined,
+      fileId: file.id,
+      duration: isPhoto ? '' : '00:00',
+      timestamps: isPhoto ? [] : (file.timestamps || []),
+      subtitles: isPhoto ? [] : (file.subtitles || [])
+    });
+
+    res.status(201).json(newItem);
+  } catch (e: any) {
+    console.error('Error creating personal media from file:', e);
+    res.status(500).json({ error: e.message || 'Erro ao catalogar mídia pessoal' });
+  }
+});
+
 app.post('/api/personal-videos/from-folder', (req, res) => {
   try {
-    const { folderId, title, category, date, location, people, description, coverImage, tags } = req.body;
+    const { folderId, fileId, title, category, date, location, people, description, coverImage, tags, importAll } = req.body;
     if (!folderId) return res.status(400).json({ error: 'folderId é obrigatório' });
 
     const folder = db.getFolderById(folderId);
     if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' });
 
     const files = db.getFiles(folderId);
-    const videoFile = files.find(f => f.type === 'video');
+    const videoExts = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv']);
+    const imageExts = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif']);
+    const isVideoFile = (f: any) => f.type === 'video' || videoExts.has((f.extension || '').toLowerCase());
+    const isImageFile = (f: any) => f.type === 'image' || imageExts.has((f.extension || '').toLowerCase());
+
+    const mediaFiles = files.filter(f => isVideoFile(f) || isImageFile(f));
+
+    if (!fileId && importAll !== false && mediaFiles.length > 1) {
+      const createdOrExisting: any[] = [];
+      for (const f of mediaFiles) {
+        const existing = db.getPersonalVideos().find(v => v.fileId === f.id);
+        if (existing) {
+          createdOrExisting.push(existing);
+          continue;
+        }
+        const isPhoto = isImageFile(f);
+        const cleanFileTitle = f.name.replace(/\.[^/.]+$/, '').replace(/^[🎬🎥🎞️📽️📹📼📷📸🖼️\s]+/, '').trim();
+        const item = db.savePersonalVideo({
+          title: cleanFileTitle || folder.name.replace(/^[🎬🎥🎞️📽️📹📼📷📸🖼️\s]+/, '').trim(),
+          mediaType: isPhoto ? 'photo' : 'video',
+          category: category || 'Memórias & Momentos',
+          date,
+          location,
+          people,
+          tags: tags || [],
+          description: description || folder.description || '',
+          coverImage: isPhoto ? `/api/stream/${f.id}` : (coverImage || ''),
+          folderId,
+          fileId: f.id,
+          duration: isPhoto ? '' : '00:00',
+          timestamps: isPhoto ? [] : (f.timestamps || []),
+          subtitles: isPhoto ? [] : (f.subtitles || [])
+        });
+        createdOrExisting.push(item);
+      }
+      return res.status(201).json(createdOrExisting);
+    }
+
+    const targetFile = fileId
+      ? mediaFiles.find(f => f.id === fileId) || db.getAllFiles().find(f => f.id === fileId)
+      : (mediaFiles.find(isVideoFile) || mediaFiles.find(isImageFile));
+    const isPhoto = targetFile ? isImageFile(targetFile) : false;
 
     const newVideo = db.savePersonalVideo({
-      title: title || folder.name.replace(/^[🎬🎥🎞️📽️📹📼\s]+/, '').trim(),
+      title: title || (targetFile ? targetFile.name.replace(/\.[^/.]+$/, '').replace(/^[🎬🎥🎞️📽️📹📼📷📸🖼️\s]+/, '').trim() : folder.name.replace(/^[🎬🎥🎞️📽️📹📼📷📸🖼️\s]+/, '').trim()),
+      mediaType: isPhoto ? 'photo' : 'video',
       category: category || 'Memórias & Momentos',
       date,
       location,
       people,
       tags: tags || [],
       description: description || folder.description || '',
-      coverImage: coverImage || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60',
+      coverImage: isPhoto && targetFile ? `/api/stream/${targetFile.id}` : (coverImage || ''),
       folderId,
-      fileId: videoFile?.id,
-      timestamps: videoFile?.timestamps || [],
-      subtitles: videoFile?.subtitles || []
+      fileId: targetFile?.id,
+      duration: isPhoto ? '' : '00:00',
+      timestamps: isPhoto ? [] : (targetFile?.timestamps || []),
+      subtitles: isPhoto ? [] : (targetFile?.subtitles || [])
     });
 
     res.status(201).json(newVideo);
   } catch (e: any) {
     console.error('Error creating personal video from folder:', e);
-    res.status(500).json({ error: e.message || 'Erro ao criar vídeo pessoal da pasta' });
+    res.status(500).json({ error: e.message || 'Erro ao criar mídia pessoal da pasta' });
   }
 });
 

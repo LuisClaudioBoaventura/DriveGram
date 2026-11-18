@@ -305,7 +305,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                       <Video className="w-4 h-4" />
                     </div>
                     <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
-                      Vídeo Pessoal
+                      Foto / Vídeo Pessoal
                     </span>
                   </button>
                 )}

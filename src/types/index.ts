@@ -376,6 +376,7 @@ export interface GoogleBookDetail extends GoogleBookSearchResultItem {}
 export interface PersonalVideo {
   id: string;
   title: string;
+  mediaType?: 'video' | 'photo';
   description?: string;
   date?: string; // Data da gravação (ex: "2024-05-12" ou "Maio 2024")
   location?: string; // Local/Cidade (ex: "Gramado, RS")

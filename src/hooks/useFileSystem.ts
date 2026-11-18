@@ -104,11 +104,12 @@ export function useFileSystem() {
   const uploadFiles = async (
     fileList: FileList | File[] | { file: File; relativePath?: string }[],
     targetFolderId = currentFolderId
-  ) => {
+  ): Promise<DriveItem[]> => {
     const rawItems = Array.from(fileList as any[]);
-    if (rawItems.length === 0) return;
+    if (rawItems.length === 0) return [];
 
-    const runBatch = async () => {
+    const runBatch = async (): Promise<DriveItem[]> => {
+      const uploadedItems: DriveItem[] = [];
       // Filtrar arquivos duplicados na mesma lista de envio (mesmo nome, tamanho e pasta destino)
       const seenBatchKeys = new Set<string>();
       const items: { file: File; relativePath: string }[] = [];
@@ -206,6 +207,12 @@ export function useFileSystem() {
           xhr.onload = async () => {
             if (pollTimer) clearInterval(pollTimer);
             if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const parsed = JSON.parse(xhr.responseText);
+                if (parsed && parsed.id) {
+                  uploadedItems.push(parsed);
+                }
+              } catch (_) {}
               setUploads(prev => prev.map(u => u.id === uploadId ? {
                 ...u,
                 transferred: file.size,
@@ -246,11 +253,12 @@ export function useFileSystem() {
           xhr.send(formData);
         });
       }
+      return uploadedItems;
     };
 
     const queued = uploadQueueRef.current.then(runBatch, runBatch);
-    uploadQueueRef.current = queued;
-    await queued;
+    uploadQueueRef.current = queued.then(() => undefined, () => undefined);
+    return await queued;
   };
 
   // Delete file or folder (permanent=true deletes permanently from Telegram & disk)
