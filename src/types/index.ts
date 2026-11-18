@@ -586,6 +586,8 @@ export interface DriveGramSyncManifest {
   videos?: MovieVideo[];
   personalVideos?: PersonalVideo[];
   recipes?: RecipeVideo[];
+  deletedRecipeIds?: string[];
+  deletedRecipeFileIds?: string[];
   series?: SeriesShow[];
   audioShows?: AudioShow[];
   adultVideos?: AdultVideo[];

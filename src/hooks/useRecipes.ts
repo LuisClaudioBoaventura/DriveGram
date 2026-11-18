@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { RecipeVideo } from '../types/index.js';
+import { resolveApiUrl } from '../utils/mobileBridge.js';
 
 const DEFAULT_RECIPE_CATEGORIES = [
   'Doces & Sobremesas',
@@ -19,14 +20,16 @@ export function useRecipes() {
   const [categories, setCategories] = useState<string[]>(DEFAULT_RECIPE_CATEGORIES);
   const [activeRecipe, setActiveRecipe] = useState<RecipeVideo | null>(null);
   const [loading, setLoading] = useState(false);
+  const pendingDeletedIdsRef = useRef<Set<string>>(new Set());
 
   const fetchRecipes = useCallback(async () => {
     try {
-      const res = await fetch('/api/recipes');
+      const res = await fetch(resolveApiUrl('/api/recipes'));
       if (res.ok) {
-        const data = await res.json();
+        const rawData: RecipeVideo[] = await res.json();
+        const data = rawData.filter(r => !pendingDeletedIdsRef.current.has(r.id));
         setRecipes(data);
-        setActiveRecipe(prev => prev ? (data.find((r: RecipeVideo) => r.id === prev.id) || prev) : (data[0] || null));
+        setActiveRecipe(prev => prev ? (data.find((r: RecipeVideo) => r.id === prev.id) || null) : (data[0] || null));
       }
     } catch (e) {
       console.warn('Backend unavailable for recipes');
@@ -35,7 +38,7 @@ export function useRecipes() {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await fetch('/api/recipe-categories');
+      const res = await fetch(resolveApiUrl('/api/recipe-categories'));
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -159,10 +162,11 @@ export function useRecipes() {
   };
 
   const updateRecipe = useCallback(async (updatedRecipe: RecipeVideo): Promise<void> => {
+    if (pendingDeletedIdsRef.current.has(updatedRecipe.id)) return;
     setRecipes(prev => prev.map(r => r.id === updatedRecipe.id ? updatedRecipe : r));
     setActiveRecipe(prev => prev?.id === updatedRecipe.id ? updatedRecipe : prev);
     try {
-      const res = await fetch(`/api/recipes/${updatedRecipe.id}`, {
+      const res = await fetch(resolveApiUrl(`/api/recipes/${updatedRecipe.id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedRecipe)
@@ -178,14 +182,25 @@ export function useRecipes() {
   }, []);
 
   const deleteRecipe = useCallback(async (id: string) => {
+    pendingDeletedIdsRef.current.add(id);
     setRecipes(prev => prev.filter(r => r.id !== id));
     setActiveRecipe(prev => prev?.id === id ? null : prev);
     try {
-      await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
+      const res = await fetch(resolveApiUrl(`/api/recipes/${id}`), { method: 'DELETE' });
+      if (!res.ok) {
+        throw new Error('Falha ao excluir receita no servidor');
+      }
     } catch (e) {
+      pendingDeletedIdsRef.current.delete(id);
+      await fetchRecipes();
       console.error('Error deleting recipe:', e);
+      throw e;
+    } finally {
+      setTimeout(() => {
+        pendingDeletedIdsRef.current.delete(id);
+      }, 2000);
     }
-  }, []);
+  }, [fetchRecipes]);
 
   const toggleFavorite = useCallback(async (id: string) => {
     const target = recipes.find(r => r.id === id);
@@ -208,6 +223,7 @@ export function useRecipes() {
   }, [recipes, updateRecipe]);
 
   const updateProgress = useCallback(async (recipeId: string, seconds: number, isCompleted?: boolean) => {
+    if (pendingDeletedIdsRef.current.has(recipeId)) return;
     setRecipes(prev => prev.map(r => {
       if (r.id === recipeId) {
         return {
@@ -220,10 +236,10 @@ export function useRecipes() {
     }));
 
     try {
-      const res = await fetch(`/api/recipes/${recipeId}`);
-      if (res.ok) {
+      const res = await fetch(resolveApiUrl(`/api/recipes/${recipeId}`));
+      if (res.ok && !pendingDeletedIdsRef.current.has(recipeId)) {
         const target: RecipeVideo = await res.json();
-        await fetch(`/api/recipes/${recipeId}`, {
+        await fetch(resolveApiUrl(`/api/recipes/${recipeId}`), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -239,7 +255,7 @@ export function useRecipes() {
   const syncFromDriveRoot = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/recipes/sync-root', { method: 'POST' });
+      const res = await fetch(resolveApiUrl('/api/recipes/sync-root'), { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.recipes)) {

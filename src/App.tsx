@@ -1129,9 +1129,17 @@ export function App() {
               onOpenNewModal={() => setIsRecipeModalOpen(true)}
               onOpenYouTubeModal={() => handleOpenYouTubeModal('recipe')}
               onEditRecipe={(r) => setEditingRecipe(r)}
-              onDeleteRecipe={(id) => {
-                recipes.deleteRecipe(id);
-                fs.refresh();
+              onDeleteRecipe={async (id) => {
+                try {
+                  await recipes.deleteRecipe(id);
+                  if (selectedRecipeForView?.id === id) {
+                    setSelectedRecipeForView(null);
+                  }
+                  fs.refresh();
+                  showToast('🗑️ Receita excluída com sucesso!', 'success');
+                } catch (err: any) {
+                  showToast(err?.message || 'Erro ao excluir receita.', 'error');
+                }
               }}
               onToggleFavorite={recipes.toggleFavorite}
               onToggleCompleted={recipes.toggleCompleted}

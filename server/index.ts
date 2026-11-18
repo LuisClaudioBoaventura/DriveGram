@@ -140,7 +140,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.31.0',
+    version: '1.31.1',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -3068,12 +3068,16 @@ app.post('/api/recipes/sync-root', (_req, res) => {
 
 app.put('/api/recipes/:id', (req, res) => {
   const existing = db.getRecipeById(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Receita não encontrada' });
   const updated = db.saveRecipe({ ...existing, ...req.body, id: req.params.id });
   res.json(updated);
 });
 
 app.delete('/api/recipes/:id', (req, res) => {
-  db.deleteRecipe(req.params.id);
+  const deleted = db.deleteRecipe(req.params.id);
+  if (deleted) {
+    telegramService.syncMetadataToTelegram({ force: true }).catch(() => {});
+  }
   res.status(204).end();
 });
 
@@ -3209,8 +3213,7 @@ export async function refreshSingleSeriesInternal(series: any): Promise<{ series
   }
 
   if (fetchedVideos.length === 0) {
-    series.lastSyncedAt = new Date().toISOString();
-    return { series: db.saveSeries(series), newEpisodesCount: 0 };
+    return { series, newEpisodesCount: 0 };
   }
 
   const seasons = series.seasons || [];
@@ -3951,43 +3954,20 @@ app.post('/api/youtube/import', async (req, res) => {
       });
     }
 
-    // Process and upload gallery cover image to Telegram Saved Messages
+    // Use raw cover URL immediately so import completes fast; upload cover to Telegram in background
     const rawCoverUrl = coverImage || videos[0]?.thumbnail || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60';
-    let finalCoverUrl = rawCoverUrl;
-    try {
-      if (uploadId) {
-        activeUploadsMap.set(uploadId, {
-          uploadId,
-          fileName: `[YouTube] ${title.trim()}`,
-          size: videos.length,
-          transferred: 1,
-          progress: 45,
-          speed: 'Salvando...',
-          stage: 'cloud',
-          stageLabel: '2/3 • Salvando capa na nuvem Telegram...',
-          updatedAt: Date.now()
-        });
-      }
-      const coverResult = await telegramService.uploadCoverToTelegram(rawCoverUrl, title.trim(), 'youtube_' + targetType);
-      if (coverResult.messageId) {
-        finalCoverUrl = `/api/covers/telegram/${coverResult.messageId}?fallback=${encodeURIComponent(rawCoverUrl)}`;
-      } else if (coverResult.filePath) {
-        finalCoverUrl = `/api/covers/local/${coverResult.filePath}?fallback=${encodeURIComponent(rawCoverUrl)}`;
-      }
-    } catch (covErr) {
-      console.warn('Could not save YouTube cover to Telegram:', covErr);
-    }
+    const finalCoverUrl = rawCoverUrl;
 
     if (uploadId) {
       activeUploadsMap.set(uploadId, {
         uploadId,
         fileName: `[YouTube] ${title.trim()}`,
         size: videos.length,
-        transferred: Math.round(videos.length * 0.8),
-        progress: 80,
+        transferred: Math.round(videos.length * 0.7),
+        progress: 75,
         speed: 'Organizando...',
         stage: 'cloud',
-        stageLabel: '3/3 • Criando biblioteca e itens no DriveGram...',
+        stageLabel: '2/2 • Criando biblioteca e itens no DriveGram...',
         updatedAt: Date.now()
       });
     }
@@ -4146,15 +4126,70 @@ app.post('/api/youtube/import', async (req, res) => {
           category: category || 'Vídeos',
           genre: 'YouTube',
           description: v.description || description || '',
-          coverImage: finalCoverUrl,
+          coverImage: v.thumbnail || finalCoverUrl,
           folderId: finalFolderId,
           videoUrl: v.url,
           embedUrl: v.embedUrl,
           duration: v.duration
-        });
+        }, true);
         savedVideos.push(newVid);
       }
+      if (savedVideos.length > 0) {
+        db.saveDatabase();
+      }
       responseData = { success: true, targetType: 'video', items: savedVideos };
+    }
+
+    // Upload cover to Telegram in the background without blocking import response
+    if (rawCoverUrl && /^https?:\/\//i.test(rawCoverUrl)) {
+      const capturedResponse = responseData;
+      const capturedTitle = title.trim();
+      const capturedType = targetType;
+      (async () => {
+        try {
+          const coverResult = await telegramService.uploadCoverToTelegram(rawCoverUrl, capturedTitle, 'youtube_' + capturedType);
+          const telegramCoverUrl = coverResult.messageId
+            ? `/api/covers/telegram/${coverResult.messageId}?fallback=${encodeURIComponent(rawCoverUrl)}`
+            : coverResult.filePath
+              ? `/api/covers/local/${coverResult.filePath}?fallback=${encodeURIComponent(rawCoverUrl)}`
+              : null;
+
+          if (!telegramCoverUrl || telegramCoverUrl === rawCoverUrl) return;
+
+          if (capturedType === 'course' && capturedResponse?.item?.id) {
+            const existing = db.getCourseById(capturedResponse.item.id);
+            if (existing) db.saveCourse({ ...existing, coverImage: telegramCoverUrl });
+          } else if ((capturedType === 'podcast' || capturedType === 'audio') && capturedResponse?.item?.id) {
+            const existing = db.getAudioShowById(capturedResponse.item.id);
+            if (existing) db.saveAudioShow({ ...existing, coverImage: telegramCoverUrl });
+          } else if (capturedType === 'series' && capturedResponse?.item?.id) {
+            const existing = db.getSeriesById(capturedResponse.item.id);
+            if (existing) db.saveSeries({ ...existing, coverImage: telegramCoverUrl });
+          } else if (capturedType === 'recipe' && Array.isArray(capturedResponse?.items)) {
+            let changed = false;
+            for (const item of capturedResponse.items) {
+              const existing = db.getRecipeById(item.id);
+              if (existing && existing.coverImage === rawCoverUrl) {
+                db.saveRecipe({ ...existing, coverImage: telegramCoverUrl }, true);
+                changed = true;
+              }
+            }
+            if (changed) db.saveDatabase();
+          } else if (Array.isArray(capturedResponse?.items)) {
+            let changed = false;
+            for (const item of capturedResponse.items) {
+              const existing = db.getVideos().find(v => v.id === item.id);
+              if (existing && existing.coverImage === rawCoverUrl) {
+                db.saveVideo({ ...existing, coverImage: telegramCoverUrl }, true);
+                changed = true;
+              }
+            }
+            if (changed) db.saveDatabase();
+          }
+        } catch (covErr) {
+          console.warn('Background YouTube cover sync failed:', covErr);
+        }
+      })();
     }
 
     if (uploadId) {
@@ -4378,7 +4413,13 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
       throw new Error(telegramResult.error);
     }
 
-    // 6. Register DriveItem in database
+    // 6. Register DriveItem in database (skip redundant DB write when linking to a library entity next)
+    const willSaveLinkedEntity =
+      (targetType === 'series_episode' && Boolean(targetSeries && episodeId)) ||
+      (targetType === 'course_lesson' && Boolean(targetCourse && lessonId)) ||
+      (targetType === 'movie_video' && Boolean(targetVideo)) ||
+      (targetType === 'recipe' && Boolean(targetVideo));
+
     const newFile = db.createFile({
       name: dlResult.fileName,
       parentId: targetFolderId,
@@ -4397,7 +4438,7 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
       },
       courseId: targetType === 'course_lesson' ? parentId : undefined,
       lessonId: targetType === 'course_lesson' ? lessonId : undefined
-    });
+    }, willSaveLinkedEntity);
 
     // 7. Link fileId to the corresponding SeriesEpisode / Lesson / MovieVideo
     let updatedSeries: any = undefined;
