@@ -1162,12 +1162,33 @@ class Database {
     if (!this.data.personalVideos) this.data.personalVideos = [];
     const videos = this.data.personalVideos;
     const files = this.data.files.filter(f => !f.isTrash);
+    const imageExts = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif']);
+    const videoExts = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv']);
+    const isImageFile = (f: DriveItem) =>
+      f.type === 'image' ||
+      (f.mimeType?.toLowerCase().startsWith('image/') ?? false) ||
+      imageExts.has((f.extension || '').toLowerCase());
+    const isVideoFile = (f: DriveItem) =>
+      f.type === 'video' ||
+      (f.mimeType?.toLowerCase().startsWith('video/') ?? false) ||
+      videoExts.has((f.extension || '').toLowerCase());
 
-    for (let video of videos) {
+    for (const video of videos) {
+      if (video.coverImage && /^\/api\/files\/([^/]+)\/stream$/.test(video.coverImage)) {
+        video.coverImage = video.coverImage.replace(/^\/api\/files\/([^/]+)\/stream$/, '/api/stream/$1');
+      }
+
       if (video.fileId) {
         const file = files.find(f => f.id === video.fileId);
         if (file) {
           if (!video.title) video.title = file.name.replace(/\.[^/.]+$/, "");
+          const isPhoto = isImageFile(file);
+          if (!video.mediaType) {
+            video.mediaType = isPhoto ? 'photo' : 'video';
+          }
+          if (isPhoto && (!video.coverImage || video.coverImage.includes('photo-1518709268805-4e9042af9f23'))) {
+            video.coverImage = `/api/stream/${file.id}`;
+          }
           if (file.timestamps && file.timestamps.length > 0 && (!video.timestamps || video.timestamps.length === 0)) {
             video.timestamps = file.timestamps;
           }
@@ -1176,12 +1197,22 @@ class Database {
           }
         }
       } else if (video.folderId) {
-        const videoFiles = files.filter(f => f.parentId === video.folderId && f.type === 'video');
+        const folderFiles = files.filter(f => f.parentId === video.folderId);
+        const videoFiles = folderFiles.filter(isVideoFile);
+        const imageFiles = folderFiles.filter(isImageFile);
         if (videoFiles.length > 0) {
           const primary = videoFiles[0];
           video.fileId = primary.id;
+          video.mediaType = 'video';
           if (primary.timestamps) video.timestamps = primary.timestamps;
           if (primary.subtitles) video.subtitles = primary.subtitles;
+        } else if (imageFiles.length > 0) {
+          const primary = imageFiles[0];
+          video.fileId = primary.id;
+          video.mediaType = 'photo';
+          if (!video.coverImage || video.coverImage.includes('photo-1518709268805-4e9042af9f23')) {
+            video.coverImage = `/api/stream/${primary.id}`;
+          }
         }
       }
       video.updatedAt = new Date().toISOString();
@@ -2897,24 +2928,39 @@ class Database {
     return (this.data.personalVideos || []).find(v => v.id === id);
   }
 
-  public savePersonalVideo(videoData: Partial<PersonalVideo> & { title: string }): PersonalVideo {
+  public savePersonalVideo(videoData: Partial<PersonalVideo> & { title: string }, skipSave: boolean = false): PersonalVideo {
     if (!this.data.personalVideos) this.data.personalVideos = [];
     const id = videoData.id || 'pvid-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
     const existingIdx = this.data.personalVideos.findIndex(v => v.id === id);
 
+    const linkedFile = videoData.fileId ? this.data.files.find(f => f.id === videoData.fileId) : undefined;
+    const imageExts = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif']);
+    const inferredMediaType: 'video' | 'photo' =
+      videoData.mediaType ||
+      (linkedFile && (linkedFile.type === 'image' || imageExts.has((linkedFile.extension || '').toLowerCase())) ? 'photo' : 'video');
+
+    let normalizedCover = videoData.coverImage ? videoData.coverImage.trim() : '';
+    if (/^\/api\/files\/([^/]+)\/stream$/.test(normalizedCover)) {
+      normalizedCover = normalizedCover.replace(/^\/api\/files\/([^/]+)\/stream$/, '/api/stream/$1');
+    }
+    if (inferredMediaType === 'photo' && videoData.fileId && (!normalizedCover || normalizedCover.includes('photo-1518709268805-4e9042af9f23'))) {
+      normalizedCover = `/api/stream/${videoData.fileId}`;
+    }
+
     const video: PersonalVideo = {
       id,
       title: videoData.title,
+      mediaType: inferredMediaType,
       description: videoData.description || '',
       date: videoData.date,
       location: videoData.location,
       people: videoData.people,
       category: videoData.category || 'Memórias & Momentos',
       tags: videoData.tags || [],
-      duration: videoData.duration || '00:00',
+      duration: inferredMediaType === 'photo' ? '' : (videoData.duration || '00:00'),
       durationSeconds: videoData.durationSeconds,
-      resolution: videoData.resolution || '1080p',
-      coverImage: videoData.coverImage || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60',
+      resolution: videoData.resolution || (inferredMediaType === 'photo' ? '' : '1080p'),
+      coverImage: normalizedCover,
       fileId: videoData.fileId,
       folderId: videoData.folderId,
       timestamps: (videoData.timestamps || []).sort((a: any, b: any) => (a.seconds || 0) - (b.seconds || 0)),
@@ -2944,8 +2990,73 @@ class Database {
       }
     }
 
-    this.save(this.data);
+    if (!skipSave) {
+      this.save(this.data);
+    }
     return video;
+  }
+
+  public getOrCreatePersonalVideosFolder(subFolderName?: string, parentFolderId?: string): FolderItem {
+    const allFolders = this.data.folders.filter(f => !f.isTrash);
+    let personalRoot = parentFolderId ? allFolders.find(f => f.id === parentFolderId) : null;
+
+    if (!personalRoot) {
+      const rootAliases = [
+        'videos e midias pessoais',
+        'vídeos e mídias pessoais',
+        'videos e midias',
+        'vídeos e mídias',
+        'midias pessoais',
+        'mídias pessoais',
+        'videos pessoais',
+        'vídeos pessoais',
+        'fotos pessoais',
+        'fotos e videos',
+        'fotos e vídeos',
+        'gravacoes',
+        'gravações',
+        'home videos',
+        'familia',
+        'família',
+        'pessoal'
+      ];
+      const norm = (str: string) => (str || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/^[^\w\s]+|\s+/g, ' ')
+        .trim();
+
+      personalRoot = allFolders.find(f => {
+        if (f.parentId) return false;
+        const normalized = norm(f.name);
+        return rootAliases.some(alias => normalized === norm(alias) || normalized.includes(norm(alias)));
+      });
+
+      if (!personalRoot) {
+        personalRoot = this.createFolder(
+          'Vídeos e Mídias Pessoais',
+          null,
+          '#f59e0b',
+          'Biblioteca dedicada para vídeos, fotos e memórias pessoais'
+        );
+      }
+    }
+
+    if (subFolderName && subFolderName.trim()) {
+      const title = subFolderName.trim();
+      const normTitle = title.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim();
+      let subFolder = allFolders.find(f =>
+        f.parentId === personalRoot!.id &&
+        f.name.toLowerCase().replace(/^[^\w\s]+|\s+/g, ' ').trim() === normTitle
+      );
+      if (!subFolder) {
+        subFolder = this.createFolder(title, personalRoot.id, '#f59e0b', `Álbum pessoal: ${title}`);
+      }
+      return subFolder;
+    }
+
+    return personalRoot;
   }
 
   public deletePersonalVideo(id: string): boolean {
@@ -3934,7 +4045,7 @@ class Database {
         return ln.includes('cover') || ln.includes('poster') || ln.includes('folder') || ln.includes('thumb');
       });
       const selected = priority || folderImages[0];
-      return `/api/files/${selected.id}/stream`;
+      return `/api/stream/${selected.id}`;
     };
 
     let importedCount = 0;
@@ -4020,7 +4131,7 @@ class Database {
       return ln.includes('cover') || ln.includes('poster') || ln.includes('folder') || ln.includes('thumb') || ln.includes('capa');
     });
     const selected = priority || folderImages[0];
-    return `/api/files/${selected.id}/stream`;
+    return `/api/stream/${selected.id}`;
   }
 
   private findLibraryRootFolders(aliases: string[]): FolderItem[] {
@@ -4578,7 +4689,7 @@ class Database {
     };
   }
 
-  // ---------------- SYNC PERSONAL VIDEOS FROM ROOT FOLDER ----------------
+  // ---------------- SYNC PERSONAL VIDEOS & PHOTOS FROM ROOT FOLDER ----------------
   public syncPersonalVideosFromRootFolder(): {
     importedCount: number;
     updatedCount: number;
@@ -4586,38 +4697,94 @@ class Database {
     videos: PersonalVideo[];
   } {
     if (!this.data.personalVideos) this.data.personalVideos = [];
-    const rootAliases = ['videos e midias pessoais', 'vídeos e mídias pessoais', 'videos e midias', 'vídeos e mídias', 'midias pessoais', 'mídias pessoais', 'videos pessoais', 'vídeos pessoais', 'gravacoes', 'gravações', 'home videos', 'familia', 'família', 'pessoal'];
-    const rootFolders = this.findLibraryRootFolders(rootAliases);
+    const rootAliases = [
+      'videos e midias pessoais',
+      'vídeos e mídias pessoais',
+      'videos e midias',
+      'vídeos e mídias',
+      'midias pessoais',
+      'mídias pessoais',
+      'videos pessoais',
+      'vídeos pessoais',
+      'fotos pessoais',
+      'fotos e videos',
+      'fotos e vídeos',
+      'gravacoes',
+      'gravações',
+      'home videos',
+      'familia',
+      'família',
+      'pessoal'
+    ];
+    let rootFolders = this.findLibraryRootFolders(rootAliases);
 
     if (rootFolders.length === 0) {
-      return {
-        importedCount: 0,
-        updatedCount: 0,
-        totalVideos: this.data.personalVideos.length,
-        videos: this.data.personalVideos
-      };
+      const createdRoot = this.getOrCreatePersonalVideosFolder();
+      rootFolders = [createdRoot];
     }
 
     const rootFolderIds = new Set(rootFolders.map(r => r.id));
     const allPersonalFolderIds = this.collectDescendantFolderIds(Array.from(rootFolderIds));
     const allFolders = (this.data.folders || []).filter(f => !f.isTrash);
     const allFiles = (this.data.files || []).filter(f => !f.isTrash);
-    const videoExts = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv'];
+    const videoExts = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'flv', 'wmv']);
+    const imageExts = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif']);
+    const coverBaseNames = new Set(['cover', 'poster', 'folder', 'thumb', 'capa']);
 
-    const personalFiles = allFiles.filter(f => 
+    const isVideoFile = (f: DriveItem) =>
+      f.type === 'video' || videoExts.has((f.extension || '').toLowerCase());
+    const isImageFile = (f: DriveItem) =>
+      f.type === 'image' || imageExts.has((f.extension || '').toLowerCase());
+
+    const personalFiles = allFiles.filter(f =>
       allPersonalFolderIds.has(f.parentId || '') &&
-      (f.type === 'video' || videoExts.includes((f.extension || '').toLowerCase()))
+      (isVideoFile(f) || isImageFile(f))
     );
+
+    // Map folders that contain videos so explicit cover.* files aren't duplicated as standalone photos
+    const foldersWithVideos = new Set<string>();
+    const explicitCoverByFolder = new Map<string, string>();
+    for (const f of personalFiles) {
+      if (f.parentId && isVideoFile(f)) {
+        foldersWithVideos.add(f.parentId);
+      }
+    }
+    for (const f of personalFiles) {
+      if (f.parentId && isImageFile(f)) {
+        const baseName = f.name.replace(/\.[^/.]+$/, '').toLowerCase().trim();
+        if (coverBaseNames.has(baseName) && !explicitCoverByFolder.has(f.parentId)) {
+          explicitCoverByFolder.set(f.parentId, `/api/stream/${f.id}`);
+        }
+      }
+    }
 
     let importedCount = 0;
     let updatedCount = 0;
 
     for (const file of personalFiles) {
-      let existing = this.data.personalVideos.find(v => v.fileId === file.id);
+      const isPhoto = isImageFile(file);
+      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().trim();
+      if (isPhoto && file.parentId && foldersWithVideos.has(file.parentId) && coverBaseNames.has(baseName)) {
+        continue;
+      }
+
+      const existing = this.data.personalVideos.find(v => v.fileId === file.id);
 
       if (existing) {
+        let modified = false;
         if (file.parentId && existing.folderId !== file.parentId) {
           existing.folderId = file.parentId;
+          modified = true;
+        }
+        if (!existing.mediaType) {
+          existing.mediaType = isPhoto ? 'photo' : 'video';
+          modified = true;
+        }
+        if (isPhoto && (!existing.coverImage || existing.coverImage.includes('photo-1518709268805-4e9042af9f23'))) {
+          existing.coverImage = `/api/stream/${file.id}`;
+          modified = true;
+        }
+        if (modified) {
           existing.updatedAt = new Date().toISOString();
           updatedCount++;
         }
@@ -4625,13 +4792,13 @@ class Database {
       }
 
       const parentFolder = allFolders.find(f => f.id === file.parentId);
-      const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/^[🎬🎥🎞️📽️📹📼\s]+/, '').trim();
+      const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/^[🎬🎥🎞️📽️📹📼📷📸🖼️\s]+/, '').trim();
 
       const dateMatch = file.name.match(/(\d{4}[-_.]\d{2}[-_.]\d{2})/);
       const date = dateMatch ? dateMatch[1].replace(/[_.]/g, '-') : undefined;
 
-      // Evitar duplicações se já existe um vídeo pessoal cadastrado com o mesmo título e pasta
-      const existingByTitleAndFolder = this.data.personalVideos.find(v => 
+      // Evitar duplicações se já existe um item pessoal cadastrado com o mesmo título e pasta
+      const existingByTitleAndFolder = this.data.personalVideos.find(v =>
         (v.folderId === file.parentId || (!v.folderId && file.parentId === rootFolders[0].id)) &&
         v.title.toLowerCase().trim() === cleanFileName.toLowerCase().trim()
       );
@@ -4639,33 +4806,39 @@ class Database {
       if (existingByTitleAndFolder) {
         if (!existingByTitleAndFolder.fileId || existingByTitleAndFolder.fileId !== file.id) {
           existingByTitleAndFolder.fileId = file.id;
+          existingByTitleAndFolder.mediaType = isPhoto ? 'photo' : 'video';
+          if (isPhoto) {
+            existingByTitleAndFolder.coverImage = `/api/stream/${file.id}`;
+          }
           existingByTitleAndFolder.updatedAt = new Date().toISOString();
           updatedCount++;
         }
         continue;
       }
 
-      const folderCover = file.parentId ? this.findFolderImageCover(file.parentId) : undefined;
-      const defaultCover = folderCover || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=60';
+      const explicitCover = file.parentId ? explicitCoverByFolder.get(file.parentId) : undefined;
+      const coverImage = isPhoto ? `/api/stream/${file.id}` : (explicitCover || '');
       const category = parentFolder && !rootFolderIds.has(parentFolder.id) ? parentFolder.name : 'Memórias & Momentos';
 
-      const newVideo: PersonalVideo = {
-        id: 'personal-vid-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+      const newItem: PersonalVideo = {
+        id: (isPhoto ? 'personal-pic-' : 'personal-vid-') + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
         title: cleanFileName,
+        mediaType: isPhoto ? 'photo' : 'video',
         date,
         category,
         tags: [],
         description: parentFolder?.description || '',
-        coverImage: defaultCover,
+        coverImage,
         folderId: file.parentId || rootFolders[0].id,
         fileId: file.id,
-        timestamps: file.timestamps || [],
-        subtitles: file.subtitles || [],
+        duration: isPhoto ? '' : '00:00',
+        timestamps: isPhoto ? [] : (file.timestamps || []),
+        subtitles: isPhoto ? [] : (file.subtitles || []),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      this.data.personalVideos.push(newVideo);
+      this.data.personalVideos.push(newItem);
       importedCount++;
     }
 

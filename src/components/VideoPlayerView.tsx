@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { 
   ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, CheckCircle2, Bookmark, 
   Download, Edit3, Film, Settings, Star, User, Clock, Airplay, Plus, Trash2, Sparkles,
-  SkipBack, SkipForward, Shuffle, Repeat, List, X, Search, Cast, Tv, ExternalLink, CloudUpload, Loader2
+  SkipBack, SkipForward, Shuffle, Repeat, List, X, Search, Cast, Tv, ExternalLink, CloudUpload, Loader2, Camera
 } from 'lucide-react';
 import { MovieVideo, DriveItem, VideoTimestamp } from '../types/index.js';
 import { VideoDownloadModal } from './VideoDownloadModal.js';
@@ -11,6 +11,7 @@ import { CastModal } from './CastModal.js';
 import { MarqueeTitle } from './MarqueeTitle.js';
 import { resolveApiUrl } from '../utils/mobileBridge.js';
 import { isYouTubeVideoUrl, saveYouTubeVideoToTelegram, YouTubeSaveProgress } from '../utils/youtubeTelegramSave.js';
+import { captureVideoMidFrame } from '../utils/videoFrameCapture.js';
 
 interface VideoPlayerViewProps {
   video: MovieVideo;
@@ -26,6 +27,7 @@ interface VideoPlayerViewProps {
   onLeavePiP?: () => void;
   onRestoreToTab?: () => void;
   onUpdateVideo?: (updated: MovieVideo) => Promise<void>;
+  onUpdateCoverImage?: (videoId: string, coverDataUrl: string) => Promise<void>;
   isPiPHidden?: boolean;
 }
 
@@ -43,9 +45,53 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   onLeavePiP,
   onRestoreToTab,
   onUpdateVideo,
+  onUpdateCoverImage,
   isPiPHidden = false
 }) => {
   const [savingToTelegram, setSavingToTelegram] = useState<YouTubeSaveProgress | null>(null);
+  const [justCapturedCover, setJustCapturedCover] = useState(false);
+
+  const handleCaptureFrameAsCover = async () => {
+    if (!onUpdateCoverImage) return;
+    const fileId = videoFile?.id || video.fileId;
+    if (!fileId) return;
+    try {
+      const streamUrl = resolveApiUrl(`/api/stream/${fileId}`);
+      let dataUrl: string | null = null;
+
+      if (videoRef.current) {
+        try {
+          const v = videoRef.current;
+          const vw = v.videoWidth || 640;
+          const vh = v.videoHeight || 360;
+          const scale = Math.min(1, 720 / vw);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(vw * scale);
+          canvas.height = Math.round(vh * scale);
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+            dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          }
+        } catch (_) {}
+      }
+
+      if (!dataUrl && streamUrl) {
+        const currentProgressPct = videoRef.current?.duration
+          ? videoRef.current.currentTime / videoRef.current.duration
+          : 0.35;
+        dataUrl = await captureVideoMidFrame(streamUrl, currentProgressPct);
+      }
+
+      if (dataUrl) {
+        await onUpdateCoverImage(video.id, dataUrl);
+        setJustCapturedCover(true);
+        setTimeout(() => setJustCapturedCover(false), 3000);
+      }
+    } catch (err) {
+      console.error('Error capturing video frame as cover:', err);
+    }
+  };
 
   const handleSaveToTelegram = async () => {
     const targetUrl = video.videoUrl || video.embedUrl;
@@ -677,6 +723,20 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               <ExternalLink className="w-4 h-4" />
               <span className="hidden sm:inline text-xs font-semibold">Player Externo</span>
             </button>
+
+            {videoFile && onUpdateCoverImage && (
+              <button
+                onClick={handleCaptureFrameAsCover}
+                className={`p-2 rounded-xl border shadow-sm transition-all active:scale-95 shrink-0 ${
+                  justCapturedCover
+                    ? 'bg-emerald-600 text-white border-emerald-500'
+                    : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-900/90 dark:hover:bg-gray-800 text-amber-600 dark:text-amber-400 border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                }`}
+                title="Capturar frame atual como foto de capa"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+            )}
 
             {onOpenEditModal && (
               <button

@@ -36,8 +36,8 @@ export async function captureVideoMidFrame(videoUrl: string, targetPercent = 0.5
 
     const timeoutId = setTimeout(() => {
       cleanup();
-      reject(new Error('Timeout ao tentar extrair frame do vídeo (limite de 12s atingido)'));
-    }, 12000);
+      reject(new Error('Timeout ao tentar extrair frame do vídeo (limite de 20s atingido)'));
+    }, 20000);
 
     video.onloadedmetadata = () => {
       const dur = video.duration;
@@ -46,8 +46,10 @@ export async function captureVideoMidFrame(videoUrl: string, targetPercent = 0.5
         video.currentTime = 1;
         return;
       }
-      // Meio do vídeo (50% da duração)
-      const seekTarget = Math.max(1, Math.min(dur - 2, dur * targetPercent));
+      // Suporta vídeos curtos (ex: clips pessoais) e vídeos longos
+      const seekTarget = dur <= 1
+        ? Math.max(0.05, dur * 0.5)
+        : Math.max(0.5, Math.min(dur - 0.5, dur * targetPercent));
       video.currentTime = seekTarget;
     };
 
