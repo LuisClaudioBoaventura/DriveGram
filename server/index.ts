@@ -140,7 +140,7 @@ app.get(['/api/health', '/api/status'], (_req, res) => {
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.31.1',
+    version: '1.31.2',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -4264,11 +4264,12 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
 
   const runSaveTask = async () => {
     // 1. Check if already saved in DB
+    const allNonTrashFiles = db.getAllFiles().filter((f: any) => !f.isTrash);
     if (targetType === 'series_episode' && parentId && episodeId) {
       const s = db.getSeries().find((x: any) => x.id === parentId);
       const ep = s?.seasons?.flatMap((sn: any) => sn.episodes || []).find((e: any) => e.id === episodeId);
       if (ep?.fileId) {
-        const existingFile = db.getFiles().find((f: any) => f.id === ep.fileId);
+        const existingFile = allNonTrashFiles.find((f: any) => f.id === ep.fileId);
         if (existingFile) {
           return { success: true, alreadySaved: true, file: existingFile, series: s };
         }
@@ -4277,7 +4278,7 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
       const c = db.getCourses().find((x: any) => x.id === parentId);
       const lesson = c?.modules?.flatMap((m: any) => m.lessons || []).find((l: any) => l.id === lessonId);
       if (lesson?.fileId) {
-        const existingFile = db.getFiles().find((f: any) => f.id === lesson.fileId);
+        const existingFile = allNonTrashFiles.find((f: any) => f.id === lesson.fileId);
         if (existingFile) {
           return { success: true, alreadySaved: true, file: existingFile, course: c };
         }
@@ -4285,7 +4286,7 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
     } else if (targetType === 'movie_video' && videoId) {
       const v = db.getVideos().find((x: any) => x.id === videoId);
       if (v?.fileId) {
-        const existingFile = db.getFiles().find((f: any) => f.id === v.fileId);
+        const existingFile = allNonTrashFiles.find((f: any) => f.id === v.fileId);
         if (existingFile) {
           return { success: true, alreadySaved: true, file: existingFile, video: v };
         }
@@ -4293,7 +4294,7 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
     } else if (targetType === 'recipe' && videoId) {
       const r = db.getRecipeById(videoId);
       if (r?.fileId) {
-        const existingFile = db.getFiles().find((f: any) => f.id === r.fileId);
+        const existingFile = allNonTrashFiles.find((f: any) => f.id === r.fileId);
         if (existingFile) {
           return { success: true, alreadySaved: true, file: existingFile, video: r };
         }
@@ -4370,7 +4371,10 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
     } else if (targetType === 'recipe' && videoId) {
       targetVideo = db.getRecipeById(videoId);
       if (targetVideo) {
-        targetFolderId = targetVideo.folderId || db.getOrCreateRecipeFolder().id;
+        const existingFolder = targetVideo.folderId ? db.getFolderById(targetVideo.folderId) : null;
+        targetFolderId = (existingFolder && !existingFolder.isTrash)
+          ? existingFolder.id
+          : db.getOrCreateRecipeFolder().id;
       }
     }
 
@@ -4408,9 +4412,9 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
       }
     );
 
-    if (!telegramResult.success && telegramResult.error) {
+    if (!telegramResult.success) {
       try { if (fs.existsSync(dlResult.filePath)) fs.unlinkSync(dlResult.filePath); } catch {}
-      throw new Error(telegramResult.error);
+      throw new Error(telegramResult.error || 'Falha ao enviar vídeo para o Telegram.');
     }
 
     // 6. Register DriveItem in database (skip redundant DB write when linking to a library entity next)
@@ -4477,7 +4481,7 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
       updatedVideo = db.saveVideo(targetVideo);
     } else if (targetType === 'recipe' && targetVideo) {
       targetVideo.fileId = newFile.id;
-      if (!targetVideo.folderId && targetFolderId) {
+      if (targetFolderId && targetVideo.folderId !== targetFolderId) {
         targetVideo.folderId = targetFolderId;
       }
       if (dlResult.durationSeconds && !targetVideo.durationSeconds) {

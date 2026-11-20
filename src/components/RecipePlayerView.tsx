@@ -62,6 +62,7 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [isCastModalOpen, setIsCastModalOpen] = useState(false);
   const [savingToTelegram, setSavingToTelegram] = useState<YouTubeSaveProgress | null>(null);
+  const [localSavedFile, setLocalSavedFile] = useState<DriveItem | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   // Interactive kitchen checklist state
@@ -74,7 +75,10 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
 
   // Timestamps
   const videoFile =
-    (recipe.fileId ? allFiles.find(f => f.id === recipe.fileId && !f.isTrash) : null) ||
+    (recipe.fileId
+      ? (allFiles.find(f => f.id === recipe.fileId && !f.isTrash) ||
+         (localSavedFile?.id === recipe.fileId ? localSavedFile : null))
+      : null) ||
     (recipe.folderId && !recipe.embedUrl && !recipe.videoUrl
       ? allFiles.find(
           f =>
@@ -99,6 +103,7 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
     setDraftInstructions(recipe.instructions || '');
     setCheckedIngredients(new Set());
     setIsEditingNotes(false);
+    setLocalSavedFile(null);
   }, [recipe.id]);
 
   useEffect(() => {
@@ -153,8 +158,18 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
         },
         (info) => setSavingToTelegram(info)
       );
+      if (result.file) {
+        setLocalSavedFile(result.file);
+      }
       if (result.video) {
         await onUpdateRecipe(result.video);
+      } else if (result.file) {
+        await onUpdateRecipe({
+          ...recipe,
+          fileId: result.file.id,
+          folderId: recipe.folderId || result.file.parentId || undefined,
+          updatedAt: new Date().toISOString()
+        });
       }
       showTempFeedback('✅ Vídeo da receita salvo no seu Telegram!');
     } catch (err: any) {
@@ -316,6 +331,14 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
 
           {videoFile && (
             <>
+              <span
+                className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold"
+                title="Vídeo salvo permanentemente no Telegram"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Salvo no Telegram</span>
+              </span>
+
               <button
                 onClick={async () => {
                   if (!videoRef.current) return;
