@@ -1,12 +1,28 @@
 import fs from 'fs';
 import path from 'path';
+import vm from 'vm';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
-import { Innertube, UniversalCache, Constants, Utils } from 'youtubei.js';
+import { Innertube, UniversalCache, Constants, Utils, Platform } from 'youtubei.js';
 import { extractYouTubeVideoId } from './youtube-parser.js';
 
 const execFileAsync = promisify(execFile);
+
+// Register a safe JS evaluator for youtubei.js so MWEB/WEB signature & n-parameter deciphering works.
+if (!Platform.shim.eval) {
+  Platform.shim.eval = async (data: any, env: Record<string, any>) => {
+    const properties: string[] = [];
+    if (env.n) {
+      properties.push(`n: exportedVars.nFunction(${JSON.stringify(env.n)})`);
+    }
+    if (env.sig) {
+      properties.push(`sig: exportedVars.sigFunction(${JSON.stringify(env.sig)})`);
+    }
+    const code = `(function() { ${data.output}\n return { ${properties.join(', ')} }; })()`;
+    return vm.runInNewContext(code, {}, { timeout: 2500 });
+  };
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,11 +33,17 @@ const MAX_TELEGRAM_FILE_BYTES = 1950 * 1024 * 1024; // ~1.95 GB safety margin un
 const PARALLEL_CHUNK_SIZE = 2 * 1024 * 1024; // 2 MB chunks
 const PARALLEL_WORKERS = 4;
 
+type InnertubeClientName = 'IOS' | 'ANDROID' | 'MWEB' | 'WEB' | 'TV';
+
 let cachedInnertube: Innertube | null = null;
 let innertubeInitPromise: Promise<Innertube> | null = null;
 let ffmpegAvailableCache: boolean | null = null;
 
-async function getInnertube(): Promise<Innertube> {
+async function getInnertube(forceFresh = false): Promise<Innertube> {
+  if (forceFresh) {
+    cachedInnertube = null;
+    innertubeInitPromise = null;
+  }
   if (cachedInnertube) return cachedInnertube;
   if (!innertubeInitPromise) {
     innertubeInitPromise = (async () => {
@@ -32,7 +54,7 @@ async function getInnertube(): Promise<Innertube> {
       } catch {}
       const instance = await Innertube.create({
         generate_session_locally: true,
-        cache: new UniversalCache(true, YT_CACHE_DIR),
+        cache: forceFresh ? undefined : new UniversalCache(true, YT_CACHE_DIR),
       });
       cachedInnertube = instance;
       return instance;
@@ -77,6 +99,22 @@ export interface YouTubeDownloadResult {
   mimeType: string;
   title: string;
   durationSeconds?: number;
+}
+
+interface HdStreamCandidate {
+  client: InnertubeClientName;
+  info: any;
+  videoFormat: any;
+  audioFormat: any;
+  videoUrl: string;
+  audioUrl: string;
+}
+
+interface ProgressiveStreamCandidate {
+  client: InnertubeClientName;
+  info: any;
+  format: any;
+  url: string | null;
 }
 
 async function writeWebStreamToFile(
@@ -157,6 +195,58 @@ async function tryDecipherFormatUrl(format: any, player: any): Promise<string | 
 }
 
 /**
+ * Verifies with a lightweight GET (immediately cancelling the response stream) that YouTube
+ * actually allows downloading this URL (catches HTTP 403 / PO-token gated adaptive streams upfront).
+ */
+async function probeStreamUrl(url: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: Constants.STREAM_HEADERS,
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    const ok = res.ok;
+    try {
+      await res.body?.cancel();
+    } catch {}
+    return ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function downloadDirectUrlToFile(
+  url: string,
+  destPath: string,
+  expectedBytes: number,
+  onChunkProgress?: (downloaded: number, total: number) => void
+): Promise<number> {
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: Constants.STREAM_HEADERS,
+    redirect: 'follow',
+  });
+  if (!res.ok || !res.body) {
+    try {
+      await res.body?.cancel();
+    } catch {}
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const contentLength = Number(res.headers.get('content-length')) || expectedBytes || 0;
+  return await writeWebStreamToFile(
+    res.body as unknown as ReadableStream<Uint8Array>,
+    destPath,
+    contentLength,
+    onChunkProgress
+  );
+}
+
+/**
  * Downloads a deciphered YouTube media URL to `destPath` using parallel HTTP range chunks.
  * Falls back cleanly if the server rejects range queries.
  */
@@ -232,6 +322,10 @@ async function downloadUrlToFileParallel(
           } catch (err: any) {
             clearTimeout(timeoutId);
             lastErr = err;
+            // Don't retry 403/404 three times per worker
+            if (err?.message === 'HTTP 403' || err?.message === 'HTTP 404') {
+              break;
+            }
           }
         }
 
@@ -248,47 +342,32 @@ async function downloadUrlToFileParallel(
   }
 }
 
-/**
- * Downloads a YouTube video to `outputDir` as an MP4 file compatible with Telegram & HTML5 players.
- * Uses parallel range downloads + concurrent HD adaptive muxing (up to 1080p) when ffmpeg is available,
- * and falls back seamlessly to pure-JS progressive MP4 download (works on Desktop & Android).
- */
-export async function downloadYouTubeVideoToFile(
-  videoUrlOrId: string,
-  outputDir: string,
-  options?: {
-    titleOverride?: string;
-    onProgress?: (info: DownloadProgressInfo) => void;
-  }
-): Promise<YouTubeDownloadResult> {
-  const videoId = /^[a-zA-Z0-9_-]{11}$/.test(videoUrlOrId.trim())
-    ? videoUrlOrId.trim()
-    : extractYouTubeVideoId(videoUrlOrId);
-
-  if (!videoId) {
-    throw new Error('URL ou ID do YouTube inválido.');
-  }
-
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
-
-  const yt = await getInnertube();
-  const hasFfmpeg = await isFfmpegAvailable();
-  const clients: Array<'IOS' | 'ANDROID' | 'TV' | 'WEB'> = ['IOS', 'ANDROID', 'TV', 'WEB'];
-
-  let selectedInfo: any = null;
-  let hdVideoFormat: any = null;
-  let hdAudioFormat: any = null;
-  let hdVideoUrl: string | null = null;
-  let hdAudioUrl: string | null = null;
-  let progFormat: any = null;
-  let progUrl: string | null = null;
-  let lastInfoErr: any = null;
+async function resolveStreamCandidates(
+  yt: Innertube,
+  videoId: string,
+  hasFfmpeg: boolean,
+  clients: InnertubeClientName[],
+  options?: { progressiveOnly?: boolean }
+): Promise<{
+  hdCandidate: HdStreamCandidate | null;
+  progCandidate: ProgressiveStreamCandidate | null;
+  fallbackProgCandidate: ProgressiveStreamCandidate | null;
+  fallbackInfo: any;
+  lastError: any;
+}> {
+  let hdCandidate: HdStreamCandidate | null = null;
+  let progCandidate: ProgressiveStreamCandidate | null = null;
+  let fallbackProgCandidate: ProgressiveStreamCandidate | null = null;
+  let fallbackInfo: any = null;
+  let lastError: any = null;
 
   for (const client of clients) {
     try {
       const candidate = await yt.getInfo(videoId, { client });
+      if (!fallbackInfo && candidate?.basic_info) {
+        fallbackInfo = candidate;
+      }
+
       const adaptive = Array.isArray(candidate?.streaming_data?.adaptive_formats)
         ? (candidate.streaming_data.adaptive_formats as any[])
         : [];
@@ -296,7 +375,28 @@ export async function downloadYouTubeVideoToFile(
         ? (candidate.streaming_data.formats as any[])
         : [];
 
-      if (hasFfmpeg && adaptive.length > 0) {
+      // 1. Check for a verified HTTP 200 progressive video+audio MP4 format
+      if (!progCandidate && progressive.length > 0) {
+        const pFmt =
+          progressive.find((f: any) => isUsableFormat(f) && f.has_video && f.has_audio && f.mime_type?.includes('video/mp4')) ||
+          progressive.find((f: any) => isUsableFormat(f) && f.has_video && f.has_audio);
+
+        if (pFmt) {
+          const pUrl = await tryDecipherFormatUrl(pFmt, yt.session.player);
+          if (!fallbackProgCandidate) {
+            fallbackProgCandidate = { client, info: candidate, format: pFmt, url: pUrl };
+          }
+          if (pUrl && (await probeStreamUrl(pUrl))) {
+            progCandidate = { client, info: candidate, format: pFmt, url: pUrl };
+            if (options?.progressiveOnly || !hasFfmpeg) {
+              break;
+            }
+          }
+        }
+      }
+
+      // 2. Check for verified HTTP 200 HD adaptive streams (H.264 <= 1080p + AAC) when ffmpeg is available
+      if (!options?.progressiveOnly && hasFfmpeg && !hdCandidate && adaptive.length > 0) {
         const vFmt = adaptive
           .filter(
             (f) =>
@@ -319,48 +419,85 @@ export async function downloadYouTubeVideoToFile(
             tryDecipherFormatUrl(aFmt, yt.session.player),
           ]);
           if (vUrl && aUrl) {
-            selectedInfo = candidate;
-            hdVideoFormat = vFmt;
-            hdAudioFormat = aFmt;
-            hdVideoUrl = vUrl;
-            hdAudioUrl = aUrl;
-            break;
+            const [vOk, aOk] = await Promise.all([probeStreamUrl(vUrl), probeStreamUrl(aUrl)]);
+            if (vOk && aOk) {
+              hdCandidate = {
+                client,
+                info: candidate,
+                videoFormat: vFmt,
+                audioFormat: aFmt,
+                videoUrl: vUrl,
+                audioUrl: aUrl,
+              };
+              break;
+            }
           }
         }
       }
 
-      const pFmt =
-        progressive.find((f: any) => isUsableFormat(f) && f.has_video && f.has_audio && f.mime_type?.includes('video/mp4')) ||
-        progressive.find((f: any) => isUsableFormat(f) && f.has_video && f.has_audio);
-
-      if (pFmt) {
-        const pUrl = await tryDecipherFormatUrl(pFmt, yt.session.player);
-        if (pUrl) {
-          selectedInfo = candidate;
-          progFormat = pFmt;
-          progUrl = pUrl;
-          break;
-        }
-      }
-
-      if (!selectedInfo && (progressive.length > 0 || adaptive.length > 0)) {
-        selectedInfo = candidate;
-        progFormat = pFmt || progressive[0];
+      // Once we already have a verified progressive stream and have already checked IOS for HD,
+      // stop early rather than spending extra seconds on MWEB/WEB/TV clients unnecessarily.
+      if (progCandidate && (client === 'ANDROID' || client === 'MWEB' || client === 'WEB')) {
+        break;
       }
     } catch (err: any) {
-      lastInfoErr = err;
+      lastError = err;
     }
   }
 
-  if (!selectedInfo) {
+  return { hdCandidate, progCandidate, fallbackProgCandidate, fallbackInfo, lastError };
+}
+
+/**
+ * Downloads a YouTube video to `outputDir` as an MP4 file compatible with Telegram & HTML5 players.
+ * Probes stream URLs upfront to bypass PO-token / HTTP 403 gated clients, uses parallel range chunks
+ * with HD adaptive muxing (up to 1080p) when available & ffmpeg is installed, and falls back reliably
+ * to verified progressive MP4 download (works on Desktop & Android).
+ */
+export async function downloadYouTubeVideoToFile(
+  videoUrlOrId: string,
+  outputDir: string,
+  options?: {
+    titleOverride?: string;
+    onProgress?: (info: DownloadProgressInfo) => void;
+  }
+): Promise<YouTubeDownloadResult> {
+  const videoId = /^[a-zA-Z0-9_-]{11}$/.test(videoUrlOrId.trim())
+    ? videoUrlOrId.trim()
+    : extractYouTubeVideoId(videoUrlOrId);
+
+  if (!videoId) {
+    throw new Error('URL ou ID do YouTube inválido.');
+  }
+
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  const hasFfmpeg = await isFfmpegAvailable();
+  const primaryClients: InnertubeClientName[] = ['IOS', 'ANDROID', 'MWEB', 'WEB', 'TV'];
+
+  let yt = await getInnertube(false);
+  let resolved = await resolveStreamCandidates(yt, videoId, hasFfmpeg, primaryClients);
+
+  // If cached session returned zero usable streams, retry once with a fresh Innertube instance
+  if (!resolved.hdCandidate && !resolved.progCandidate && !resolved.fallbackProgCandidate) {
+    yt = await getInnertube(true);
+    resolved = await resolveStreamCandidates(yt, videoId, hasFfmpeg, primaryClients);
+  }
+
+  let { hdCandidate, progCandidate, fallbackProgCandidate, fallbackInfo, lastError } = resolved;
+
+  const metaInfo = hdCandidate?.info || progCandidate?.info || fallbackProgCandidate?.info || fallbackInfo;
+  if (!metaInfo) {
     cachedInnertube = null;
     throw new Error(
-      lastInfoErr?.message || 'Não foi possível obter os fluxos de vídeo do YouTube (vídeo privado, removido ou restrito).'
+      lastError?.message || 'Não foi possível obter os fluxos de vídeo do YouTube (vídeo privado, removido ou restrito).'
     );
   }
 
-  const videoTitle = options?.titleOverride?.trim() || selectedInfo.basic_info?.title || `YouTube-${videoId}`;
-  const durationSeconds = selectedInfo.basic_info?.duration ? Number(selectedInfo.basic_info.duration) : undefined;
+  const videoTitle = options?.titleOverride?.trim() || metaInfo.basic_info?.title || `YouTube-${videoId}`;
+  const durationSeconds = metaInfo.basic_info?.duration ? Number(metaInfo.basic_info.duration) : undefined;
   const safeBase = sanitizeFileName(videoTitle);
   const fileName = `${safeBase}.mp4`;
   const diskFileName = `yt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}-${safeBase.slice(0, 60)}.mp4`;
@@ -368,10 +505,10 @@ export async function downloadYouTubeVideoToFile(
 
   const startTime = Date.now();
 
-  // Try HD adaptive (up to 1080p H.264 + AAC) with concurrent downloads when ffmpeg is available
-  if (hasFfmpeg && hdVideoFormat && hdAudioFormat && hdVideoUrl && hdAudioUrl) {
-    const vExpected = Number(hdVideoFormat.content_length) || 0;
-    const aExpected = Number(hdAudioFormat.content_length) || 0;
+  // 1. Try HD adaptive (up to 1080p H.264 + AAC) when verified HTTP 200 and ffmpeg is available
+  if (hasFfmpeg && hdCandidate) {
+    const vExpected = Number(hdCandidate.videoFormat.content_length) || 0;
+    const aExpected = Number(hdCandidate.audioFormat.content_length) || 0;
     const combinedExpected = vExpected + aExpected;
 
     if (combinedExpected > MAX_TELEGRAM_FILE_BYTES) {
@@ -382,9 +519,9 @@ export async function downloadYouTubeVideoToFile(
     const tmpAudioPath = `${finalPath}.audio.tmp.m4a`;
 
     try {
-      let totalDownloaded = 0;
-      const reportCombinedProgress = (delta: number) => {
-        totalDownloaded += delta;
+      const trackDownloaded = { video: 0, audio: 0 };
+      const reportCombinedProgress = () => {
+        const totalDownloaded = trackDownloaded.video + trackDownloaded.audio;
         const total = combinedExpected || totalDownloaded;
         const elapsed = (Date.now() - startTime) / 1000;
         const pct = combinedExpected > 0 ? Math.min(90, Math.round((totalDownloaded / combinedExpected) * 90)) : 50;
@@ -399,30 +536,45 @@ export async function downloadYouTubeVideoToFile(
       const downloadTrack = async (url: string, dest: string, expected: number, itag: number, type: 'video' | 'audio') => {
         if (expected > 0) {
           try {
-            await downloadUrlToFileParallel(url, dest, expected, (delta) => reportCombinedProgress(delta));
+            trackDownloaded[type] = 0;
+            await downloadUrlToFileParallel(url, dest, expected, (_delta, dl) => {
+              trackDownloaded[type] = dl;
+              reportCombinedProgress();
+            });
             return;
           } catch (rangeErr: any) {
-            console.warn(`[YouTubeDownloader] Parallel range failed for ${type}, falling back to stream:`, rangeErr?.message || rangeErr);
+            console.warn(`[YouTubeDownloader] Parallel range failed for ${type}, falling back to direct stream:`, rangeErr?.message || rangeErr);
+            try { if (fs.existsSync(dest)) fs.unlinkSync(dest); } catch {}
           }
         }
-        let prev = 0;
-        const stream = await selectedInfo.download({ itag, type });
+        try {
+          trackDownloaded[type] = 0;
+          await downloadDirectUrlToFile(url, dest, expected, (dl) => {
+            trackDownloaded[type] = dl;
+            reportCombinedProgress();
+          });
+          return;
+        } catch (directErr: any) {
+          console.warn(`[YouTubeDownloader] Direct stream failed for ${type}, falling back to innertube download:`, directErr?.message || directErr);
+          try { if (fs.existsSync(dest)) fs.unlinkSync(dest); } catch {}
+        }
+        trackDownloaded[type] = 0;
+        const stream = await hdCandidate!.info.download({ itag, type });
         await writeWebStreamToFile(stream, dest, expected, (dl) => {
-          const delta = Math.max(0, dl - prev);
-          prev = dl;
-          reportCombinedProgress(delta);
+          trackDownloaded[type] = dl;
+          reportCombinedProgress();
         });
       };
 
       await Promise.all([
-        downloadTrack(hdVideoUrl, tmpVideoPath, vExpected, hdVideoFormat.itag, 'video'),
-        downloadTrack(hdAudioUrl, tmpAudioPath, aExpected, hdAudioFormat.itag, 'audio'),
+        downloadTrack(hdCandidate.videoUrl, tmpVideoPath, vExpected, hdCandidate.videoFormat.itag, 'video'),
+        downloadTrack(hdCandidate.audioUrl, tmpAudioPath, aExpected, hdCandidate.audioFormat.itag, 'audio'),
       ]);
 
       options?.onProgress?.({
         percent: 92,
-        downloadedBytes: combinedExpected || totalDownloaded,
-        totalBytes: combinedExpected || totalDownloaded,
+        downloadedBytes: combinedExpected || (trackDownloaded.video + trackDownloaded.audio),
+        totalBytes: combinedExpected || (trackDownloaded.video + trackDownloaded.audio),
         speedLabel: 'Combinando vídeo e áudio...',
       });
 
@@ -463,14 +615,36 @@ export async function downloadYouTubeVideoToFile(
     }
   }
 
-  // Progressive fallback (pure Node.js, parallel range chunks when content_length is known)
+  // 2. Ensure we have a progressive candidate from a client that supports progressive MP4 (ANDROID/MWEB/WEB/TV)
+  if (!progCandidate && !fallbackProgCandidate) {
+    const progSearch = await resolveStreamCandidates(
+      yt,
+      videoId,
+      false,
+      ['ANDROID', 'MWEB', 'WEB', 'TV'],
+      { progressiveOnly: true }
+    );
+    progCandidate = progSearch.progCandidate;
+    fallbackProgCandidate = progSearch.fallbackProgCandidate;
+  }
+
+  const chosenProg = progCandidate || fallbackProgCandidate;
+  if (!chosenProg) {
+    cachedInnertube = null;
+    throw new Error('Não foi possível encontrar um formato de vídeo compatível para download no YouTube.');
+  }
+
+  // 3. Progressive download (pure Node.js, parallel range chunks -> direct GET -> innertube stream)
+  const progFormat = chosenProg.format;
+  const progUrl = chosenProg.url;
   const expectedSize = Number(progFormat?.content_length) || 0;
   if (expectedSize > MAX_TELEGRAM_FILE_BYTES) {
     throw new Error('O vídeo excede o limite máximo de 2 GB do Telegram.');
   }
 
   try {
-    let usedParallel = false;
+    let downloadedOk = false;
+
     if (progUrl && expectedSize > 0) {
       try {
         await downloadUrlToFileParallel(progUrl, finalPath, expectedSize, (_delta, dl) => {
@@ -483,15 +657,34 @@ export async function downloadYouTubeVideoToFile(
             speedLabel: formatSpeed(elapsed > 0 ? dl / elapsed : 0),
           });
         });
-        usedParallel = true;
+        downloadedOk = true;
       } catch (rangeErr: any) {
-        console.warn('[YouTubeDownloader] Progressive parallel range fallback to stream:', rangeErr?.message || rangeErr);
+        console.warn('[YouTubeDownloader] Progressive parallel range fallback to direct stream:', rangeErr?.message || rangeErr);
         try { if (fs.existsSync(finalPath)) fs.unlinkSync(finalPath); } catch {}
       }
     }
 
-    if (!usedParallel) {
-      const stream = await selectedInfo.download({
+    if (!downloadedOk && progUrl) {
+      try {
+        await downloadDirectUrlToFile(progUrl, finalPath, expectedSize, (dl, total) => {
+          const elapsed = (Date.now() - startTime) / 1000;
+          const pct = total > 0 ? Math.min(99, Math.round((dl / total) * 100)) : 50;
+          options?.onProgress?.({
+            percent: pct,
+            downloadedBytes: dl,
+            totalBytes: total,
+            speedLabel: formatSpeed(elapsed > 0 ? dl / elapsed : 0),
+          });
+        });
+        downloadedOk = true;
+      } catch (directErr: any) {
+        console.warn('[YouTubeDownloader] Progressive direct GET fallback to innertube stream:', directErr?.message || directErr);
+        try { if (fs.existsSync(finalPath)) fs.unlinkSync(finalPath); } catch {}
+      }
+    }
+
+    if (!downloadedOk) {
+      const stream = await chosenProg.info.download({
         itag: progFormat?.itag,
         type: 'video+audio',
         quality: 'best',

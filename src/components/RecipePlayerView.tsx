@@ -45,6 +45,7 @@ interface RecipePlayerViewProps {
   onUpdateProgress: (recipeId: string, seconds: number, isCompleted?: boolean) => Promise<void>;
   onUpdateRecipe: (updated: RecipeVideo) => Promise<void>;
   onOpenEditModal?: () => void;
+  onShowToast?: (message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
 export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
@@ -53,7 +54,8 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
   onBackToCatalog,
   onUpdateProgress,
   onUpdateRecipe,
-  onOpenEditModal
+  onOpenEditModal,
+  onShowToast
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -63,7 +65,7 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
   const [isCastModalOpen, setIsCastModalOpen] = useState(false);
   const [savingToTelegram, setSavingToTelegram] = useState<YouTubeSaveProgress | null>(null);
   const [localSavedFile, setLocalSavedFile] = useState<DriveItem | null>(null);
-  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'info' | 'success' | 'error' } | null>(null);
 
   // Interactive kitchen checklist state
   const [checkedIngredients, setCheckedIngredients] = useState<Set<number>>(new Set());
@@ -112,9 +114,9 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
     }
   }, [recipe.id]);
 
-  const showTempFeedback = (msg: string, ms = 4500) => {
-    setFeedbackMsg(msg);
-    setTimeout(() => setFeedbackMsg(null), ms);
+  const showTempFeedback = (msg: string, ms = 4500, type: 'info' | 'success' | 'error' = 'info') => {
+    setFeedbackMsg({ text: msg, type });
+    setTimeout(() => setFeedbackMsg(prev => (prev?.text === msg ? null : prev)), ms);
   };
 
   const formatTime = (secs: number) => {
@@ -171,9 +173,12 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
           updatedAt: new Date().toISOString()
         });
       }
-      showTempFeedback('✅ Vídeo da receita salvo no seu Telegram!');
+      showTempFeedback('✅ Vídeo da receita salvo no seu Telegram!', 5000, 'success');
+      onShowToast?.('✅ Vídeo da receita salvo no seu Telegram!', 'success');
     } catch (err: any) {
-      showTempFeedback(err?.message || 'Erro ao salvar vídeo no Telegram.', 6000);
+      const errMsg = err?.message || 'Erro ao salvar vídeo no Telegram.';
+      showTempFeedback(`❌ ${errMsg}`, 7000, 'error');
+      onShowToast?.(errMsg, 'error');
     } finally {
       setSavingToTelegram(null);
     }
@@ -424,8 +429,16 @@ export const RecipePlayerView: React.FC<RecipePlayerViewProps> = ({
       </div>
 
       {feedbackMsg && (
-        <div className="mx-4 mt-3 px-4 py-2 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-700 dark:text-orange-300 text-xs font-semibold text-center">
-          {feedbackMsg}
+        <div
+          className={`mx-4 mt-3 px-4 py-2 rounded-xl border text-xs font-semibold text-center ${
+            feedbackMsg.type === 'error'
+              ? 'bg-rose-500/15 border-rose-500/40 text-rose-700 dark:text-rose-300'
+              : feedbackMsg.type === 'success'
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
+                : 'bg-orange-500/15 border-orange-500/30 text-orange-700 dark:text-orange-300'
+          }`}
+        >
+          {feedbackMsg.text}
         </div>
       )}
 

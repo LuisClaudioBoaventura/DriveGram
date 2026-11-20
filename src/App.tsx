@@ -979,6 +979,7 @@ export function App() {
                 await fs.refresh();
               }}
               onOpenEditModal={() => setEditingRecipe(selectedRecipeForView)}
+              onShowToast={showToast}
             />
           ) : fs.activeTab === 'courses' ? (
             /* Courses Catalog */
