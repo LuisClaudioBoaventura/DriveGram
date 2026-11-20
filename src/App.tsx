@@ -688,6 +688,7 @@ export function App() {
                 } else {
                   await videos.updateVideo(updated);
                 }
+                await fs.refresh();
               }}
               onUpdateCoverImage={async (videoId, coverDataUrl) => {
                 if (isPersonalMovie) {
@@ -968,13 +969,14 @@ export function App() {
           ) : selectedRecipeForView && fs.activeTab === 'recipes' ? (
             /* Active Dedicated Recipe Player & Kitchen Workspace */
             <RecipePlayerView
-              recipe={selectedRecipeForView}
+              recipe={recipes.recipes.find(r => r.id === selectedRecipeForView.id) || selectedRecipeForView}
               allFiles={fs.allFiles}
               onBackToCatalog={() => setSelectedRecipeForView(null)}
               onUpdateProgress={recipes.updateProgress}
               onUpdateRecipe={async (updated) => {
                 await recipes.updateRecipe(updated);
                 setSelectedRecipeForView(updated);
+                await fs.refresh();
               }}
               onOpenEditModal={() => setEditingRecipe(selectedRecipeForView)}
             />
