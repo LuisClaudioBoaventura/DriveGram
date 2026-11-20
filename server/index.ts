@@ -41,6 +41,45 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UPLOADS_DIR = process.env.DRIVEGRAM_UPLOADS_DIR || process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
+const DATA_DIR_FOR_LOGS = process.env.DRIVEGRAM_DATA_DIR || process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const MAX_LOG_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+
+export function enforceLogFileSizeLimit(): void {
+  const candidateLogPaths = [
+    path.join(DATA_DIR_FOR_LOGS, 'drivegram.log'),
+    path.join(process.cwd(), 'drivegram.log')
+  ];
+
+  for (const logPath of candidateLogPaths) {
+    try {
+      if (fs.existsSync(logPath)) {
+        const stat = fs.statSync(logPath);
+        if (stat.size >= MAX_LOG_FILE_SIZE_BYTES) {
+          try {
+            fs.unlinkSync(logPath);
+          } catch (_) {
+            try {
+              fs.truncateSync(logPath, 0);
+            } catch (_) {}
+          }
+          // Caso o arquivo tenha sido desvinculado mas um descritor de stdout do processo pai
+          // ainda aponte para ele no Windows, garante truncamento se o caminho ainda existir.
+          try {
+            if (fs.existsSync(logPath) && fs.statSync(logPath).size > 0) {
+              fs.truncateSync(logPath, 0);
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+}
+
+enforceLogFileSizeLimit();
+const logCleanupInterval = setInterval(enforceLogFileSizeLimit, 30 * 1000);
+if (typeof logCleanupInterval.unref === 'function') {
+  logCleanupInterval.unref();
+}
 
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -136,11 +175,12 @@ function getFileType(extension: string): FileType {
 
 // ---------------- HEALTH CHECK (AND READINESS PROBE) ----------------
 app.get(['/api/health', '/api/status'], (_req, res) => {
+  enforceLogFileSizeLimit();
   res.json({
     status: 'ok',
     uptime: Math.round(process.uptime()),
     timestamp: Date.now(),
-    version: '1.31.3',
+    version: '1.31.4',
     uploadsDir: UPLOADS_DIR,
     isEmbedded: Boolean(process.env.DRIVEGRAM_EMBEDDED)
   });
@@ -4379,6 +4419,18 @@ app.post('/api/youtube/save-to-telegram', async (req, res) => {
     }
 
     // 5. Upload to Telegram Saved Messages
+    activeUploadsMap.set(uploadId, {
+      uploadId,
+      fileName: dlResult.fileName,
+      size: dlResult.size,
+      transferred: 0,
+      progress: 50,
+      speed: 'Conectando ao Telegram...',
+      stage: 'cloud',
+      stageLabel: '2/2 • Enviando para o Telegram (0%)...',
+      updatedAt: Date.now()
+    });
+
     const caption = db.buildTelegramCaption({
       name: dlResult.fileName,
       size: dlResult.size,

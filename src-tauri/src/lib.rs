@@ -17,10 +17,23 @@ fn open_devtools(window: WebviewWindow) {
     }
 }
 
+const MAX_LOG_FILE_SIZE_BYTES: u64 = 2 * 1024 * 1024; // 2 MB
+
+fn enforce_log_file_size_limit(log_file_path: &Path) {
+    if let Ok(meta) = fs::metadata(log_file_path) {
+        if meta.len() >= MAX_LOG_FILE_SIZE_BYTES {
+            if fs::remove_file(log_file_path).is_err() {
+                let _ = OpenOptions::new().write(true).truncate(true).open(log_file_path);
+            }
+        }
+    }
+}
+
 #[tauri::command]
 fn open_logs_folder(app: AppHandle) -> Result<String, String> {
     let data_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("./drivegram-data"));
     let _ = fs::create_dir_all(&data_dir);
+    enforce_log_file_size_limit(&data_dir.join("drivegram.log"));
 
     #[cfg(target_os = "windows")]
     {
@@ -227,11 +240,17 @@ fn start_backend_server(app: &AppHandle) -> Option<Child> {
     let _ = fs::create_dir_all(&uploads_dir);
 
     let log_file_path = data_dir.join("drivegram.log");
-    let log_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_file_path)
-        .ok();
+    enforce_log_file_size_limit(&log_file_path);
+
+    let mut log_opts = OpenOptions::new();
+    log_opts.create(true).append(true);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_SHARE_READ (1) | FILE_SHARE_WRITE (2) | FILE_SHARE_DELETE (4)
+        log_opts.share_mode(0x00000007);
+    }
+    let log_file = log_opts.open(&log_file_path).ok();
 
     if let Some(bundle_path) = find_server_bundle(app) {
         let node_bin = find_node_executable(app);

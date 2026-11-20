@@ -789,12 +789,37 @@ class Database {
   }
 
   private save(data: DatabaseSchema, triggerAutoBackup: boolean = true) {
+    const tempFile = `${DB_FILE}.${process.pid}.${Date.now()}-${Math.random().toString(36).slice(2, 6)}.tmp`;
     try {
       // Serialização compacta sem indentação excessiva para evitar estouro de heap no Node
       const jsonString = JSON.stringify(data);
-      const tempFile = `${DB_FILE}.tmp`;
       fs.writeFileSync(tempFile, jsonString, 'utf-8');
-      fs.renameSync(tempFile, DB_FILE);
+
+      let renamed = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          fs.renameSync(tempFile, DB_FILE);
+          renamed = true;
+          break;
+        } catch (renameErr: any) {
+          if (renameErr?.code !== 'EPERM' && renameErr?.code !== 'EBUSY' && renameErr?.code !== 'EACCES') {
+            throw renameErr;
+          }
+          // Breve pausa caso o Windows Defender ou indexador esteja inspecionando drivegram_data.json
+          const waitUntil = Date.now() + 20 * (attempt + 1);
+          while (Date.now() < waitUntil) {
+            // busy-wait curto (20-100ms)
+          }
+        }
+      }
+
+      if (!renamed) {
+        try {
+          fs.copyFileSync(tempFile, DB_FILE);
+        } catch {
+          fs.writeFileSync(DB_FILE, jsonString, 'utf-8');
+        }
+      }
 
       if (triggerAutoBackup) {
         this.scheduleAutoBackup();
@@ -804,6 +829,10 @@ class Database {
       }
     } catch (e: any) {
       console.error('[DriveGram Database] Erro ao salvar banco JSON:', e?.message || e);
+    } finally {
+      try {
+        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+      } catch (_) {}
     }
   }
 

@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { TelegramClient } from 'telegram';
+import { TelegramClient, Api } from 'telegram';
+import { LAYER } from 'telegram/tl/AllTLObjects.js';
 import { NewMessage } from 'telegram/events/index.js';
 import { EventEmitter } from 'events';
 import { StringSession } from 'telegram/sessions/index.js';
@@ -75,6 +76,9 @@ class TelegramService {
   private uploadMutex: Promise<any> = Promise.resolve();
   private activeUploadCount: number = 0;
   private isRealtimeListenerActive: boolean = false;
+  private uploadSenderPool: any[] = [];
+  private uploadPoolRoundRobin: number = 0;
+  private uploadPoolIdleTimer: NodeJS.Timeout | null = null;
 
   // ---- FileLocation Cache ----
   // Avoids calling getMessages() on every Range HTTP request (a major cause of buffering).
@@ -264,6 +268,7 @@ class TelegramService {
 
     // If client exists and is connected
     if (this.client && this.client.connected) {
+      this.patchClientSenders(this.client);
       this.setupRealtimeListener(this.client);
       return this.client;
     }
@@ -272,6 +277,7 @@ class TelegramService {
     // If client exists but disconnected, try connecting
     if (this.client) {
       try {
+        this.patchClientSenders(this.client);
         await this.client.connect();
         if (await this.client.isUserAuthorized()) {
           this.authState.isConnected = true;
@@ -296,6 +302,7 @@ class TelegramService {
         if (err?.message === 'TIMEOUT' || err?.message?.includes('TIMEOUT')) return;
         console.warn('[DriveGram Telegram Client]', err?.message || err);
       };
+      this.patchClientSenders(this.client);
       await this.client.connect();
       const isAuth = await this.client.isUserAuthorized();
       if (isAuth) {
@@ -323,6 +330,233 @@ class TelegramService {
       this.authState.isConnected = false;
       return null;
     }
+  }
+
+  /**
+   * Corrige dois comportamentos críticos do GramJS (telegram@2.26.x) que travavam uploads no Windows/Desktop:
+   * 1. Para o mesmo DC da sessão principal (dcId === session.dcId), reutiliza diretamente o `_sender`
+   *    principal já conectado e autenticado (evitando abrir um segundo socket não inicializado para IPs
+   *    secundários mediaOnly que causavam ETIMEDOUT e deadlock em `c.sendFile`).
+   * 2. Para DCs externos, substitui o timer de 30s do `_borrowExportedSender` (que chamava `sender._reconnect()`
+   *    sem `await` gerando o loop infinito "sender already has some hanging states. reconnecting") por
+   *    um gerenciamento seguro de ociosidade que não derruba conexões com transferências ativas.
+   */
+  private patchClientSenders(client: TelegramClient | null) {
+    const anyClient = client as any;
+    if (!anyClient || anyClient.__drivegramSendersPatched) return;
+    anyClient.__drivegramSendersPatched = true;
+
+    const origGetDC = typeof anyClient.getDC === 'function' ? anyClient.getDC.bind(anyClient) : null;
+    if (origGetDC) {
+      anyClient.getDC = async (dcId: number, downloadDC = false, web = false) => {
+        if (dcId === anyClient.session?.dcId && anyClient.session?.serverAddress) {
+          return {
+            id: dcId,
+            ipAddress: anyClient.session.serverAddress,
+            port: anyClient.session.port || 443,
+          };
+        }
+        if (anyClient._config?.dcOptions) {
+          const preferred = anyClient._config.dcOptions.find(
+            (dc: any) =>
+              dc.id === dcId &&
+              Boolean(dc.ipv6) === Boolean(anyClient._useIPV6) &&
+              !dc.mediaOnly &&
+              !dc.cdn &&
+              !dc.tcpoOnly
+          );
+          if (preferred) {
+            return {
+              id: preferred.id,
+              ipAddress: preferred.ipAddress,
+              port: 443,
+            };
+          }
+        }
+        return await origGetDC(dcId, downloadDC, web);
+      };
+    }
+
+    const origBorrow = typeof anyClient._borrowExportedSender === 'function'
+      ? anyClient._borrowExportedSender.bind(anyClient)
+      : null;
+
+    if (origBorrow) {
+      anyClient._borrowExportedSender = async (dcId: number, shouldReconnect?: boolean, existingSender?: any) => {
+        if (!dcId || dcId === anyClient.session?.dcId) {
+          const connectedPool = this.uploadSenderPool.filter((s) => s && typeof s.isConnected === 'function' && s.isConnected());
+          if (connectedPool.length > 0) {
+            const picked = connectedPool[this.uploadPoolRoundRobin % connectedPool.length];
+            this.uploadPoolRoundRobin++;
+            return picked;
+          }
+          if (anyClient._sender && anyClient._sender.isConnected()) {
+            return anyClient._sender;
+          }
+        }
+
+        const sender = await origBorrow(dcId, shouldReconnect, existingSender);
+        const releaseMap: Map<number, any> | undefined = anyClient._exportedSenderReleaseTimeouts;
+        if (releaseMap && releaseMap.has(dcId)) {
+          clearTimeout(releaseMap.get(dcId));
+          releaseMap.delete(dcId);
+        }
+
+        const scheduleSafeRelease = () => {
+          if (!releaseMap) return;
+          if (releaseMap.has(dcId)) {
+            clearTimeout(releaseMap.get(dcId));
+          }
+          const timer = setTimeout(() => {
+            releaseMap.delete(dcId);
+            const pendingCount = sender?._pendingState?.values?.()?.length || 0;
+            if (this.isUploadingFile || this.inFlightDownloads.size > 0 || pendingCount > 0) {
+              scheduleSafeRelease();
+              return;
+            }
+            try {
+              sender?.disconnect?.();
+            } catch (_) {}
+            try {
+              anyClient._exportedSenderPromises?.delete?.(dcId);
+            } catch (_) {}
+          }, 5 * 60 * 1000);
+          if (typeof (timer as any).unref === 'function') {
+            (timer as any).unref();
+          }
+          releaseMap.set(dcId, timer);
+        };
+
+        scheduleSafeRelease();
+        return sender;
+      };
+    }
+
+    const origGetSender = typeof anyClient.getSender === 'function' ? anyClient.getSender.bind(anyClient) : null;
+    if (origGetSender) {
+      anyClient.getSender = async (dcId?: number) => {
+        if (!dcId || dcId === anyClient.session?.dcId) {
+          const connectedPool = this.uploadSenderPool.filter((s) => s && typeof s.isConnected === 'function' && s.isConnected());
+          if (connectedPool.length > 0) {
+            const picked = connectedPool[this.uploadPoolRoundRobin % connectedPool.length];
+            this.uploadPoolRoundRobin++;
+            return picked;
+          }
+          if (anyClient._sender && anyClient._sender.isConnected()) {
+            return anyClient._sender;
+          }
+        }
+        return await origGetSender(dcId);
+      };
+    }
+  }
+
+  /**
+   * Cria e mantém um pool de conexões MTProtoSender dedicadas e autenticadas no DC principal
+   * para uploads paralelos de múltiplos workers sem sobrecarregar ou bloquear o `_sender` principal.
+   */
+  private async ensureUploadSenderPool(client: TelegramClient, desiredCount: number): Promise<number> {
+    if (this.uploadPoolIdleTimer) {
+      clearTimeout(this.uploadPoolIdleTimer);
+      this.uploadPoolIdleTimer = null;
+    }
+
+    const anyClient = client as any;
+    if (!anyClient || !anyClient._sender || !anyClient.session?.serverAddress) {
+      return 1;
+    }
+
+    // Filtra apenas conexões do pool que continuam ativas
+    this.uploadSenderPool = this.uploadSenderPool.filter(
+      (s) => s && typeof s.isConnected === 'function' && s.isConnected()
+    );
+
+    const needed = Math.max(0, desiredCount - this.uploadSenderPool.length);
+    if (needed > 0) {
+      const SenderClass = anyClient._sender.constructor;
+      const ConnectionClass = anyClient._connection;
+      const dcId = anyClient.session.dcId;
+      const authKey = anyClient.session.getAuthKey(dcId);
+
+      if (SenderClass && ConnectionClass && authKey) {
+        const created = await Promise.all(
+          Array.from({ length: needed }, async () => {
+            try {
+              const sender = new SenderClass(authKey, {
+                logger: anyClient._log,
+                dcId,
+                retries: 3,
+                delay: 1000,
+                autoReconnect: true,
+                isMainSender: false,
+                client: anyClient,
+              });
+              await sender.connect(
+                new ConnectionClass({
+                  ip: anyClient.session.serverAddress,
+                  port: anyClient.session.port || 443,
+                  dcId,
+                  loggers: anyClient._log,
+                  proxy: anyClient._proxy,
+                  testServers: anyClient.testServers,
+                  socket: anyClient.networkSocket,
+                }),
+                false
+              );
+              await sender.send(
+                new Api.InvokeWithLayer({
+                  layer: LAYER,
+                  query: anyClient._initRequest,
+                })
+              );
+              return sender;
+            } catch (err: any) {
+              console.warn('[DriveGram Upload Pool] Falha ao criar socket auxiliar de upload:', err?.message || err);
+              return null;
+            }
+          })
+        );
+        for (const s of created) {
+          if (s && s.isConnected()) {
+            this.uploadSenderPool.push(s);
+          }
+        }
+      }
+    }
+
+    return Math.max(1, this.uploadSenderPool.length);
+  }
+
+  private scheduleUploadPoolRelease(delayMs: number = 60 * 1000) {
+    if (this.uploadPoolIdleTimer) {
+      clearTimeout(this.uploadPoolIdleTimer);
+    }
+    this.uploadPoolIdleTimer = setTimeout(() => {
+      this.uploadPoolIdleTimer = null;
+      if (this.isUploadingFile || this.activeUploadCount > 0) {
+        this.scheduleUploadPoolRelease(delayMs);
+        return;
+      }
+      this.destroyUploadSenderPool().catch(() => {});
+    }, delayMs);
+    if (typeof (this.uploadPoolIdleTimer as any).unref === 'function') {
+      (this.uploadPoolIdleTimer as any).unref();
+    }
+  }
+
+  private async destroyUploadSenderPool(): Promise<void> {
+    if (this.uploadPoolIdleTimer) {
+      clearTimeout(this.uploadPoolIdleTimer);
+      this.uploadPoolIdleTimer = null;
+    }
+    const currentPool = this.uploadSenderPool.splice(0, this.uploadSenderPool.length);
+    await Promise.all(
+      currentPool.map(async (s) => {
+        try {
+          await s?.disconnect?.();
+        } catch (_) {}
+      })
+    );
   }
 
   private setupRealtimeListener(client: TelegramClient) {
@@ -401,6 +635,7 @@ class TelegramService {
         if (err?.message === 'TIMEOUT' || err?.message?.includes('TIMEOUT')) return;
         console.warn('[DriveGram Telegram Client]', err?.message || err);
       };
+      this.patchClientSenders(this.client);
       await this.client.connect();
       
       const isAuth = await this.client.isUserAuthorized();
@@ -568,6 +803,7 @@ class TelegramService {
 
           this.client = this.authClient;
           this.authClient = null;
+          this.patchClientSenders(this.client);
           this.stringSession = new StringSession(sessionString);
           this.apiId = loginApiId;
           this.apiHash = loginApiHash;
@@ -586,9 +822,13 @@ class TelegramService {
           this.performStartupMetadataSync().catch((e) => {
             console.warn('[DriveGram] Auto-sync on QR login error:', e?.message || e);
           });
-        }).catch((err) => {
+        }).catch(async (err) => {
           this.qrStatus = 'error';
           this.qrError = err.message;
+          if (this.authClient) {
+            try { await this.authClient.disconnect(); } catch (_) {}
+            this.authClient = null;
+          }
         });
       });
 
@@ -681,6 +921,7 @@ class TelegramService {
 
       this.client = this.authClient;
       this.authClient = null;
+      this.patchClientSenders(this.client);
       this.stringSession = new StringSession(sessionString);
 
       this.authState = {
@@ -706,6 +947,7 @@ class TelegramService {
   }
 
   public async disconnect(): Promise<void> {
+    await this.destroyUploadSenderPool();
     if (this.client) {
       try {
         await this.client.disconnect();
@@ -775,19 +1017,45 @@ class TelegramService {
         }
 
         const fileSize = fs.statSync(filePath).size;
-        const uploadWorkers = fileSize > 5 * 1024 * 1024 ? 8 : 4;
+        const desiredWorkers = fileSize > 2 * 1024 * 1024 ? 8 : fileSize > 256 * 1024 ? 4 : 1;
 
         const doUpload = async (c: TelegramClient) => {
-          return await c.sendFile('me', {
+          this.patchClientSenders(c);
+          const activePoolWorkers = desiredWorkers > 1
+            ? await this.ensureUploadSenderPool(c, desiredWorkers)
+            : 1;
+          let lastProgressAt = Date.now();
+          let watchdogTimer: NodeJS.Timeout | null = null;
+
+          const uploadPromise = c.sendFile('me', {
             file: filePath,
             caption: caption,
-            workers: uploadWorkers, // 8 workers paralelos aceleram uploads de vídeos (>5MB)
+            workers: activePoolWorkers,
             progressCallback: (p: any) => {
+              lastProgressAt = Date.now();
               if (onProgress && typeof p === 'number') {
                 onProgress(Math.min(Math.round(p * 100), 99));
               }
             }
           });
+
+          const watchdogPromise = new Promise<never>((_resolve, reject) => {
+            watchdogTimer = setInterval(() => {
+              if (Date.now() - lastProgressAt > 90 * 1000) {
+                if (watchdogTimer) clearInterval(watchdogTimer);
+                reject(new Error('TIMEOUT: O envio para o Telegram ficou inativo por mais de 90 segundos.'));
+              }
+            }, 10 * 1000);
+            if (watchdogTimer && typeof watchdogTimer.unref === 'function') {
+              watchdogTimer.unref();
+            }
+          });
+
+          try {
+            return await Promise.race([uploadPromise, watchdogPromise]);
+          } finally {
+            if (watchdogTimer) clearInterval(watchdogTimer);
+          }
         };
 
         try {
@@ -812,6 +1080,7 @@ class TelegramService {
           ) {
             try {
               console.log('[DriveGram Telegram] Rebuilding client and retrying upload...');
+              await this.destroyUploadSenderPool();
               this.client = null;
               client = await this.ensureClient();
               if (client) {
@@ -840,6 +1109,7 @@ class TelegramService {
         if (this.activeUploadCount <= 0) {
           this.activeUploadCount = 0;
           this.isUploadingFile = false;
+          this.scheduleUploadPoolRelease(60 * 1000);
           // Se havia um backup de metadados aguardando o término do upload do arquivo, dispara agora
           if (this.hasPendingSyncRequest) {
             this.hasPendingSyncRequest = false;
@@ -1045,10 +1315,13 @@ class TelegramService {
       await fs.promises.writeFile(tempManifestPath, manifestJson, 'utf-8');
 
       const ulStart = Date.now();
+      const syncWorkers = manifestSizeBytes > 512 * 1024
+        ? await this.ensureUploadSenderPool(client, 8)
+        : 1;
       const sent = await client.sendFile('me', {
         file: tempManifestPath,
         caption: caption,
-        workers: 4,
+        workers: syncWorkers,
         progressCallback: (p: any) => {
           if (typeof p === 'number') {
             const pct = Math.min(Math.round(p * 100), 99);
@@ -1117,6 +1390,7 @@ class TelegramService {
       return { success: false, message: e.message || 'Falha ao sincronizar metadados no Telegram' };
     } finally {
       this.isSyncingMetadata = false;
+      this.scheduleUploadPoolRelease(60 * 1000);
       if (this.hasPendingSyncRequest) {
         this.hasPendingSyncRequest = false;
         setTimeout(() => {
